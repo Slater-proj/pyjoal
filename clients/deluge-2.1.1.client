@@ -1,0 +1,12 @@
+{
+  "name": "Deluge",
+  "version": "2.1.1",
+  "peerIdPattern": {
+    "prefix": "-DE211s-"
+  },
+  "userAgent": "Deluge 2.1.1",
+  "numwant": 200,
+  "requestHeaders": {
+    "Accept-Encoding": "gzip, deflate"
+  }
+}

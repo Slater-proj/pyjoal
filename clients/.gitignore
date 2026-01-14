@@ -1,0 +1,12 @@
+# Keep only base client versions in Git
+# Generated clients from update_clients.py are ignored
+
+# Ignore newer versions (auto-generated)
+*-5.*.client
+*-2.2.*.client
+*-4.0.6.client
+
+# Base versions (keep these in Git)
+!deluge-2.1.1.client
+!qbittorrent-4.6.0.client
+!transmission-4.0.5.client

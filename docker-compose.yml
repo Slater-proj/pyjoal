@@ -1,0 +1,47 @@
+services:
+  joal-modern:
+    build: .
+    container_name: joal-modern
+    restart: unless-stopped
+
+    ports:
+      - "${PORT:-8080}:8080"
+
+    volumes:
+      - ./config:/app/config
+      - ./torrents:/app/torrents
+      - ./clients:/app/clients # Client definitions auto-updated on startup
+
+    environment:
+      # Security (REQUIRED)
+      - SECRET_TOKEN=${SECRET_TOKEN}
+      - UI_PATH_PREFIX=${UI_PATH_PREFIX}
+
+      # Server
+      - PORT=8080
+      - DEBUG=false
+
+      # BitTorrent Configuration
+      - MIN_UPLOAD_RATE=${MIN_UPLOAD_RATE:-30}
+      - MAX_UPLOAD_RATE=${MAX_UPLOAD_RATE:-160}
+      - SIMULTANEOUS_SEED=${SIMULTANEOUS_SEED:-20}
+      - KEEP_TORRENT_WITH_ZERO_LEECHERS=${KEEP_TORRENT_WITH_ZERO_LEECHERS:-true}
+      - UPLOAD_RATIO_TARGET=${UPLOAD_RATIO_TARGET:--1.0}
+      - DEFAULT_CLIENT=${DEFAULT_CLIENT:-qbittorrent-4.6.0.client}
+
+      # Proxy (optional)
+      - HTTP_PROXY_HOST=${HTTP_PROXY_HOST:-}
+      - HTTP_PROXY_PORT=${HTTP_PROXY_PORT:-}
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')",
+        ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s

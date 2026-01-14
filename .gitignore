@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+build/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+.env
+config/config.json
+torrents/*.torrent
+!torrents/.gitkeep
+
+# Client files - Keep only base versions
+clients/*-5.*.client
+clients/*-2.2.*.client
+clients/*-4.0.6.client
+# Keep: deluge-2.1.1, qbittorrent-4.6.0, transmission-4.0.5
+
+# Test and debug data
+test-data/
+
+# Keep directories
+!config/.gitkeep
+!torrents/.gitkeep
+!clients/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/

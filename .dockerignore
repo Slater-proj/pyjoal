@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+.github
+
+# Documentation (keep only README.md)
+*.md
+!README.md
+
+# Development
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+.pytest_cache/
+
+# Build outputs (will be built in Docker)
+backend/dist/
+backend/build/
+frontend/dist/
+frontend/node_modules/
+node_modules/
+
+# Runtime directories (will be mounted as volumes)
+config/
+torrents/*.torrent
+
+# Test data (not needed in production)
+test-data/
+
+# Environment files (use docker-compose.yml env vars)
+.env
+.env.local
+.env.production
+venv/
+env/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
