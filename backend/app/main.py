@@ -16,7 +16,7 @@ import subprocess
 from pathlib import Path
 
 from app.core.config import settings
-from app.api import config, torrents, client, history, logs
+from app.api import config, torrents, client, history, logs, errors
 from app.services.websocket_manager import websocket_manager
 from app.services.seeder_service import seeder_service
 from app.services.history_service import history_service, EventType
@@ -151,6 +151,7 @@ app.include_router(torrents.router, prefix="/api", tags=["Torrents"])
 app.include_router(client.router, prefix="/api", tags=["Client Control"])
 app.include_router(history.router, prefix="/api", tags=["History"])
 app.include_router(logs.router, prefix="/api", tags=["Logs"])
+app.include_router(errors.router, prefix="/api", tags=["Error Information"])
 
 
 @app.get("/health")

@@ -30,6 +30,9 @@ class SeederService:
         self.started_at: Optional[datetime] = None
         self._config: Dict = {}
         self._monitor_task: Optional[asyncio.Task] = None
+        
+        # Failed torrents tracking
+        self.failed_torrents: Dict[str, Dict] = {}  # filename -> error info
     
     async def initialize(self):
         """Initialize service"""
@@ -114,15 +117,42 @@ class SeederService:
     async def load_torrents(self):
         """Load torrents from directory"""
         logger.debug(f"📂 Loading torrents from: {settings.TORRENTS_DIR}")
-        torrents = load_torrents_from_directory(settings.TORRENTS_DIR)
         
+        # Custom loading to capture failures
+        torrents = []
+        torrent_files = list(settings.TORRENTS_DIR.glob("*.torrent"))
+        
+        for torrent_file in torrent_files:
+            try:
+                torrent = Torrent(torrent_file)
+                torrents.append(torrent)
+                
+                # Remove from failed list if it now works
+                if torrent_file.name in self.failed_torrents:
+                    del self.failed_torrents[torrent_file.name]
+                    logger.info(f"✅ Previously failed torrent now works: {torrent_file.name}")
+                    
+            except Exception as e:
+                # Store failed torrent info
+                error_msg = str(e)
+                self.failed_torrents[torrent_file.name] = {
+                    "filename": torrent_file.name,
+                    "error": error_msg,
+                    "timestamp": datetime.utcnow(),
+                    "size": torrent_file.stat().st_size if torrent_file.exists() else 0
+                }
+                logger.error(f"❌ Failed to load {torrent_file.name}: {error_msg}")
+        
+        # Add successful torrents
         new_count = 0
         for torrent in torrents:
             if torrent.info_hash not in self.announcers:
                 await self.add_torrent(torrent)
                 new_count += 1
         
-        logger.info(f"📂 Loaded {len(torrents)} torrent(s) ({new_count} new)")
+        total_files = len(torrent_files)
+        failed_count = len(self.failed_torrents)
+        logger.info(f"📂 Loaded {len(torrents)}/{total_files} torrent(s) ({new_count} new, {failed_count} failed)")
     
     def has_torrents(self) -> bool:
         """Check if any torrents are available"""
@@ -427,11 +457,36 @@ class SeederService:
                 logger.error(f"⚠️  Failed to switch client: {e}")
     
     def get_torrents(self) -> List[Dict]:
-        """Get all torrents info"""
-        return [
-            self._get_torrent_info(info_hash)
-            for info_hash in self.announcers.keys()
-        ]
+        """Get all torrents info including failed ones"""
+        torrents = []
+        
+        # Add working torrents
+        for info_hash in self.announcers.keys():
+            torrents.append(self._get_torrent_info(info_hash))
+        
+        # Add failed torrents  
+        for filename, failed_info in self.failed_torrents.items():
+            torrents.append({
+                "id": f"failed_{filename}",
+                "name": filename,
+                "size": failed_info["size"], 
+                "uploaded": 0,
+                "uploadSpeed": 0,
+                "seeders": 0,
+                "leechers": 0,
+                "ratio": 0,
+                "lastAnnounce": None,
+                "nextAnnounce": None,
+                "isRunning": False,
+                "seedingTime": 0,
+                "lastError": failed_info["error"],
+                "errorCount": 1,
+                "lastErrorTime": failed_info["timestamp"],
+                "isHealthy": False,
+                "status": "FAILED"
+            })
+        
+        return torrents
     
     def _get_torrent_info(self, info_hash: str) -> Dict:
         """Get single torrent info"""
@@ -441,6 +496,16 @@ class SeederService:
         
         stats = announcer.get_stats()
         torrent = announcer.torrent
+        
+        # Determine status
+        if not announcer.is_running:
+            status = "STOPPED"
+        elif stats.get("lastError"):
+            status = "ERROR"
+        elif stats.get("seeders", 0) > 0 or stats.get("leechers", 0) > 0:
+            status = "ACTIVE"
+        else:
+            status = "IDLE"
         
         return {
             "id": info_hash,
@@ -456,7 +521,13 @@ class SeederService:
             "lastAnnounce": stats["lastAnnounce"].isoformat() if stats["lastAnnounce"] else None,
             "nextAnnounce": stats["nextAnnounce"].isoformat() if stats["nextAnnounce"] else None,
             "tracker": torrent.primary_tracker,
-            "seedingTime": stats["seedingTime"]
+            "seedingTime": stats["seedingTime"],
+            "lastError": stats.get("lastError"),
+            "errorCount": stats.get("errorCount", 0),
+            "lastErrorTime": stats["lastErrorTime"].isoformat() if stats.get("lastErrorTime") else None,
+            "isHealthy": stats.get("isHealthy", True),
+            "status": status,
+            "isRunning": announcer.is_running
         }
     
     def get_stats(self) -> Dict:

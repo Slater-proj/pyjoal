@@ -50,6 +50,11 @@ class TrackerAnnouncer:
         # State
         self.is_running: bool = False
         self._announce_task: Optional[asyncio.Task] = None
+        
+        # Error tracking
+        self.last_error: Optional[str] = None
+        self.error_count: int = 0
+        self.last_error_time: Optional[datetime] = None
     
     async def start(self):
         """Start announcing"""
@@ -122,6 +127,7 @@ class TrackerAnnouncer:
             logger.debug(f"Announce loop cancelled for {self.torrent.name}")
         except Exception as e:
             logger.error(f"❌ Announce error for {self.torrent.name}: {e}", exc_info=True)
+            self._record_error(f"Announce loop error: {str(e)}")
     
     def _update_stats(self):
         """Update upload stats"""
@@ -246,6 +252,7 @@ class TrackerAnnouncer:
             )
         except httpx.TimeoutException as e:
             logger.error(f"⏱️  Timeout announcing {self.torrent.name}: {e}")
+            self._record_error(f"Timeout: {str(e)}")
             history_service.add_entry(
                 EventType.ANNOUNCE_FAILED,
                 f"Announce timeout for {self.torrent.name}",
@@ -253,6 +260,7 @@ class TrackerAnnouncer:
             )
         except Exception as e:
             logger.error(f"❌ Announce error for {self.torrent.name}: {e}", exc_info=True)
+            self._record_error(f"Announce error: {str(e)}")
             # Log failed announce
             history_service.add_entry(
                 EventType.ANNOUNCE_FAILED,
@@ -272,6 +280,7 @@ class TrackerAnnouncer:
             if b'failure reason' in response:
                 reason = response[b'failure reason'].decode('utf-8', errors='ignore')
                 logger.error(f"❌ Tracker returned failure: {reason}")
+                self._record_error(f"Tracker failure: {reason}")
                 return
             
             # Update interval
@@ -303,6 +312,13 @@ class TrackerAnnouncer:
         except Exception as e:
             logger.error(f"⚠️  Failed to parse announce response: {e}", exc_info=True)
     
+    def _record_error(self, error_message: str):
+        """Record error for display in UI"""
+        self.last_error = error_message
+        self.error_count += 1
+        self.last_error_time = datetime.utcnow()
+        logger.debug(f"Error recorded for {self.torrent.name}: {error_message}")
+    
     def get_stats(self) -> Dict:
         """Get current stats"""
         # Calculate current seeding time including ongoing session
@@ -319,5 +335,13 @@ class TrackerAnnouncer:
             "lastAnnounce": self.last_announce,
             "nextAnnounce": self.next_announce,
             "ratio": self.uploaded / self.torrent.size if self.torrent.size > 0 else 0.0,
-            "seedingTime": current_seeding_time
+            "seedingTime": current_seeding_time,
+            "lastError": self.last_error,
+            "errorCount": self.error_count,
+            "lastErrorTime": self.last_error_time,
+            "isHealthy": self.last_error is None or (
+                self.last_announce is not None and 
+                self.last_error_time is not None and 
+                self.last_announce > self.last_error_time
+            )
         }
