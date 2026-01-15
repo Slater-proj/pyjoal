@@ -3,6 +3,7 @@ Seeder Service
 Manages multiple torrent seeders and orchestrates announces
 """
 import asyncio
+import logging
 from typing import Dict, List, Optional
 from pathlib import Path
 from datetime import datetime
@@ -14,6 +15,8 @@ from app.core.torrent_parser import Torrent, load_torrents_from_directory
 from app.core.tracker_announcer import TrackerAnnouncer
 from app.services.websocket_manager import websocket_manager
 from app.services.history_service import history_service, EventType
+
+logger = logging.getLogger(__name__)
 
 
 class SeederService:
@@ -32,12 +35,18 @@ class SeederService:
         """Initialize service"""
         from app.core.bittorrent_client import list_available_clients
         
+        logger.info("🚀 Initializing Seeder Service...")
+        
         # Load configuration
         await self.load_config()
+        logger.info(f"   Configuration loaded: {self._config}")
         
         # Get available clients
         available_clients = list_available_clients()
+        logger.info(f"   Available clients: {', '.join(available_clients) if available_clients else 'NONE'}")
+        
         if not available_clients:
+            logger.critical("❌ NO CLIENT FILES FOUND!")
             raise RuntimeError(
                 "❌ ERREUR CRITIQUE: Aucun fichier client (.client) trouvé dans le dossier 'clients/'\n"
                 "   Veuillez ajouter au moins un fichier .client pour démarrer l'application."
@@ -45,12 +54,13 @@ class SeederService:
         
         # Get configured client
         configured_client = self._config.get("client", settings.DEFAULT_CLIENT)
+        logger.info(f"   Configured client: {configured_client}")
         
         # Validate configured client exists
         if configured_client not in available_clients:
             fallback_client = available_clients[0]
-            print(f"⚠️  Client configuré '{configured_client}' introuvable")
-            print(f"🔄 Utilisation du client par défaut: {fallback_client}")
+            logger.warning(f"⚠️  Client configuré '{configured_client}' introuvable")
+            logger.info(f"🔄 Utilisation du client par défaut: {fallback_client}")
             configured_client = fallback_client
             # Update config with valid client
             self._config["client"] = configured_client
@@ -59,22 +69,30 @@ class SeederService:
         # Initialize client
         try:
             self.client = BitTorrentClient(configured_client)
-            print(f"📱 Client chargé: {self.client.name} {self.client.version}")
+            logger.info(f"📱 Client loaded: {self.client.name} {self.client.version}")
+            logger.debug(f"   User-Agent: {self.client.get_user_agent()}")
+            logger.debug(f"   Upload rate range: {settings.MIN_UPLOAD_RATE}-{settings.MAX_UPLOAD_RATE} KB/s")
         except Exception as e:
+            logger.critical(f"❌ Failed to load client '{configured_client}': {e}")
             raise RuntimeError(f"❌ Impossible de charger le client '{configured_client}': {e}")
         
         # Load existing torrents
         await self.load_torrents()
+        
+        logger.info("✅ Seeder Service initialized successfully")
     
     async def load_config(self):
         """Load configuration from file"""
         config_file = settings.CONFIG_DIR / "config.json"
         
         if config_file.exists():
+            logger.debug(f"📝 Loading config from: {config_file}")
             with open(config_file, 'r', encoding='utf-8') as f:
                 self._config = json.load(f)
+            logger.debug(f"   Config loaded: {self._config}")
         else:
             # Create default config
+            logger.info("🆕 Creating default configuration")
             self._config = {
                 "minUploadRate": settings.MIN_UPLOAD_RATE,
                 "maxUploadRate": settings.MAX_UPLOAD_RATE,
@@ -85,6 +103,7 @@ class SeederService:
                 "seedingDurationLimit": settings.SEEDING_DURATION_LIMIT
             }
             await self.save_config()
+            logger.info(f"   Default config created: {self._config}")
     
     async def save_config(self):
         """Save configuration to file"""
@@ -94,21 +113,31 @@ class SeederService:
     
     async def load_torrents(self):
         """Load torrents from directory"""
+        logger.debug(f"📂 Loading torrents from: {settings.TORRENTS_DIR}")
         torrents = load_torrents_from_directory(settings.TORRENTS_DIR)
         
+        new_count = 0
         for torrent in torrents:
             if torrent.info_hash not in self.announcers:
                 await self.add_torrent(torrent)
+                new_count += 1
         
-        print(f"📂 Loaded {len(torrents)} torrent(s)")
+        logger.info(f"📂 Loaded {len(torrents)} torrent(s) ({new_count} new)")
     
     async def add_torrent(self, torrent: Torrent):
         """Add a torrent to seed"""
         if torrent.info_hash in self.announcers:
+            logger.debug(f"Torrent already added: {torrent.name}")
             return
         
         if not self.client:
+            logger.error("Cannot add torrent: client not initialized")
             raise ValueError("Client not initialized")
+        
+        logger.info(f"➕ Adding torrent: {torrent.name}")
+        logger.debug(f"   Info hash: {torrent.info_hash}")
+        logger.debug(f"   Size: {torrent.size / (1024**3):.2f} GB")
+        logger.debug(f"   Tracker: {torrent.primary_tracker}")
         
         announcer = TrackerAnnouncer(torrent, self.client)
         self.announcers[torrent.info_hash] = announcer
@@ -130,17 +159,20 @@ class SeederService:
             "data": self._get_torrent_info(torrent.info_hash)
         })
         
-        print(f"➕ Added torrent: {torrent.name}")
+        logger.info(f"✅ Torrent added successfully: {torrent.name[:50]}")
     
     async def remove_torrent(self, info_hash: str):
         """Remove a torrent"""
         if info_hash not in self.announcers:
+            logger.warning(f"Cannot remove torrent: {info_hash} not found")
             return
         
         announcer = self.announcers[info_hash]
+        logger.info(f"➖ Removing torrent: {announcer.torrent.name}")
         
         # Stop announcer
         if announcer.is_running:
+            logger.debug(f"   Stopping announcer...")
             await announcer.stop()
         
         # Remove from dict
@@ -157,6 +189,7 @@ class SeederService:
         torrent_file = settings.TORRENTS_DIR / f"{info_hash}.torrent"
         if torrent_file.exists():
             torrent_file.unlink()
+            logger.debug(f"   Torrent file deleted")
         
         # Notify via WebSocket
         await websocket_manager.broadcast({
@@ -164,13 +197,15 @@ class SeederService:
             "data": {"info_hash": info_hash}
         })
         
-        print(f"➖ Removed torrent: {info_hash[:8]}...")
+        logger.info(f"✅ Torrent removed: {info_hash[:8]}...")
     
     async def start(self):
         """Start seeding"""
         if self.is_running:
+            logger.warning("Seeding already running")
             return
         
+        logger.info("▶️  Starting seeding service...")
         self.is_running = True
         self.started_at = datetime.utcnow()
         
@@ -185,11 +220,16 @@ class SeederService:
         simultaneous_seed = self._config.get("simultaneousSeed", settings.SIMULTANEOUS_SEED)
         announcers_to_start = list(self.announcers.values())[:simultaneous_seed]
         
+        logger.info(f"   Starting {len(announcers_to_start)}/{len(self.announcers)} torrent(s)")
+        logger.info(f"   Simultaneous seed limit: {simultaneous_seed}")
+        logger.info(f"   Upload rate: {settings.MIN_UPLOAD_RATE}-{settings.MAX_UPLOAD_RATE} KB/s")
+        
         for announcer in announcers_to_start:
             await announcer.start()
         
         # Start monitor task
         self._monitor_task = asyncio.create_task(self._monitor_loop())
+        logger.debug("   Monitor task started")
         
         # Notify via WebSocket
         await websocket_manager.broadcast({
@@ -197,13 +237,15 @@ class SeederService:
             "data": {"started_at": self.started_at.isoformat()}
         })
         
-        print(f"▶️  Started seeding {len(announcers_to_start)} torrent(s)")
+        logger.info(f"✅ Seeding started successfully ({len(announcers_to_start)} active)")
     
     async def stop(self):
         """Stop seeding"""
         if not self.is_running:
+            logger.warning("Seeding already stopped")
             return
         
+        logger.info("⏸️  Stopping seeding service...")
         self.is_running = False
         
         # Log system stop
@@ -214,6 +256,7 @@ class SeederService:
         
         # Stop monitor task
         if self._monitor_task:
+            logger.debug("   Stopping monitor task...")
             self._monitor_task.cancel()
             try:
                 await self._monitor_task
@@ -221,6 +264,8 @@ class SeederService:
                 pass
         
         # Stop all announcers
+        active_count = sum(1 for a in self.announcers.values() if a.is_running)
+        logger.info(f"   Stopping {active_count} active announcer(s)...")
         tasks = [announcer.stop() for announcer in self.announcers.values()]
         await asyncio.gather(*tasks, return_exceptions=True)
         
@@ -230,7 +275,7 @@ class SeederService:
             "data": {}
         })
         
-        print("⏸️  Stopped seeding")
+        logger.info("✅ Seeding stopped successfully")
     
     async def _start_announcer_if_needed(self, announcer: TrackerAnnouncer):
         """Start announcer if we have capacity"""
@@ -312,6 +357,8 @@ class SeederService:
         announcer = self.announcers[info_hash]
         torrent = announcer.torrent
         
+        logger.info(f"📦 Archiving torrent: {torrent.name}")
+        
         # Stop announcer
         if announcer.is_running:
             await announcer.stop()
@@ -326,7 +373,9 @@ class SeederService:
         if torrent.path.exists():
             archived_path = archived_dir / torrent.path.name
             torrent.path.rename(archived_path)
-            print(f"📦 Archived torrent: {torrent.name}")
+            logger.info(f"✅ Torrent archived: {torrent.name}")
+        else:
+            logger.warning(f"   Torrent file not found: {torrent.path}")
         
         # Notify via WebSocket
         await websocket_manager.broadcast({
@@ -340,6 +389,7 @@ class SeederService:
     
     async def update_config(self, new_config: Dict):
         """Update configuration"""
+        logger.info(f"⚙️  Updating configuration: {new_config}")
         self._config.update(new_config)
         await self.save_config()
         
@@ -353,18 +403,21 @@ class SeederService:
         # Update settings
         if "minUploadRate" in new_config:
             settings.MIN_UPLOAD_RATE = new_config["minUploadRate"]
+            logger.debug(f"   Min upload rate: {settings.MIN_UPLOAD_RATE} KB/s")
         if "maxUploadRate" in new_config:
             settings.MAX_UPLOAD_RATE = new_config["maxUploadRate"]
+            logger.debug(f"   Max upload rate: {settings.MAX_UPLOAD_RATE} KB/s")
         if "seedingDurationLimit" in new_config:
             settings.SEEDING_DURATION_LIMIT = new_config["seedingDurationLimit"]
+            logger.debug(f"   Seeding duration limit: {settings.SEEDING_DURATION_LIMIT}h")
         
         # Reload client if changed
         if "client" in new_config and new_config["client"] != self.client.client_file:
             try:
                 self.client = BitTorrentClient(new_config["client"])
-                print(f"📱 Switched to client: {self.client.name} {self.client.version}")
+                logger.info(f"✅ Switched to client: {self.client.name} {self.client.version}")
             except Exception as e:
-                print(f"⚠️  Failed to switch client: {e}")
+                logger.error(f"⚠️  Failed to switch client: {e}")
     
     def get_torrents(self) -> List[Dict]:
         """Get all torrents info"""

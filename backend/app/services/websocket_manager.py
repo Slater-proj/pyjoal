@@ -5,7 +5,10 @@ Manages WebSocket connections and broadcasts
 from fastapi import WebSocket
 from typing import List, Dict
 import json
+import logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class WebSocketManager:
@@ -19,13 +22,13 @@ class WebSocketManager:
         """Accept new connection"""
         await websocket.accept()
         self.active_connections.append(websocket)
-        print(f"🔌 WebSocket connected (total: {len(self.active_connections)})")
+        logger.info(f"🔌 WebSocket connected (total: {len(self.active_connections)})")
     
     async def disconnect(self, websocket: WebSocket):
         """Remove connection"""
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
-        print(f"🔌 WebSocket disconnected (total: {len(self.active_connections)})")
+        logger.info(f"🔌 WebSocket disconnected (total: {len(self.active_connections)})")
     
     async def broadcast(self, message: Dict):
         """Broadcast message to all connections"""
@@ -42,7 +45,7 @@ class WebSocketManager:
             try:
                 await connection.send_text(json_message)
             except Exception as e:
-                print(f"⚠️  Failed to send to WebSocket: {e}")
+                logger.warning(f"⚠️  Failed to send to WebSocket: {e}")
                 disconnected.append(connection)
         
         # Remove disconnected

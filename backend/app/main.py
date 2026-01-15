@@ -1,6 +1,7 @@
 """
-JOAL Modern - Main Application Entry Point
+PyJOAL - Main Application Entry Point
 FastAPI application with WebSocket support for BitTorrent ratio client
+Python reimplementation of JOAL (https://github.com/anthonyraymond/joal)
 """
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
@@ -8,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
+import sys
+import logging
 from pathlib import Path
 
 from app.core.config import settings
@@ -16,17 +19,31 @@ from app.services.websocket_manager import websocket_manager
 from app.services.seeder_service import seeder_service
 from app.services.history_service import history_service, EventType
 
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG if settings.DEBUG else logging.INFO,
+    format='%(asctime)s | %(levelname)-8s | %(name)-25s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+# Set third-party loggers to WARNING to reduce noise
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
+
 
 async def update_clients_on_startup():
     """Run update_clients.py script to fetch latest client versions"""
-    import sys
     import subprocess
-    import os
-    from pathlib import Path
     
     # Skip if running in Docker (handled by docker-entrypoint.sh)
     if os.getenv("DOCKER_CONTAINER") or os.path.exists("/.dockerenv"):
-        print("🐳 Running in Docker, client update handled by entrypoint")
+        logger.info("🐳 Running in Docker, client update handled by entrypoint")
         return
     
     # Find update_clients.py in project root
@@ -34,11 +51,11 @@ async def update_clients_on_startup():
     update_script = project_root / "update_clients.py"
     
     if not update_script.exists():
-        print("⚠️  update_clients.py not found, skipping client update")
+        logger.warning("⚠️  update_clients.py not found, skipping client update")
         return
     
     try:
-        print("🔄 Updating BitTorrent clients...")
+        logger.info("🔄 Updating BitTorrent clients...")
         result = subprocess.run(
             [sys.executable, str(update_script)],
             cwd=str(project_root),
@@ -48,23 +65,26 @@ async def update_clients_on_startup():
         )
         
         if result.returncode == 0:
-            print("✅ Clients updated successfully")
+            logger.info("✅ Clients updated successfully")
         else:
-            print(f"⚠️  Client update completed with warnings")
+            logger.warning("⚠️  Client update completed with warnings")
             if result.stdout:
-                print(result.stdout)
+                logger.debug(result.stdout)
     except subprocess.TimeoutExpired:
-        print("⚠️  Client update timed out, using existing clients")
+        logger.warning("⚠️  Client update timed out, using existing clients")
     except Exception as e:
-        print(f"⚠️  Could not update clients: {e}")
-        print("   Using existing client files")
+        logger.warning(f"⚠️  Could not update clients: {e}")
+        logger.info("   Using existing client files")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
-    print("🚀 Starting JOAL Modern...")
+    logger.info("=" * 80)
+    logger.info("🚀 Starting PyJOAL - Python BitTorrent Ratio Client")
+    logger.info("   Based on JOAL by Anthony Raymon")
+    logger.info("=" * 80)
     
     # Update clients from GitHub
     await update_clients_on_startup()
@@ -72,23 +92,28 @@ async def lifespan(app: FastAPI):
     # Initialize seeder service
     await seeder_service.initialize()
     
-    print(f"✅ JOAL Modern started on port {settings.PORT}")
-    print(f"🌐 UI available at: /{settings.UI_PATH_PREFIX}/ui/")
-    print(f"📚 API docs at: /docs")
+    logger.info("=" * 80)
+    logger.info(f"✅ PyJOAL started successfully on port {settings.PORT}")
+    logger.info(f"🌐 UI available at: http://localhost:{settings.PORT}/{settings.UI_PATH_PREFIX}/ui/")
+    logger.info(f"📚 API docs at: http://localhost:{settings.PORT}/docs")
+    logger.info(f"🔐 Secret token: {settings.SECRET_TOKEN}")
+    logger.info("=" * 80)
     
     yield
     
     # Shutdown
-    print("🛑 Shutting down JOAL Modern...")
+    logger.info("=" * 80)
+    logger.info("🛑 Shutting down PyJOAL...")
     await seeder_service.stop()
-    print("✅ Shutdown complete")
+    logger.info("✅ Shutdown complete")
+    logger.info("=" * 80)
 
 
 # Create FastAPI app
 app = FastAPI(
-    title="JOAL Modern API",
-    description="BitTorrent Ratio Client - Modern reimplementation",
-    version="3.0.0",
+    title="PyJOAL API",
+    description="BitTorrent Ratio Client - Python reimplementation of JOAL",
+    version="1.0.0",
     lifespan=lifespan
 )
 
@@ -113,7 +138,8 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "version": "3.0.0",
+        "app": "PyJOAL",
+        "version": "1.0.0",
         "seeding": seeder_service.is_running
     }
 
@@ -137,11 +163,11 @@ async def websocket_endpoint(websocket: WebSocket):
 # In Docker: /app/frontend/dist, in dev: ../frontend/dist
 frontend_build_path = Path("/app/frontend/dist") if Path("/app/frontend/dist").exists() else Path(__file__).parent.parent.parent / "frontend" / "dist"
 
-print(f"🔍 Looking for frontend at: {frontend_build_path}")
-print(f"📁 Frontend exists: {frontend_build_path.exists()}")
+logger.debug(f"🔍 Looking for frontend at: {frontend_build_path}")
+logger.debug(f"📁 Frontend exists: {frontend_build_path.exists()}")
 
 if frontend_build_path.exists():
-    print(f"✅ Mounting frontend from: {frontend_build_path}")
+    logger.info(f"✅ Mounting frontend from: {frontend_build_path}")
     
     # Mount all assets at root level (for relative imports in index.html)
     if (frontend_build_path / "assets").exists():
@@ -166,7 +192,7 @@ if frontend_build_path.exists():
         # For SPA routing, return index.html
         return FileResponse(frontend_build_path / "index.html")
 else:
-    print(f"⚠️  Frontend not found at {frontend_build_path}")
+    logger.warning(f"⚠️  Frontend not found at {frontend_build_path}")
 
 
 if __name__ == "__main__":
