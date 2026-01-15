@@ -47,7 +47,46 @@ log_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
-# Fonction pour vérifier les prérequis
+# Fonction pour générer le fichier .env s'il n'existe pas
+generate_env_if_missing() {
+    if [[ ! -f ".env" ]]; then
+        log_info "Génération du fichier .env..."
+        
+        # Générer un token secret aléatoire
+        secret_token=$(openssl rand -hex 16 2>/dev/null || head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32)
+        
+        # Générer un path prefix aléatoire
+        path_prefix=$(openssl rand -hex 8 2>/dev/null || head /dev/urandom | tr -dc A-Za-z0-9 | head -c 16)
+        
+        cat > .env << EOF
+# REQUIRED - Security
+SECRET_TOKEN=${secret_token}
+UI_PATH_PREFIX=${path_prefix}
+
+# Optional - Server Configuration
+PORT=8080
+
+# Optional - BitTorrent Configuration
+MIN_UPLOAD_RATE=30
+MAX_UPLOAD_RATE=160
+SIMULTANEOUS_SEED=20
+KEEP_TORRENT_WITH_ZERO_LEECHERS=true
+UPLOAD_RATIO_TARGET=-1.0
+DEFAULT_CLIENT=qbittorrent-4.6.0.client
+
+# Optional - Proxy Configuration
+# HTTP_PROXY_HOST=10.10.10.10
+# HTTP_PROXY_PORT=8888
+EOF
+        
+        log_success "Fichier .env généré avec des valeurs aléatoires sécurisées"
+        echo -e "${YELLOW}  → SECRET_TOKEN: ${secret_token}${NC}"
+        echo -e "${YELLOW}  → UI_PATH_PREFIX: ${path_prefix}${NC}"
+        echo -e "${YELLOW}  → Accès WebUI: http://localhost:8080/${path_prefix}/ui/${NC}"
+    else
+        log_info "Fichier .env existant utilisé"
+    fi
+}
 check_prerequisites() {
     log_step "Vérification des prérequis..."
     
@@ -100,6 +139,9 @@ clean_environment() {
 # Fonction pour construire l'application
 build_app() {
     log_step "Construction de l'application PyJOAL..."
+    
+    # Générer .env si nécessaire
+    generate_env_if_missing
     
     echo "Construction Docker en cours..."
     if docker compose build --no-cache; then
@@ -258,6 +300,9 @@ test_frontend() {
 start_app() {
     log_step "Démarrage de l'application PyJOAL..."
     
+    # Générer .env si nécessaire
+    generate_env_if_missing
+    
     # Démarrer avec docker-compose
     docker compose up -d
     
@@ -265,15 +310,30 @@ start_app() {
     log_info "Attente du démarrage (15 secondes)..."
     sleep 15
     
+    # Lire les valeurs du .env pour afficher l'URL
+    if [[ -f ".env" ]]; then
+        port=$(grep '^PORT=' .env 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "8080")
+        ui_prefix=$(grep '^UI_PATH_PREFIX=' .env 2>/dev/null | cut -d'=' -f2 | tr -d '"' || echo "")
+        
+        if [[ -n "$ui_prefix" ]]; then
+            webui_url="http://localhost:${port}/${ui_prefix}/ui/"
+        else
+            webui_url="http://localhost:${port}/"
+        fi
+    else
+        webui_url="http://localhost:8080/"
+    fi
+    
     # Vérifier que l'application répond
-    if curl -s -f http://localhost:8080 > /dev/null 2>&1; then
+    if curl -s -f "$webui_url" > /dev/null 2>&1 || curl -s -f "http://localhost:${port:-8080}" > /dev/null 2>&1; then
         log_success "Application démarrée avec succès!"
         echo ""
-        echo -e "${GREEN}🌐 Application accessible sur: http://localhost:8080${NC}"
+        echo -e "${GREEN}🌐 Application accessible sur: $webui_url${NC}"
         echo -e "${BLUE}📊 Logs en temps réel: docker compose logs -f${NC}"
     else
-        log_warn "L'application ne répond pas sur le port 8080"
+        log_warn "L'application ne répond pas encore"
         echo ""
+        echo -e "${YELLOW}🌐 URL prévue: $webui_url${NC}"
         echo "Vérifiez les logs avec: docker compose logs"
     fi
 }
@@ -336,41 +396,117 @@ update_clients() {
     fi
 }
 
-# Fonction de nettoyage Git
+# Fonction de nettoyage Git avancé
 clean_git_repo() {
-    log_step "Nettoyage du dépôt Git..."
-    
-    # Afficher les fichiers qui seraient supprimés
-    echo -e "${YELLOW}Fichiers qui seraient supprimés :${NC}"
-    git clean -xdn 2>/dev/null || echo "Aucun fichier à nettoyer"
+    log_step "Nettoyage avancé du dépôt Git..."
     
     echo ""
-    echo -e "${RED}⚠️  ATTENTION: Cette opération va supprimer TOUS les fichiers non suivis par Git${NC}"
-    echo -e "${RED}   Cela inclut les builds, caches, fichiers temporaires, etc.${NC}"
-    echo ""
-    echo -n -e "${YELLOW}Êtes-vous sûr de vouloir continuer ? (oui/NON): ${NC}"
-    read -r confirmation
+    echo -e "${CYAN}=== OPTIONS DE NETTOYAGE ===${NC}"
     
-    if [[ "$confirmation" == "oui" ]]; then
+    # Option 1: Supprimer les fichiers non suivis
+    echo ""
+    echo -e "${YELLOW}Fichiers non suivis qui seraient supprimés :${NC}"
+    if git clean -xdn 2>/dev/null | grep -q "Would remove"; then
+        git clean -xdn 2>/dev/null
+        echo ""
+        echo -n -e "${YELLOW}Supprimer ces fichiers non suivis ? (oui/NON): ${NC}"
+        read -r clean_untracked
+        clean_untracked=${clean_untracked:-NON}
+    else
+        echo "Aucun fichier non suivi à supprimer"
+        clean_untracked="NON"
+    fi
+    
+    # Option 2: Reset --hard
+    echo ""
+    echo -e "${YELLOW}Fichiers modifiés qui seraient remis à l'état de la branche :${NC}"
+    if git diff --name-only HEAD 2>/dev/null | grep -q "."; then
+        git diff --name-only HEAD 2>/dev/null
+        echo ""
+        echo -e "${RED}⚠️  ATTENTION: git reset --hard va PERDRE toutes vos modifications non committées !${NC}"
+        echo -n -e "${YELLOW}Remettre tous les fichiers à l'état de la branche Git ? (oui/NON): ${NC}"
+        read -r reset_hard
+        reset_hard=${reset_hard:-NON}
+    else
+        echo "Aucun fichier modifié"
+        reset_hard="NON"
+    fi
+    
+    # Vérifier les fichiers de configuration importants
+    config_files=(".env" "docker-compose.override.yml" "config.json")
+    important_files_found=()
+    
+    for file in "${config_files[@]}"; do
+        if [[ -f "$file" ]] && ! git ls-files --error-unmatch "$file" >/dev/null 2>&1; then
+            important_files_found+=("$file")
+        fi
+    done
+    
+    # Avertir pour les fichiers de configuration importants
+    if [[ ${#important_files_found[@]} -gt 0 && "$clean_untracked" == "oui" ]]; then
+        echo ""
+        echo -e "${RED}⚠️  ATTENTION: Ces fichiers de configuration seraient supprimés :${NC}"
+        for file in "${important_files_found[@]}"; do
+            echo -e "${RED}   - $file${NC}"
+        done
+        echo -e "${YELLOW}   Pensez à sauvegarder vos configurations !${NC}"
+        echo ""
+        echo -n -e "${RED}Continuer malgré ces fichiers importants ? (oui/NON): ${NC}"
+        read -r force_clean
+        force_clean=${force_clean:-NON}
+        if [[ "$force_clean" != "oui" ]]; then
+            clean_untracked="NON"
+        fi
+    fi
+    
+    # Résumé des actions
+    echo ""
+    echo -e "${CYAN}=== RÉSUMÉ DES ACTIONS ===${NC}"
+    echo -e "Supprimer fichiers non suivis: ${clean_untracked}"
+    echo -e "Reset --hard: ${reset_hard}"
+    
+    if [[ "$clean_untracked" == "NON" && "$reset_hard" == "NON" ]]; then
+        log_warn "Aucune action de nettoyage sélectionnée"
+        return 1
+    fi
+    
+    echo ""
+    echo -n -e "${YELLOW}Confirmer ces actions ? (oui/NON): ${NC}"
+    read -r final_confirm
+    final_confirm=${final_confirm:-NON}
+    
+    if [[ "$final_confirm" == "oui" ]]; then
         log_info "Nettoyage en cours..."
-        git clean -xdf
-        log_success "Dépôt Git nettoyé"
+        
+        if [[ "$reset_hard" == "oui" ]]; then
+            log_info "Reset --hard en cours..."
+            git reset --hard HEAD
+            log_success "Reset --hard terminé"
+        fi
+        
+        if [[ "$clean_untracked" == "oui" ]]; then
+            log_info "Suppression des fichiers non suivis..."
+            git clean -xdf
+            log_success "Fichiers non suivis supprimés"
+        fi
+        
+        log_success "Nettoyage Git terminé"
     else
         log_warn "Nettoyage annulé"
         return 1
     fi
 }
 
-# Fonction d'installation complète
-full_setup() {
-    log_step "Installation complète..."
+# Fonction d'installation complète avec tests
+full_setup_with_tests() {
+    log_step "Setup complet avec tests..."
     
     update_clients
     build_app
     test_backend
     start_app
     
-    log_success "Installation complète terminée!"
+    log_success "Setup complet avec tests terminé!"
 }
 
 # Fonction de déploiement complet (clean + build + start)
@@ -407,8 +543,8 @@ show_menu() {
     echo "8)  📊 Statut de l'application"
     echo "9)  🔄 Mettre à jour les clients BitTorrent"
     echo "10) 🧹 Nettoyer l'environnement"
-    echo "11) 🚀 Installation complète (tout en un)"
-    echo "12) 🗑️  Déploiement complet (clean Git + build + start)"
+    echo "11) 🧪 Setup complet avec tests (clients + build + test + start)"
+    echo "12) 🚀 Déploiement rapide (clean Git + build + start)"
     echo "0)  ❌ Quitter"
     echo ""
     echo -n -e "${YELLOW}Votre choix [0-12]: ${NC}"
@@ -502,7 +638,7 @@ main() {
                 ;;
             11)
                 echo ""
-                full_setup
+                full_setup_with_tests
                 echo ""
                 echo -e "${GREEN}Appuyez sur Entrée pour continuer...${NC}"
                 read -r
