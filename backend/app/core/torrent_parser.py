@@ -89,14 +89,33 @@ def load_torrents_from_directory(directory: Path) -> List[Torrent]:
     """Load all .torrent files from directory"""
     torrents = []
     
+    print(f"📂 Scanning directory: {directory}")
+    print(f"   Directory exists: {directory.exists()}")
+    
     if not directory.exists():
+        print("   ⚠️  Directory does not exist!")
         return torrents
     
-    for torrent_file in directory.glob("*.torrent"):
+    # List all files in directory for debugging
+    all_files = list(directory.iterdir()) if directory.exists() else []
+    torrent_files = list(directory.glob("*.torrent"))
+    
+    print(f"   Total files: {len(all_files)}")
+    print(f"   Torrent files: {len(torrent_files)}")
+    
+    if all_files:
+        print("   Files found:")
+        for f in all_files:
+            print(f"     - {f.name} ({'torrent' if f.name.endswith('.torrent') else 'other'})")
+    
+    for torrent_file in torrent_files:
         try:
+            print(f"   📄 Loading: {torrent_file.name}")
             torrent = Torrent(torrent_file)
             torrents.append(torrent)
+            print(f"      ✅ Success: {torrent.name}")
         except Exception as e:
-            print(f"⚠️  Failed to load {torrent_file.name}: {e}")
+            print(f"      ❌ Failed to load {torrent_file.name}: {e}")
     
+    print(f"   📊 Loaded {len(torrents)} torrent(s)")
     return torrents

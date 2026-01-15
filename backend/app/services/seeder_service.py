@@ -124,6 +124,10 @@ class SeederService:
         
         logger.info(f"📂 Loaded {len(torrents)} torrent(s) ({new_count} new)")
     
+    def has_torrents(self) -> bool:
+        """Check if any torrents are available"""
+        return len(self.announcers) > 0 or len(load_torrents_from_directory(settings.TORRENTS_DIR)) > 0
+    
     async def add_torrent(self, torrent: Torrent):
         """Add a torrent to seed"""
         if torrent.info_hash in self.announcers:

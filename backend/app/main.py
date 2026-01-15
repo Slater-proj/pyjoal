@@ -99,6 +99,17 @@ async def lifespan(app: FastAPI):
     # Start log broadcasting for WebSocket
     await websocket_manager.start_log_broadcasting()
     
+    # Auto-start seeding if torrents are available
+    if seeder_service.has_torrents():
+        logger.info("🚀 Auto-starting seeder service (torrents found)")
+        try:
+            await seeder_service.start()
+            logger.info("✅ Seeder service started automatically")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to auto-start seeder service: {e}")
+    else:
+        logger.info("💤 No torrents found, seeder service remains stopped")
+    
     logger.info("=" * 80)
     logger.info(f"✅ PyJOAL started successfully on port {settings.PORT}")
     logger.info(f"🌐 UI available at: http://localhost:{settings.PORT}/{settings.UI_PATH_PREFIX}/ui/")

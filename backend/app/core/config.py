@@ -19,10 +19,10 @@ class Settings(BaseSettings):
     SECRET_TOKEN: str = Field(..., description="Secret token for authentication")
     UI_PATH_PREFIX: str = Field(..., description="UI path prefix for obfuscation")
     
-    # Paths
-    CONFIG_DIR: Path = Field(default=Path("config"), description="Configuration directory")
-    TORRENTS_DIR: Path = Field(default=Path("torrents"), description="Torrents directory")
-    CLIENTS_DIR: Path = Field(default=Path("clients"), description="Clients directory")
+    # Paths (absolute paths for Docker compatibility)
+    CONFIG_DIR: Path = Field(default=Path("/app/config"), description="Configuration directory")
+    TORRENTS_DIR: Path = Field(default=Path("/app/torrents"), description="Torrents directory")
+    CLIENTS_DIR: Path = Field(default=Path("/app/clients"), description="Clients directory")
     
     # BitTorrent Config
     MIN_UPLOAD_RATE: int = Field(default=30, description="Minimum upload rate (kB/s)")

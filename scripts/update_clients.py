@@ -109,9 +109,17 @@ def main():
     """Main function"""
     print("🔄 Fetching latest BitTorrent client versions...\n")
     
-    # Get script directory
-    script_dir = Path(__file__).parent
-    clients_dir = script_dir.parent / "clients"
+    # Check if running in Docker (looking for mounted volume)
+    docker_clients_dir = Path("/app/clients")
+    if docker_clients_dir.exists():
+        clients_dir = docker_clients_dir
+        print(f"📁 Using Docker volume: {clients_dir}")
+    else:
+        # Get script directory for local execution
+        script_dir = Path(__file__).parent
+        clients_dir = script_dir.parent / "clients"
+        print(f"📁 Using local directory: {clients_dir}")
+    
     clients_dir.mkdir(exist_ok=True)
     
     # Get existing client files
