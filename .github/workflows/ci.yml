@@ -183,7 +183,10 @@ jobs:
     - name: Load Docker image
       run: |
         echo "📦 Loading Docker image from artifact..."
-        docker load -i /tmp/pyjoal-image.tar
+        ls -lh /tmp/pyjoal-image.tar.gz
+        
+        # Load compressed image
+        gunzip -c /tmp/pyjoal-image.tar.gz | docker load
         docker tag pyjoal:latest pyjoal-security-scan:latest
         echo "✅ Image loaded for security scan"
         
@@ -195,9 +198,7 @@ jobs:
         echo "🔍 Installing Trivy scanner..."
         
         # Download and install Trivy binary
-        wget -q https://github.com/aquasecurity/trivy/releases/latest/download/trivy_$(uname)_$(uname -m | sed 's/x86_64/64bit/').tar.gz
-        tar zxf trivy_*.tar.gz
-        sudo mv trivy /usr/local/bin/
+        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
         
         echo "🔍 Scanning Docker image for vulnerabilities..."
         trivy image --severity HIGH,CRITICAL --no-progress --quiet pyjoal-security-scan:latest || echo "⚠️ Vulnerabilities found but pipeline continues"
@@ -263,8 +264,10 @@ jobs:
       run: |
         echo "💨 Running smoke tests..."
         
-        # Load and start container from artifact
-        docker load -i /tmp/pyjoal-image.tar
+        # Load and start container from compressed artifact
+        echo "📦 Loading Docker image..."
+        ls -lh /tmp/pyjoal-image.tar.gz
+        gunzip -c /tmp/pyjoal-image.tar.gz | docker load
         docker tag pyjoal:latest pyjoal-smoke:latest
         
         docker run -d --name pyjoal-smoke -p 8080:8080 \
@@ -330,16 +333,22 @@ jobs:
         docker build -t pyjoal:latest .
         echo "✅ Docker build completed"
         
-        # Save image as tar for other jobs
-        docker save pyjoal:latest -o pyjoal-image.tar
-        echo "📦 Docker image saved as artifact"
+        # Show image info
+        docker images pyjoal:latest
+        
+        # Save image as compressed tar for other jobs
+        echo "📦 Saving Docker image as artifact..."
+        docker save pyjoal:latest | gzip > pyjoal-image.tar.gz
+        ls -lh pyjoal-image.tar.gz
+        echo "✅ Docker image saved as compressed artifact"
     
     - name: Upload Docker image artifact
       uses: actions/upload-artifact@v4
       with:
         name: docker-image
-        path: pyjoal-image.tar
+        path: pyjoal-image.tar.gz
         retention-days: 1
+        compression-level: 0  # Already compressed
 
   # Push Docker Hub : SEULEMENT après validation complète
   push-dockerhub:
