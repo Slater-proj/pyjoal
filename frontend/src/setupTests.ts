@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom'
 
 // Mock window.WebSocket
-global.WebSocket = class MockWebSocket {
+class MockWebSocket {
   constructor(url: string) {
     this.url = url
   }
@@ -12,9 +12,12 @@ global.WebSocket = class MockWebSocket {
   onmessage?: (event: { data: string }) => void
   onerror?: () => void
   
-  send = jest.fn()
-  close = jest.fn()
-} as any
+  send = () => {}
+  close = () => {}
+}
+
+// @ts-ignore
+global.WebSocket = MockWebSocket
 
 // Mock window.__PYJOAL_TOKEN__
 Object.defineProperty(window, '__PYJOAL_TOKEN__', {
