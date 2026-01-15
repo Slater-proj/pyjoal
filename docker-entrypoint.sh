@@ -6,7 +6,7 @@ echo ""
 
 # Update BitTorrent client definitions
 echo "🔄 Updating BitTorrent client definitions..."
-python /app/update_clients.py || echo "⚠️  Warning: Failed to update clients, continuing with existing"
+python /app/scripts/update_clients.py || echo "⚠️  Warning: Failed to update clients, continuing with existing"
 
 echo ""
 

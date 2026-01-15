@@ -37,10 +37,10 @@ COPY backend/app ./app
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Copy client update script
-COPY update_clients.py ./
+COPY scripts/update_clients.py ./scripts/
 
 # Create necessary directories first
-RUN mkdir -p /app/config /app/torrents /app/clients
+RUN mkdir -p /app/config /app/torrents /app/clients /app/scripts
 
 # Copy default client files (fallback if GitHub is unreachable)
 COPY clients/ ./clients/
