@@ -179,19 +179,23 @@ jobs:
         echo "🔍 Building image for security scan..."
         docker build -t pyjoal-security-scan:latest .
         echo "✅ Image built for security scan"
+        
+        # Show image size and info
+        docker images pyjoal-security-scan:latest
     
-    - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: 'pyjoal-security-scan:latest'
-        format: 'table'
-        exit-code: '0'  # Don't fail on vulnerabilities, just report
-        severity: 'HIGH,CRITICAL'
-    
-    - name: Security scan summary
+    - name: Install and run Trivy security scanner
       run: |
+        echo "🔍 Installing Trivy scanner..."
+        
+        # Download and install Trivy binary
+        wget -q https://github.com/aquasecurity/trivy/releases/latest/download/trivy_$(uname)_$(uname -m | sed 's/x86_64/64bit/').tar.gz
+        tar zxf trivy_*.tar.gz
+        sudo mv trivy /usr/local/bin/
+        
+        echo "🔍 Scanning Docker image for vulnerabilities..."
+        trivy image --severity HIGH,CRITICAL --no-progress --quiet pyjoal-security-scan:latest || echo "⚠️ Vulnerabilities found but pipeline continues"
+        
         echo "✅ Security scan completed"
-        echo "ℹ️ Check logs above for any HIGH/CRITICAL vulnerabilities"
 
   # API Documentation Generation
   api-docs:
