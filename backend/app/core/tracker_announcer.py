@@ -5,6 +5,7 @@ Handles announces to BitTorrent trackers
 import asyncio
 import random
 import logging
+import time
 from typing import Optional, Dict
 from datetime import datetime, timedelta
 import httpx
@@ -55,6 +56,10 @@ class TrackerAnnouncer:
         self.last_error: Optional[str] = None
         self.error_count: int = 0
         self.last_error_time: Optional[datetime] = None
+        
+        # Track real announce success for speed calculation
+        self._last_successful_announce: Optional[datetime] = None
+        self._last_successful_uploaded: int = 0
     
     async def start(self):
         """Start announcing"""
@@ -70,6 +75,13 @@ class TrackerAnnouncer:
         
         self.is_running = True
         self._seeding_started_at = datetime.utcnow()  # Start tracking seeding time
+        
+        # Initialize upload speed if not set
+        if self.upload_speed == 0:
+            min_rate, max_rate = self.client.get_upload_rate_range()
+            self.upload_speed = random.randint(min_rate, max_rate)
+            logger.debug(f"   Initial upload speed: {self.upload_speed / 1024:.2f} KB/s")
+        
         self._announce_task = asyncio.create_task(self._announce_loop())
     
     async def stop(self):
@@ -130,18 +142,38 @@ class TrackerAnnouncer:
             self._record_error(f"Announce loop error: {str(e)}")
     
     def _update_stats(self):
-        """Update upload stats"""
-        # Simulate upload
+        """Update upload stats - only increments uploaded amount"""
+        if not self.is_running:
+            return
+            
+        # Simulate upload by incrementing uploaded amount
         min_rate, max_rate = self.client.get_upload_rate_range()
-        previous_speed = self.upload_speed
-        self.upload_speed = random.randint(min_rate, max_rate)
         
-        # Add to uploaded total (interval * speed in bytes)
-        upload_delta = self.upload_speed * self.announce_interval
+        # Calculate upload delta for this interval
+        current_speed = random.randint(min_rate, max_rate)
+        upload_delta = current_speed * min(self.announce_interval, 60)  # Cap at 60s
         self.uploaded += upload_delta
         
-        logger.debug(f"📈 Upload stats for {self.torrent.name[:30]}:")
-        logger.debug(f"   Speed: {previous_speed / 1024:.2f} KB/s -> {self.upload_speed / 1024:.2f} KB/s")
+        # Calculate REAL upload speed based on successful announces only
+        current_time = time.time()
+        if self._last_successful_announce is not None and self._last_successful_uploaded is not None:
+            time_since_announce = current_time - self._last_successful_announce
+            uploaded_since_announce = self.uploaded - self._last_successful_uploaded
+            
+            if time_since_announce > 0:
+                # This is the REAL speed that trackers calculate between announces
+                self.upload_speed = uploaded_since_announce / time_since_announce
+                logger.debug(f"📈 REAL upload speed for {self.torrent.name[:30]}: {self.upload_speed/1024:.1f} KB/s")
+            else:
+                self.upload_speed = 0
+        else:
+            # No successful announce yet = no real speed data available
+            self.upload_speed = 0
+            logger.debug(f"📈 No successful announce yet for {self.torrent.name[:30]}, upload_speed = 0")
+        
+        # Store the theoretical speed for logging only
+        logger.debug(f"📈 Upload simulation for {self.torrent.name[:30]}:")
+        logger.debug(f"   Theoretical speed: {current_speed / 1024:.2f} KB/s")
         logger.debug(f"   Delta: +{upload_delta / (1024**2):.2f} MB")
         logger.debug(f"   Total uploaded: {self.uploaded / (1024**2):.2f} MB")
         logger.debug(f"   Ratio: {self.uploaded / self.torrent.size if self.torrent.size > 0 else 0:.3f}")
@@ -227,6 +259,11 @@ class TrackerAnnouncer:
                 logger.info(f"   Peers: {self.seeders} seeders, {self.leechers} leechers")
                 logger.info(f"   Uploaded: {self.uploaded / (1024**2):.2f} MB (speed: {self.upload_speed / 1024:.2f} KB/s)")
                 logger.info(f"   Next announce in {self.announce_interval + jitter}s")
+                
+                # Record successful announce for real speed calculation
+                self._last_successful_announce = time.time()
+                self._last_successful_uploaded = self.uploaded
+                logger.debug(f"📈 Recorded successful announce: uploaded={self.uploaded}, time={self._last_successful_announce}")
                 
                 # Log successful announce
                 history_service.add_entry(

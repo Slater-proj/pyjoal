@@ -96,6 +96,7 @@ export default function HistoryPage() {
     { id: 'announce_failed', label: 'Failed' },
     { id: 'torrent_added', label: 'Added' },
     { id: 'torrent_removed', label: 'Removed' },
+    { id: 'torrent_load_failed', label: 'Load Failed' },
   ]
 
   return (

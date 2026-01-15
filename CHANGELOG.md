@@ -1,5 +1,18 @@
 # Changelog - PyJOAL
 
+## [1.2.1] - 2026-01-15
+
+### Fixed
+- **History tab**: Added "Load Failed" filter to display torrent loading failures
+- **Duration column**: Changed unclear "Dur" to "Duration" in torrents table  
+- **Upload speeds**: Implemented authentic speed calculation based on real tracker announces
+- **Speed authenticity**: Displayed speeds now match exactly what trackers receive (no fake values)
+
+### Technical Improvements  
+- Upload speed calculation based on successful announce intervals
+- Enhanced tracker protocol compliance  
+- Real-time WebSocket updates for authentic speed reporting
+
 ## [Unreleased]
 
 ### Added

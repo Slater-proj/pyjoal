@@ -111,7 +111,7 @@ async def lifespan(app: FastAPI):
         logger.info("💤 No torrents found, seeder service remains stopped")
     
     logger.info("=" * 80)
-    logger.info(f"✅ PyJOAL started successfully on port {settings.PORT}")
+    logger.info(f"✅ PyJOAL v1.2.1 started successfully on port {settings.PORT}")
     logger.info(f"🌐 UI available at: http://localhost:{settings.PORT}/{settings.UI_PATH_PREFIX}/ui/")
     logger.info(f"📚 API docs at: http://localhost:{settings.PORT}/docs")
     logger.info(f"🔐 Secret token: {settings.SECRET_TOKEN}")

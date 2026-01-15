@@ -291,7 +291,7 @@ export default function TorrentsTable() {
                 />
               </th>
               <th className="px-4 py-3 border-r border-slate-600 text-center relative overflow-hidden" style={{ width: columnWidths.duration }}>
-                <span className="truncate block">Dur {durationTarget > 0 ? <span className="text-slate-400 font-normal">/{formatDurationTarget(durationTarget)}</span> : <span className="text-slate-400 font-normal">/∞</span>}</span>
+                <span className="truncate block">Duration {durationTarget > 0 ? <span className="text-slate-400 font-normal">/{formatDurationTarget(durationTarget)}</span> : <span className="text-slate-400 font-normal">/∞</span>}</span>
                 <div 
                   className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500/50 transition-colors"
                   onMouseDown={(e) => handleMouseDown('duration', e)}

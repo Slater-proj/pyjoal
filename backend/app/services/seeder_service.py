@@ -387,7 +387,12 @@ class SeederService:
                 stats = self.get_stats()
                 torrents = self.get_torrents()
                 
-                logger.debug(f"🔄 Monitor update: {stats['activeTorrents']} active, {len(torrents)} total torrents")
+                # Force stats update for all running announcers to ensure speeds are simulated
+                for announcer in self.announcers.values():
+                    if announcer.is_running:
+                        announcer._update_stats()
+                
+                logger.debug(f"🔄 Monitor update: {stats['activeTorrents']} active, {len(torrents)} total torrents, total speed: {stats['uploadSpeed']/1024:.1f} KB/s")
                 
                 # Send global stats update
                 await websocket_manager.broadcast({
