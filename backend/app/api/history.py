@@ -1,13 +1,14 @@
 """
 History API Endpoints
 """
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from typing import Optional
 from datetime import datetime, timedelta
 
 from app.services.history_service import history_service, EventType
+from app.core.auth import verify_token
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_token)])
 
 
 @router.get("/history")

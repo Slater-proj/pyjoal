@@ -7,10 +7,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 import os
 import sys
 import logging
+import html
+import subprocess
 from pathlib import Path
 
 from app.core.config import settings
@@ -186,18 +188,33 @@ if frontend_build_path.exists():
     
     @app.get(f"/{settings.UI_PATH_PREFIX}/ui/{{full_path:path}}")
     async def serve_frontend(full_path: str):
-        """Serve frontend application"""
-        # If it's an empty path or root, serve index.html
+        """Serve frontend application with token injection"""
+        # If it's an empty path or root, serve index.html with token injection
         if not full_path or full_path == "/":
-            return FileResponse(frontend_build_path / "index.html")
+            index_path = frontend_build_path / "index.html"
+            with open(index_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            
+            # Inject token into HTML (before closing </head>)
+            token_script = f'<script>window.__PYJOAL_TOKEN__ = "{html.escape(settings.SECRET_TOKEN)}";</script>'
+            html_content = html_content.replace('</head>', f'{token_script}</head>')
+            
+            return HTMLResponse(content=html_content)
         
         # Check if file exists
         file_path = frontend_build_path / full_path
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
         
-        # For SPA routing, return index.html
-        return FileResponse(frontend_build_path / "index.html")
+        # For SPA routing, return index.html with token injection
+        index_path = frontend_build_path / "index.html"
+        with open(index_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        
+        token_script = f'<script>window.__PYJOAL_TOKEN__ = "{html.escape(settings.SECRET_TOKEN)}";</script>'
+        html_content = html_content.replace('</head>', f'{token_script}</head>')
+        
+        return HTMLResponse(content=html_content)
 else:
     logger.warning(f"⚠️  Frontend not found at {frontend_build_path}")
 

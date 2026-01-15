@@ -2,6 +2,24 @@ import axios from "axios";
 
 const API_BASE = "/api";
 
+// Get SECRET_TOKEN from environment or window (injected by backend)
+const getToken = (): string | null => {
+  // Check if token is available in window object (injected by backend in index.html)
+  if (typeof window !== 'undefined' && (window as any).__PYJOAL_TOKEN__) {
+    return (window as any).__PYJOAL_TOKEN__;
+  }
+  return null;
+};
+
+// Configure axios to include token in all requests
+axios.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers['X-API-Token'] = token;
+  }
+  return config;
+});
+
 export interface Config {
   minUploadRate: number;
   maxUploadRate: number;

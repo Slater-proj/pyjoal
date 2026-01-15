@@ -1,11 +1,12 @@
 """
 Client Control API Endpoints
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.models.schemas import ClientStats, SuccessResponse
 from app.services.seeder_service import seeder_service
+from app.core.auth import verify_token
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_token)])
 
 
 @router.post("/start")

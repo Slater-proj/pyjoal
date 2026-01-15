@@ -1,7 +1,7 @@
 """
 Torrents API Endpoints
 """
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from typing import List
 from pathlib import Path
 
@@ -9,8 +9,9 @@ from app.models.schemas import TorrentInfo, SuccessResponse
 from app.services.seeder_service import seeder_service
 from app.core.torrent_parser import Torrent
 from app.core.config import settings
+from app.core.auth import verify_token
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_token)])
 
 
 @router.get("/torrents", response_model=List[TorrentInfo])
