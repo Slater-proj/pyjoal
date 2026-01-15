@@ -174,11 +174,18 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Build Docker image for security scan
+    - name: Download Docker image artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: docker-image
+        path: /tmp
+    
+    - name: Load Docker image
       run: |
-        echo "🔍 Building image for security scan..."
-        docker build -t pyjoal-security-scan:latest .
-        echo "✅ Image built for security scan"
+        echo "📦 Loading Docker image from artifact..."
+        docker load -i /tmp/pyjoal-image.tar
+        docker tag pyjoal:latest pyjoal-security-scan:latest
+        echo "✅ Image loaded for security scan"
         
         # Show image size and info
         docker images pyjoal-security-scan:latest
@@ -246,25 +253,35 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Download Docker image artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: docker-image
+        path: /tmp
+    
     - name: Run smoke tests on Docker container
       run: |
         echo "💨 Running smoke tests..."
         
-        # Build and start container
-        docker build -t pyjoal-smoke:latest .
+        # Load and start container from artifact
+        docker load -i /tmp/pyjoal-image.tar
+        docker tag pyjoal:latest pyjoal-smoke:latest
+        
         docker run -d --name pyjoal-smoke -p 8080:8080 \
           -e SECRET_TOKEN=test-token \
           pyjoal-smoke:latest
         
         # Wait for container to be ready
         echo "⏳ Waiting for container to start..."
-        sleep 10
+        sleep 15
         
         # Basic health check
         if curl -f http://localhost:8080/health 2>/dev/null || curl -f http://localhost:8080/ 2>/dev/null; then
           echo "✅ Container is responding"
         else
           echo "⚠️ Container health check failed"
+          # Show container logs for debugging
+          docker logs pyjoal-smoke
         fi
         
         # Cleanup
@@ -312,6 +329,17 @@ jobs:
         echo "🐳 Building Docker image for production..."
         docker build -t pyjoal:latest .
         echo "✅ Docker build completed"
+        
+        # Save image as tar for other jobs
+        docker save pyjoal:latest -o pyjoal-image.tar
+        echo "📦 Docker image saved as artifact"
+    
+    - name: Upload Docker image artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: docker-image
+        path: pyjoal-image.tar
+        retention-days: 1
 
   # Push Docker Hub : SEULEMENT après validation complète
   push-dockerhub:
