@@ -181,7 +181,7 @@ docker-compose up -d
 
 4. **Keep client definitions updated**:
    - Clients auto-update on container restart
-   - Or manually run: `docker exec pyjoal python update_clients.py`
+   - Or manually run: `docker exec pyjoal python scripts/update_clients.py`
 
 ---
 
@@ -223,7 +223,7 @@ docker logs pyjoal
 
 ### Update clients manually
 ```bash
-docker exec pyjoal python update_clients.py
+docker exec pyjoal python scripts/update_clients.py
 ```
 
 ---

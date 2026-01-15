@@ -16,12 +16,9 @@ Ces clients sont fournis par défaut avec PyJOAL :
 Les clients sont **automatiquement mis à jour** au démarrage du conteneur vers les dernières versions stables.
 
 ### Mise à jour manuelle
-```bash
-python update_clients.py
 
-# OU via scripts
-./update_clients.sh    # Linux/Mac
-update_clients.bat     # Windows
+```bash
+python scripts/update_clients.py
 ```
 
 Le script télécharge automatiquement :
