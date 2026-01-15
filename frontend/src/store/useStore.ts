@@ -189,20 +189,42 @@ export const useStore = create<Store>((set, get) => ({
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
+        console.log("📡 WebSocket message received:", message.type, message);
 
         switch (message.type) {
           case "stats_update":
             set({ stats: message.data });
+            console.log("📊 Updated stats:", message.data);
+            break;
+
+          case "torrents_update":
+            // Update torrents list from real-time data
+            set({ torrents: message.data.torrents });
+            console.log("🔄 Updated torrents:", message.data.torrents.length, "torrents");
+            break;
+
+          case "torrent_load_error":
+            // Show toast for torrent load error instead of polluting the table
+            get().addToast(message.data.message, "error");
+            console.log("❌ Torrent load error:", message.data);
             break;
 
           case "torrent_added":
           case "torrent_removed":
+            console.log(`➕/➖ Torrent ${message.type}, refreshing...`);
             get().fetchTorrents();
             break;
 
           case "seeding_started":
           case "seeding_stopped":
+            console.log(`⚡ Seeding ${message.type}, refreshing stats and torrents...`);
+            // Update both stats and torrents for comprehensive state
             get().fetchStats();
+            get().fetchTorrents();
+            break;
+
+          default:
+            console.log("❓ Unknown WebSocket message type:", message.type);
             break;
         }
       } catch (error) {

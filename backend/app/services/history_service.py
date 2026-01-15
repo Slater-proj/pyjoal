@@ -14,6 +14,7 @@ class EventType(str, Enum):
     SYSTEM_STOP = "system_stop"
     TORRENT_ADDED = "torrent_added"
     TORRENT_REMOVED = "torrent_removed"
+    TORRENT_LOAD_FAILED = "torrent_load_failed"
     ANNOUNCE_SUCCESS = "announce_success"
     ANNOUNCE_FAILED = "announce_failed"
     CONFIG_UPDATED = "config_updated"

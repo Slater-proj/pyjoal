@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Added
+- 🔄 **Real-time WebSocket updates** for torrent status, peers, and upload speeds
+- 🚫 **Clean error handling** - failed torrents no longer pollute the main table
+- 🔔 **Toast notifications** for torrent load errors instead of table pollution
+- 📚 **Enhanced history tracking** with detailed error logging (`torrent_load_failed` events)
+- ⚡ **Live torrent monitoring** with 5-second update intervals during seeding
+- 🎯 **Smart torrent updates** - individual torrent status broadcasting via WebSocket
 - 🔄 **Automatic BitTorrent client updates** on Docker container startup
 - 📥 Client update script (`update_clients.py`) that fetches latest versions from GitHub
 - 🤖 GitHub Actions workflow for weekly client version checks
@@ -13,6 +19,12 @@
 - 📚 Comprehensive documentation for client updater
 
 ### Fixed
+
+- ✅ **Real-time UI synchronization** - torrent status updates now visible in table during seeding
+- 🧹 **Clean table interface** - failed torrents no longer appear in main torrent table
+- 🔄 **WebSocket message handling** - frontend now processes `torrents_update` messages
+- 📡 **Enhanced monitoring loop** - broadcasts individual torrent details every 5 seconds
+- 🗑️ **Torrent deletion behavior** - removing torrents no longer affects other torrent statuses
 - ✅ **Torrent validation now happens BEFORE saving to disk**
   - Invalid torrent files are no longer saved to the torrents folder
   - Proper error messages shown in UI via toast notifications

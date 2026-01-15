@@ -133,7 +133,7 @@ class SeederService:
                     logger.info(f"✅ Previously failed torrent now works: {torrent_file.name}")
                     
             except Exception as e:
-                # Store failed torrent info
+                # Store failed torrent info temporarily
                 error_msg = str(e)
                 self.failed_torrents[torrent_file.name] = {
                     "filename": torrent_file.name,
@@ -141,7 +141,34 @@ class SeederService:
                     "timestamp": datetime.utcnow(),
                     "size": torrent_file.stat().st_size if torrent_file.exists() else 0
                 }
+                
+                # Log error with details
                 logger.error(f"❌ Failed to load {torrent_file.name}: {error_msg}")
+                
+                # Add to history with detailed error
+                from app.services.history_service import history_service, EventType
+                history_service.add_entry(
+                    EventType.TORRENT_LOAD_FAILED,
+                    f"Failed to load torrent: {torrent_file.name}",
+                    {
+                        "filename": torrent_file.name,
+                        "error": error_msg,
+                        "size": torrent_file.stat().st_size if torrent_file.exists() else 0,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                )
+                
+                # Send toast notification to frontend
+                from app.services.websocket_manager import websocket_manager
+                import asyncio
+                asyncio.create_task(websocket_manager.broadcast({
+                    "type": "torrent_load_error",
+                    "data": {
+                        "filename": torrent_file.name,
+                        "error": error_msg,
+                        "message": f"Failed to load {torrent_file.name}: {error_msg}"
+                    }
+                }))
         
         # Add successful torrents
         new_count = 0
@@ -193,6 +220,14 @@ class SeederService:
             "data": self._get_torrent_info(torrent.info_hash)
         })
         
+        # Send updated torrents list
+        await websocket_manager.broadcast({
+            "type": "torrents_update",
+            "data": {
+                "torrents": self.get_torrents()
+            }
+        })
+        
         logger.info(f"✅ Torrent added successfully: {torrent.name[:50]}")
     
     async def remove_torrent(self, info_hash: str):
@@ -233,6 +268,14 @@ class SeederService:
         await websocket_manager.broadcast({
             "type": "torrent_removed",
             "data": {"info_hash": info_hash}
+        })
+        
+        # Send updated torrents list
+        await websocket_manager.broadcast({
+            "type": "torrents_update",
+            "data": {
+                "torrents": self.get_torrents()
+            }
         })
         
         logger.info(f"✅ Torrent removed: {info_hash[:8]}...")
@@ -310,7 +353,18 @@ class SeederService:
         # Notify via WebSocket
         await websocket_manager.broadcast({
             "type": "seeding_stopped",
-            "data": {}
+            "data": {
+                "startedAt": self.started_at.isoformat(),
+                "activeTorrents": len([a for a in self.announcers.values() if a.is_running])
+            }
+        })
+        
+        # Send initial torrents state
+        await websocket_manager.broadcast({
+            "type": "torrents_update", 
+            "data": {
+                "torrents": self.get_torrents()
+            }
         })
         
         logger.info("✅ Seeding stopped successfully")
@@ -329,11 +383,30 @@ class SeederService:
             while self.is_running:
                 await asyncio.sleep(5)  # Update every 5 seconds
                 
-                # Send stats update
+                # Get current data
+                stats = self.get_stats()
+                torrents = self.get_torrents()
+                
+                logger.debug(f"🔄 Monitor update: {stats['activeTorrents']} active, {len(torrents)} total torrents")
+                
+                # Send global stats update
                 await websocket_manager.broadcast({
                     "type": "stats_update",
-                    "data": self.get_stats()
+                    "data": stats
                 })
+                
+                # Send individual torrent updates
+                await websocket_manager.broadcast({
+                    "type": "torrents_update",
+                    "data": {
+                        "torrents": torrents
+                    }
+                })
+                
+                # Log torrent statuses for debugging
+                for torrent in torrents:
+                    if torrent.get("isRunning"):
+                        logger.debug(f"   📈 {torrent['name'][:30]}: {torrent['uploadSpeed']/1024:.1f} KB/s, {torrent['seeders']}S/{torrent['leechers']}L")
                 
                 # Check ratio targets
                 await self._check_ratio_targets()
@@ -457,34 +530,12 @@ class SeederService:
                 logger.error(f"⚠️  Failed to switch client: {e}")
     
     def get_torrents(self) -> List[Dict]:
-        """Get all torrents info including failed ones"""
+        """Get working torrents info (failed torrents are handled via toast/history)"""
         torrents = []
         
-        # Add working torrents
+        # Add only working torrents
         for info_hash in self.announcers.keys():
             torrents.append(self._get_torrent_info(info_hash))
-        
-        # Add failed torrents  
-        for filename, failed_info in self.failed_torrents.items():
-            torrents.append({
-                "id": f"failed_{filename}",
-                "name": filename,
-                "size": failed_info["size"], 
-                "uploaded": 0,
-                "uploadSpeed": 0,
-                "seeders": 0,
-                "leechers": 0,
-                "ratio": 0,
-                "lastAnnounce": None,
-                "nextAnnounce": None,
-                "isRunning": False,
-                "seedingTime": 0,
-                "lastError": failed_info["error"],
-                "errorCount": 1,
-                "lastErrorTime": failed_info["timestamp"],
-                "isHealthy": False,
-                "status": "FAILED"
-            })
         
         return torrents
     
