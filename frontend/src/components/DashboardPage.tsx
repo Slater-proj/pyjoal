@@ -81,12 +81,12 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Improved layout for 1080p+ - Horizontal layout with wider torrent table */}
-      <div className="flex flex-col xl:flex-row gap-6">
+      {/* Layout: Control Panel on left, Torrent table takes full remaining width */}
+      <div className="flex flex-col lg:flex-row gap-4">
         
-        {/* TOP/LEFT SECTION - Control Panel - Optimized width */}
-        <aside className="w-full xl:w-96 flex-shrink-0">
-          <div className="xl:sticky xl:top-20 space-y-4">
+        {/* LEFT SECTION - Control Panel - Fixed width */}
+        <aside className="w-full lg:w-72 flex-shrink-0">
+          <div className="lg:sticky lg:top-20 space-y-4">
             {/* Client Info Panel */}
             <ClientInfoPanel />
             

@@ -149,19 +149,30 @@ export default function LogConsole() {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 right-4 z-50 flex items-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg shadow-lg transition-all"
+        className="fixed bottom-20 right-4 z-40 flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-full shadow-lg transition-all hover:scale-105"
         title="Open log console"
       >
-        <Terminal className="w-5 h-5 text-green-400" />
-        <span className="text-white font-medium">Logs</span>
+        <Terminal className="w-4 h-4 text-green-400" />
+        <span className="text-white text-sm font-medium">Logs</span>
       </button>
     )
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 h-64 z-50 bg-slate-900 border-t border-slate-700 shadow-2xl flex flex-col">
+    <div 
+      className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900 border-t border-slate-700 shadow-2xl flex flex-col"
+      style={{ height: `${height}px` }}
+    >
+      {/* Resize handle */}
+      <div
+        onMouseDown={handleMouseDown}
+        className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-blue-500/30 transition-colors flex items-center justify-center group"
+      >
+        <GripHorizontal className="w-8 h-3 text-slate-600 group-hover:text-blue-400 transition-colors" />
+      </div>
+
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 flex-shrink-0 mt-2">
         <div className="flex items-center gap-3">
           <Terminal className="w-5 h-5 text-green-400" />
           <h3 className="text-white font-semibold">Application Logs</h3>

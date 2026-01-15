@@ -43,6 +43,10 @@ class TrackerAnnouncer:
         self.next_announce: Optional[datetime] = None
         self.announce_interval: int = settings.ANNOUNCE_INTERVAL
         
+        # Seeding time tracking (in seconds)
+        self.seeding_time: int = 0
+        self._seeding_started_at: Optional[datetime] = None
+        
         # State
         self.is_running: bool = False
         self._announce_task: Optional[asyncio.Task] = None
@@ -60,6 +64,7 @@ class TrackerAnnouncer:
         logger.debug(f"   Port: {self.port}")
         
         self.is_running = True
+        self._seeding_started_at = datetime.utcnow()  # Start tracking seeding time
         self._announce_task = asyncio.create_task(self._announce_loop())
     
     async def stop(self):
@@ -71,6 +76,12 @@ class TrackerAnnouncer:
         logger.info(f"⏹️  Stopping announcer for: {self.torrent.name}")
         logger.debug(f"   Total uploaded: {self.uploaded / (1024**2):.2f} MB")
         logger.debug(f"   Final ratio: {self.uploaded / self.torrent.size if self.torrent.size > 0 else 0:.3f}")
+        
+        # Accumulate seeding time before stopping
+        if self._seeding_started_at:
+            elapsed = (datetime.utcnow() - self._seeding_started_at).total_seconds()
+            self.seeding_time += int(elapsed)
+            self._seeding_started_at = None
         
         self.is_running = False
         
@@ -294,6 +305,11 @@ class TrackerAnnouncer:
     
     def get_stats(self) -> Dict:
         """Get current stats"""
+        # Calculate current seeding time including ongoing session
+        current_seeding_time = self.seeding_time
+        if self._seeding_started_at:
+            current_seeding_time += int((datetime.utcnow() - self._seeding_started_at).total_seconds())
+        
         return {
             "uploaded": self.uploaded,
             "downloaded": self.downloaded,
@@ -302,5 +318,6 @@ class TrackerAnnouncer:
             "leechers": self.leechers,
             "lastAnnounce": self.last_announce,
             "nextAnnounce": self.next_announce,
-            "ratio": self.uploaded / self.torrent.size if self.torrent.size > 0 else 0.0
+            "ratio": self.uploaded / self.torrent.size if self.torrent.size > 0 else 0.0,
+            "seedingTime": current_seeding_time
         }

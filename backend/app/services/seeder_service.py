@@ -185,11 +185,15 @@ class SeederService:
             {"info_hash": info_hash}
         )
         
-        # Delete torrent file
-        torrent_file = settings.TORRENTS_DIR / f"{info_hash}.torrent"
-        if torrent_file.exists():
-            torrent_file.unlink()
-            logger.debug(f"   Torrent file deleted")
+        # Archive torrent file (move to archived folder)
+        archived_dir = settings.TORRENTS_DIR / "archived"
+        archived_dir.mkdir(exist_ok=True)
+        
+        torrent_path = announcer.torrent.path
+        if torrent_path and torrent_path.exists():
+            archived_path = archived_dir / torrent_path.name
+            torrent_path.rename(archived_path)
+            logger.debug(f"   Torrent file archived to: {archived_path}")
         
         # Notify via WebSocket
         await websocket_manager.broadcast({
@@ -313,7 +317,6 @@ class SeederService:
         keep_zero_leechers = self._config.get("keepTorrentWithZeroLeechers", True)
         
         to_remove = []
-        now = datetime.utcnow()
         
         for info_hash, announcer in self.announcers.items():
             stats = announcer.get_stats()
@@ -329,14 +332,14 @@ class SeederService:
                 to_remove.append(info_hash)
                 continue
             
-            # Check duration limit (if enabled) - in hours
+            # Check duration limit (if enabled) - use actual seeding time in seconds, convert limit from hours
             if duration_limit > 0:
-                seeding_duration = (now - torrent.added_at).total_seconds() / 3600  # Convert to hours
-                if seeding_duration >= duration_limit:
+                seeding_time_hours = stats["seedingTime"] / 3600  # Convert seconds to hours
+                if seeding_time_hours >= duration_limit:
                     history_service.add_entry(
                         EventType.TORRENT_REMOVED,
                         f"Duration limit reached for {torrent.name}",
-                        {"info_hash": info_hash, "duration_hours": seeding_duration, "limit": duration_limit}
+                        {"info_hash": info_hash, "seeding_hours": seeding_time_hours, "limit": duration_limit}
                     )
                     to_remove.append(info_hash)
                     continue
@@ -448,7 +451,8 @@ class SeederService:
             "addedAt": torrent.added_at.isoformat(),
             "lastAnnounce": stats["lastAnnounce"].isoformat() if stats["lastAnnounce"] else None,
             "nextAnnounce": stats["nextAnnounce"].isoformat() if stats["nextAnnounce"] else None,
-            "tracker": torrent.primary_tracker
+            "tracker": torrent.primary_tracker,
+            "seedingTime": stats["seedingTime"]
         }
     
     def get_stats(self) -> Dict:

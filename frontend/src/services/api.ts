@@ -26,6 +26,7 @@ export interface Torrent {
   lastAnnounce: string | null;
   nextAnnounce: string | null;
   tracker: string | null;
+  seedingTime: number; // Actual seeding time in seconds
 }
 
 export interface Stats {
