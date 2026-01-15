@@ -168,7 +168,7 @@ jobs:
   # Docker Image Vulnerability Scan
   docker-security:
     runs-on: ubuntu-latest
-    needs: [test-backend, test-frontend]
+    needs: [build-docker]  # Wait for Docker build to complete
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     
     steps:
@@ -178,24 +178,25 @@ jobs:
       run: |
         echo "🔍 Building image for security scan..."
         docker build -t pyjoal-security-scan:latest .
+        echo "✅ Image built for security scan"
     
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: 'pyjoal-security-scan:latest'
-        format: 'sarif'
-        output: 'trivy-results.sarif'
+        format: 'table'
         exit-code: '0'  # Don't fail on vulnerabilities, just report
+        severity: 'HIGH,CRITICAL'
     
-    - name: Upload Trivy scan results
-      uses: github/codeql-action/upload-sarif@v3
-      if: always()
-      with:
-        sarif_file: 'trivy-results.sarif'
+    - name: Security scan summary
+      run: |
+        echo "✅ Security scan completed"
+        echo "ℹ️ Check logs above for any HIGH/CRITICAL vulnerabilities"
 
   # API Documentation Generation
   api-docs:
     runs-on: ubuntu-latest
+    needs: [test-backend]  # Only needs backend to be tested
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     
     steps:
@@ -308,9 +309,9 @@ jobs:
         docker build -t pyjoal:latest .
         echo "✅ Docker build completed"
 
-  # Push Docker Hub : Seulement sur master après build
+  # Push Docker Hub : SEULEMENT après validation complète
   push-dockerhub:
-    needs: [build-docker]
+    needs: [build-docker, docker-security, smoke-tests]  # Wait for build + security + smoke tests
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     
@@ -352,10 +353,19 @@ jobs:
         
         echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
         echo "✅ Successfully pushed to Docker Hub!"
+    
+    - name: Update Docker Hub description
+      uses: peter-evans/dockerhub-description@v4
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        repository: ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal
+        short-description: "PyJOAL - Java Open Acceleration Library for BitTorrent seeding"
+        readme-filepath: ./DOCKER_HUB_README.md
 
-  # Auto Release : Seulement sur master après push Docker
+  # Auto Release : Seulement après publication Docker Hub validée
   auto-release:
-    needs: [push-dockerhub]
+    needs: [push-dockerhub, api-docs]  # Docker Hub validated + documentation ready
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     
