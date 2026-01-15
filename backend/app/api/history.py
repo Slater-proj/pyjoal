@@ -12,11 +12,12 @@ router = APIRouter()
 
 @router.get("/history")
 async def get_history(
-    limit: int = Query(default=100, ge=1, le=1000),
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=50, ge=1, le=200),
     event_type: Optional[str] = None,
     hours: Optional[int] = Query(default=None, ge=1, le=168)  # Max 1 week
 ):
-    """Get history entries"""
+    """Get history entries with pagination"""
     # Parse event type
     event_type_enum = None
     if event_type:
@@ -30,15 +31,28 @@ async def get_history(
     if hours:
         since = datetime.utcnow() - timedelta(hours=hours)
     
-    entries = history_service.get_entries(
-        limit=limit,
+    # Get all entries matching criteria
+    all_entries = history_service.get_entries(
+        limit=10000,  # Get all
         event_type=event_type_enum,
         since=since
     )
     
+    total = len(all_entries)
+    total_pages = (total + per_page - 1) // per_page  # Ceiling division
+    
+    # Calculate offset
+    offset = (page - 1) * per_page
+    
+    # Get page slice
+    entries = all_entries[offset:offset + per_page]
+    
     return {
         "entries": entries,
-        "total": len(entries)
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages
     }
 
 

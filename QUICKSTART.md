@@ -1,4 +1,4 @@
-# Guide de Démarrage Rapide - JOAL Modern
+# Guide de Démarrage Rapide - PyJOAL
 
 ## 🚀 Installation et Démarrage
 
@@ -7,7 +7,7 @@
 1. **Clonez le projet**
 ```bash
 git clone <votre-repo>
-cd joal-modern
+cd pyjoal
 ```
 
 2. **Configurez les variables d'environnement**
@@ -77,7 +77,7 @@ Le frontend sera disponible sur `http://localhost:3000` et proxy les requêtes A
 ### Build Docker Image
 
 ```bash
-docker build -t joal-modern:latest .
+docker build -t pyjoal:latest .
 ```
 
 ### Build Frontend Seul
@@ -122,7 +122,7 @@ npm test
 ### Le serveur ne démarre pas
 
 - Vérifiez que `SECRET_TOKEN` et `UI_PATH_PREFIX` sont configurés dans `.env`
-- Vérifiez les logs: `docker-compose logs -f joal-modern`
+- Vérifiez les logs: `docker-compose logs -f pyjoal`
 
 ### L'interface web ne s'affiche pas
 

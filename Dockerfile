@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for JOAL Modern
+# Multi-stage Dockerfile for PyJOAL
 # Stage 1: Build Frontend
 FROM node:20-alpine AS frontend-builder
 

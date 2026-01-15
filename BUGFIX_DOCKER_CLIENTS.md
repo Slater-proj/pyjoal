@@ -65,7 +65,7 @@ ENV PYTHONUNBUFFERED=1 \
 #!/bin/bash
 set -e
 
-echo "🚀 Starting JOAL Modern..."
+echo "🚀 Starting PyJOAL..."
 echo ""
 
 # 🆕 Update toujours exécuté (sans condition)
@@ -103,12 +103,12 @@ exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8080
 ### Test 1: Vérifier les logs Docker
 
 ```bash
-docker-compose logs joal-modern
+docker-compose logs pyjoal
 ```
 
 **Output attendu:**
 ```
-🚀 Starting JOAL Modern...
+🚀 Starting PyJOAL...
 
 🔄 Updating BitTorrent client definitions...
 📥 Checking qBittorrent...
@@ -127,7 +127,7 @@ docker-compose logs joal-modern
 🎬 Starting FastAPI application...
 🐳 Running in Docker, client update handled by entrypoint
 📱 Client chargé: qBittorrent 4.6.0
-✅ JOAL Modern started on port 8080
+✅ PyJOAL started on port 8080
 ```
 
 ---
@@ -188,7 +188,7 @@ docker-compose build --no-cache
 docker-compose up -d
 
 # Vérifier les logs
-docker-compose logs -f joal-modern
+docker-compose logs -f pyjoal
 ```
 
 **OU utiliser le script setup:**
@@ -258,7 +258,7 @@ chmod 644 clients/*.client
 **Solution 3:** Forcer l'update manuel
 ```bash
 # Dans le container en cours d'exécution
-docker exec joal-modern python /app/update_clients.py
+docker exec pyjoal python /app/update_clients.py
 
 # Redémarrer le container
 docker-compose restart

@@ -1,4 +1,4 @@
-# ✅ État du Projet - JOAL Modern
+# ✅ État du Projet - PyJOAL
 
 ## 📊 Statut : PROPRE ✨
 
@@ -9,7 +9,7 @@ Dernier nettoyage : $(date)
 ## 🗂️ Structure Validée
 
 ```
-joal-modern/
+pyjoal/
 ├── .github/           ✅ Workflows CI/CD
 ├── backend/           ✅ Code Python (sans __pycache__)
 ├── frontend/          ✅ Code React (sans node_modules/dist)

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "================================================"
-echo "  JOAL Modern - Setup & Installation Script"
+echo "  PyJOAL - Setup & Installation Script"
 echo "================================================"
 echo ""
 
@@ -64,7 +64,7 @@ case $choice in
         if [ $? -eq 0 ]; then
             echo -e "${GREEN}✅ Build successful!${NC}"
             echo ""
-            echo -e "${GREEN}🚀 Starting JOAL Modern...${NC}"
+            echo -e "${GREEN}🚀 Starting PyJOAL...${NC}"
             $DOCKER_COMPOSE up -d
 
             # Wait a bit for startup
@@ -77,7 +77,7 @@ case $choice in
 
             echo ""
             echo -e "${GREEN}================================================${NC}"
-            echo -e "${GREEN}  JOAL Modern is now running! 🎉${NC}"
+            echo -e "${GREEN}  PyJOAL is now running! 🎉${NC}"
             echo -e "${GREEN}================================================${NC}"
             echo ""
             echo "Access the web UI at:"
@@ -87,7 +87,7 @@ case $choice in
             echo -e "${YELLOW}http://localhost:${PORT}/docs${NC}"
             echo ""
             echo "To view logs:"
-            echo "$DOCKER_COMPOSE logs -f joal-modern"
+            echo "$DOCKER_COMPOSE logs -f pyjoal"
             echo ""
             echo "To stop:"
             echo "$DOCKER_COMPOSE down"
@@ -107,7 +107,7 @@ case $choice in
     3)
         echo ""
         echo -e "${GREEN}🔨 Building Docker image only...${NC}"
-        docker build -t joal-modern:latest .
+        docker build -t pyjoal:latest .
 
         if [ $? -eq 0 ]; then
             echo -e "${GREEN}✅ Build successful!${NC}"

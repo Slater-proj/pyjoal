@@ -1,7 +1,7 @@
 @echo off
-REM Clean script for JOAL Modern project
+REM Clean script for PyJOAL project
 
-echo Nettoyage du projet JOAL Modern...
+echo Nettoyage du projet PyJOAL...
 echo.
 
 REM Remove Python cache

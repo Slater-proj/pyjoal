@@ -210,7 +210,7 @@ logger.error("❌ Error occurred", exc_info=True)
 - ✅ Configuration centrale du logging
 - ✅ Filtrage des logs des librairies tierces
 - ✅ Bannière de démarrage améliorée
-- ✅ Changement de nom: JOAL Modern → PyJOAL
+- ✅ Changement de nom: PyJOAL → PyJOAL
 - ✅ Logs pour chargement frontend
 
 ### 4. `backend/app/services/websocket_manager.py`

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Starting JOAL Modern..."
+echo "🚀 Starting PyJOAL..."
 echo ""
 
 # Update BitTorrent client definitions

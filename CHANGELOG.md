@@ -1,4 +1,4 @@
-# Changelog - JOAL Modern
+# Changelog - PyJOAL
 
 ## [Unreleased]
 

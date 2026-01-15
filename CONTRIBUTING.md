@@ -1,9 +1,9 @@
-# 🔧 Guide de Développement - JOAL Modern
+# 🔧 Guide de Développement - PyJOAL
 
 ## 🏗️ Architecture du Projet
 
 ```
-joal-modern/
+pyjoal/
 ├── backend/              # API FastAPI
 │   ├── app/
 │   │   ├── api/         # Endpoints REST
@@ -181,7 +181,7 @@ python update_clients.py
 
 **Dans le conteneur :**
 ```bash
-docker exec joal-modern python /app/update_clients.py
+docker exec pyjoal python /app/update_clients.py
 ```
 
 **Ajouter un nouveau client :**
@@ -221,10 +221,10 @@ git push origin v1.1.0
 ### 3. Build & Push Docker Image
 
 ```bash
-docker build -t joal-modern:1.1.0 .
-docker tag joal-modern:1.1.0 joal-modern:latest
-docker push joal-modern:1.1.0
-docker push joal-modern:latest
+docker build -t pyjoal:1.1.0 .
+docker tag pyjoal:1.1.0 pyjoal:latest
+docker push pyjoal:1.1.0
+docker push pyjoal:latest
 ```
 
 ## 🎨 Conventions de Code
@@ -329,4 +329,4 @@ async def add_torrent(file: UploadFile):
 4. Pushez vers votre fork
 5. Ouvrez une Pull Request
 
-**Merci de contribuer à JOAL Modern ! 🎉**
+**Merci de contribuer à PyJOAL ! 🎉**

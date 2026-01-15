@@ -1,8 +1,8 @@
 #!/bin/bash
-# Diagnostic script for JOAL Modern client issues
+# Diagnostic script for PyJOAL client issues
 
 echo "╔════════════════════════════════════════════════════════════╗"
-echo "║       JOAL Modern - Client Diagnostics                    ║"
+echo "║       PyJOAL - Client Diagnostics                    ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -42,18 +42,18 @@ echo "  2. Docker Container Check"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 if [ "$DOCKER_RUNNING" = true ]; then
-    if docker ps --filter "name=joal-modern" --format "{{.Names}}" | grep -q "joal-modern"; then
-        echo "✅ Container 'joal-modern' is running"
+    if docker ps --filter "name=pyjoal" --format "{{.Names}}" | grep -q "pyjoal"; then
+        echo "✅ Container 'pyjoal' is running"
         
         echo ""
         echo "Container client files:"
-        docker exec joal-modern ls -lh /app/clients/*.client 2>/dev/null | awk '{print "   • " $9 " (" $5 ")"}'
+        docker exec pyjoal ls -lh /app/clients/*.client 2>/dev/null | awk '{print "   • " $9 " (" $5 ")"}'
         
         echo ""
         echo "Recent container logs:"
-        docker logs joal-modern --tail 30 2>&1 | grep -E "(client|Client|📱|✅|❌|⚠️)" | tail -10
+        docker logs pyjoal --tail 30 2>&1 | grep -E "(client|Client|📱|✅|❌|⚠️)" | tail -10
     else
-        echo "⚠️  Container 'joal-modern' is not running"
+        echo "⚠️  Container 'pyjoal' is not running"
         echo "   Run: docker-compose up -d"
     fi
 else
@@ -97,7 +97,7 @@ if [ "$CLIENT_COUNT" -lt 6 ]; then
     echo "   Action: python update_clients.py"
 fi
 
-if [ "$DOCKER_RUNNING" = true ] && ! docker ps --filter "name=joal-modern" --format "{{.Names}}" | grep -q "joal-modern"; then
+if [ "$DOCKER_RUNNING" = true ] && ! docker ps --filter "name=pyjoal" --format "{{.Names}}" | grep -q "pyjoal"; then
     echo "⚠️  Container not running"
     echo "   Action: docker-compose up -d"
 fi
@@ -116,7 +116,7 @@ echo "  $ docker-compose build --no-cache"
 echo "  $ docker-compose up -d"
 echo ""
 echo "Force update in running container:"
-echo "  $ docker exec joal-modern python /app/update_clients.py"
+echo "  $ docker exec pyjoal python /app/update_clients.py"
 echo "  $ docker-compose restart"
 echo ""
 

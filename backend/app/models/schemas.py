@@ -102,4 +102,4 @@ class SuccessResponse(BaseModel):
     """Success response"""
     success: bool = Field(default=True)
     message: str = Field(description="Success message")
-    data: Optional[dict] = Field(description="Response data")
+    data: Optional[dict] = Field(default=None, description="Response data")

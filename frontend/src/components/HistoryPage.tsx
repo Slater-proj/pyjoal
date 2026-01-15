@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Activity, AlertCircle, CheckCircle, X, Plus, Minus, Settings as SettingsIcon, Trash2, RefreshCw } from 'lucide-react'
+import { Activity, AlertCircle, CheckCircle, X, Plus, Minus, Settings as SettingsIcon, Trash2, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react'
 import axios from 'axios'
 
 interface HistoryEntry {
@@ -7,6 +7,14 @@ interface HistoryEntry {
   eventType: string
   message: string
   data: Record<string, any>
+}
+
+interface HistoryResponse {
+  entries: HistoryEntry[]
+  total: number
+  page: number
+  per_page: number
+  total_pages: number
 }
 
 const EVENT_ICONS: Record<string, any> = {
@@ -33,16 +41,22 @@ export default function HistoryPage() {
   const [entries, setEntries] = useState<HistoryEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState<string>('all')
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
+  const perPage = 50
 
   const fetchHistory = async () => {
     setLoading(true)
     try {
-      const params: any = { limit: 200 }
+      const params: any = { page, per_page: perPage }
       if (filter !== 'all') {
         params.event_type = filter
       }
-      const { data } = await axios.get('/api/history', { params })
+      const { data } = await axios.get<HistoryResponse>('/api/history', { params })
       setEntries(data.entries)
+      setTotal(data.total)
+      setTotalPages(data.total_pages)
     } catch (error) {
       console.error('Failed to fetch history:', error)
     } finally {
@@ -64,7 +78,7 @@ export default function HistoryPage() {
     fetchHistory()
     const interval = setInterval(fetchHistory, 10000)
     return () => clearInterval(interval)
-  }, [filter])
+  }, [filter, page])
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp)
@@ -92,7 +106,7 @@ export default function HistoryPage() {
           <div>
             <h2 className="text-xl font-bold text-white">Event History</h2>
             <p className="text-slate-400 text-sm mt-1">
-              {entries.length} events
+              {total} events{totalPages > 1 && ` - Page ${page} of ${totalPages}`}
             </p>
           </div>
           <div className="flex gap-2">
@@ -176,6 +190,34 @@ export default function HistoryPage() {
             })
           )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="px-6 py-4 border-t border-slate-700 flex items-center justify-between">
+            <div className="text-sm text-slate-400">
+              Showing {(page - 1) * perPage + 1} to {Math.min(page * perPage, total)} of {total}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-slate-700 hover:bg-slate-600 text-white"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <span className="text-sm text-slate-300 px-3">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-slate-700 hover:bg-slate-600 text-white"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

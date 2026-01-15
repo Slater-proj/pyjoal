@@ -185,7 +185,8 @@ class TrackerAnnouncer:
             async with httpx.AsyncClient(
                 headers=headers,
                 proxies=proxies,
-                timeout=30.0
+                timeout=30.0,
+                verify=False  # Disable SSL verification for private trackers
             ) as client:
                 logger.debug(f"   Sending HTTP GET request...")
                 response = await client.get(url)

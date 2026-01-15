@@ -1,7 +1,7 @@
 services:
-  joal-modern:
+  pyjoal:
     build: .
-    container_name: joal-modern
+    container_name: pyjoal
     restart: unless-stopped
 
     ports:

@@ -14,10 +14,11 @@ import logging
 from pathlib import Path
 
 from app.core.config import settings
-from app.api import config, torrents, client, history
+from app.api import config, torrents, client, history, logs
 from app.services.websocket_manager import websocket_manager
 from app.services.seeder_service import seeder_service
 from app.services.history_service import history_service, EventType
+from app.services.log_stream_service import log_handler
 
 # Configure logging
 logging.basicConfig(
@@ -25,7 +26,8 @@ logging.basicConfig(
     format='%(asctime)s | %(levelname)-8s | %(name)-25s | %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
-        logging.StreamHandler(sys.stdout)
+        logging.StreamHandler(sys.stdout),
+        log_handler  # Add our custom handler for log streaming
     ]
 )
 
@@ -92,6 +94,9 @@ async def lifespan(app: FastAPI):
     # Initialize seeder service
     await seeder_service.initialize()
     
+    # Start log broadcasting for WebSocket
+    await websocket_manager.start_log_broadcasting()
+    
     logger.info("=" * 80)
     logger.info(f"✅ PyJOAL started successfully on port {settings.PORT}")
     logger.info(f"🌐 UI available at: http://localhost:{settings.PORT}/{settings.UI_PATH_PREFIX}/ui/")
@@ -104,6 +109,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("=" * 80)
     logger.info("🛑 Shutting down PyJOAL...")
+    await websocket_manager.stop_log_broadcasting()
     await seeder_service.stop()
     logger.info("✅ Shutdown complete")
     logger.info("=" * 80)
@@ -131,6 +137,7 @@ app.include_router(config.router, prefix="/api", tags=["Configuration"])
 app.include_router(torrents.router, prefix="/api", tags=["Torrents"])
 app.include_router(client.router, prefix="/api", tags=["Client Control"])
 app.include_router(history.router, prefix="/api", tags=["History"])
+app.include_router(logs.router, prefix="/api", tags=["Logs"])
 
 
 @app.get("/health")

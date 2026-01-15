@@ -39,7 +39,7 @@ async def update_clients_on_startup():
     
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 Starting JOAL Modern...")
+    print("🚀 Starting PyJOAL...")
     
     # 🆕 Mise à jour des clients depuis GitHub
     await update_clients_on_startup()

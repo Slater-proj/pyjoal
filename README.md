@@ -1,4 +1,4 @@
-# JOAL Modern - BitTorrent Ratio Client
+# PyJOAL - BitTorrent Ratio Client
 
 Une réécriture moderne et maintenable de JOAL (Jack Of All Leechers) - Un client qui émule différents clients BitTorrent pour maintenir un ratio de seed.
 
@@ -44,8 +44,8 @@ docker run -d \
   -v ./clients:/app/clients \
   -e SECRET_TOKEN="votre_token_secret" \
   -e UI_PATH_PREFIX="chemin_secret" \
-  --name joal-modern \
-  joal-modern:latest
+  --name pyjoal \
+  pyjoal:latest
 ```
 
 > 💡 **Les clients BitTorrent sont automatiquement mis à jour au démarrage du conteneur !**  
@@ -57,8 +57,8 @@ docker run -d \
 version: '3.8'
 services:
   joal:
-    image: joal-modern:latest
-    container_name: joal-modern
+    image: pyjoal:latest
+    container_name: pyjoal
     ports:
       - "8080:8080"
     volumes:
@@ -178,7 +178,7 @@ Le script récupère automatiquement les dernières versions depuis GitHub pour 
 ## 🐳 Build Docker
 
 ```bash
-docker build -t joal-modern:latest .
+docker build -t pyjoal:latest .
 ```
 
 ## 🧪 Tests
@@ -195,7 +195,7 @@ npm test
 
 ## 📊 Différences avec JOAL Original
 
-| Aspect | JOAL Original | JOAL Modern |
+| Aspect | JOAL Original | PyJOAL |
 |--------|---------------|-------------|
 | Langage | Java + Spring | Python + FastAPI |
 | Frontend | JavaScript vanilla | React 18 + Vite |
@@ -211,7 +211,7 @@ npm test
 ### Structure du Projet
 
 ```
-joal-modern/
+pyjoal/
 ├── backend/
 │   ├── app/
 │   │   ├── api/          # Endpoints REST
@@ -253,7 +253,7 @@ Apache 2.0 - Voir le fichier LICENSE
 
 ## ⚠️ Disclaimer
 
-JOAL Modern n'est pas conçu pour aider ou encourager le téléchargement de matériel illégal. Vous devez respecter les lois applicables dans votre pays. L'auteur ne peut être tenu responsable des activités illégales réalisées avec cet outil.
+PyJOAL n'est pas conçu pour aider ou encourager le téléchargement de matériel illégal. Vous devez respecter les lois applicables dans votre pays. L'auteur ne peut être tenu responsable des activités illégales réalisées avec cet outil.
 
 ## 🙏 Remerciements
 

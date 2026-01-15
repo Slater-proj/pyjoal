@@ -1,11 +1,11 @@
-# 🎉 JOAL Modern - Projet Complété !
+# 🎉 PyJOAL - Projet Complété !
 
 ## ✅ Ce qui a été créé
 
 ### 📦 Structure Complète du Projet
 
 ```
-joal-modern/
+pyjoal/
 ├── backend/                    # Backend Python/FastAPI
 │   ├── app/
 │   │   ├── api/               # Endpoints REST
@@ -175,7 +175,7 @@ joal-modern/
 
 ## 📊 Améliorations vs JOAL Original
 
-| Aspect | JOAL Original | JOAL Modern | Amélioration |
+| Aspect | JOAL Original | PyJOAL | Amélioration |
 |--------|---------------|-------------|--------------|
 | Langage Backend | Java + Spring | Python + FastAPI | ✅ Plus simple, moderne |
 | Frontend | JavaScript vanilla | React 18 + TypeScript | ✅ Componentisé, typé |
@@ -197,7 +197,7 @@ joal-modern/
 
 1. **Configurez l'environnement**
 ```bash
-cd joal-modern
+cd pyjoal
 cp .env.example .env
 # Éditez .env avec vos valeurs SECRET_TOKEN et UI_PATH_PREFIX
 ```
@@ -289,7 +289,7 @@ L'interface comprend:
 
 Logs backend:
 ```bash
-docker-compose logs -f joal-modern
+docker-compose logs -f pyjoal
 ```
 
 Mode debug:
@@ -314,7 +314,7 @@ Pour les questions:
 
 ## ⚠️ Disclaimer Important
 
-JOAL Modern n'est pas conçu pour encourager le téléchargement illégal. 
+PyJOAL n'est pas conçu pour encourager le téléchargement illégal. 
 Utilisez-le de manière responsable et légale. L'auteur décline toute 
 responsabilité pour une utilisation inappropriée de cet outil.
 

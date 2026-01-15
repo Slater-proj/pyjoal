@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ================================================
-echo   JOAL Modern - Setup ^& Installation Script
+echo   PyJOAL - Setup ^& Installation Script
 echo ================================================
 echo.
 
@@ -61,7 +61,7 @@ docker-compose build
 if %ERRORLEVEL% EQU 0 (
     echo [OK] Build successful!
     echo.
-    echo [START] Starting JOAL Modern...
+    echo [START] Starting PyJOAL...
     docker-compose up -d
     
     timeout /t 3 /nobreak >nul
@@ -73,7 +73,7 @@ if %ERRORLEVEL% EQU 0 (
     
     echo.
     echo ================================================
-    echo   JOAL Modern is now running! 🎉
+    echo   PyJOAL is now running! 🎉
     echo ================================================
     echo.
     echo Access the web UI at:
@@ -83,7 +83,7 @@ if %ERRORLEVEL% EQU 0 (
     echo http://localhost:!PORT!/docs
     echo.
     echo To view logs:
-    echo docker-compose logs -f joal-modern
+    echo docker-compose logs -f pyjoal
     echo.
     echo To stop:
     echo docker-compose down
@@ -143,7 +143,7 @@ goto end
 :docker_build
 echo.
 echo [BUILD] Building Docker image only...
-docker build -t joal-modern:latest .
+docker build -t pyjoal:latest .
 
 if %ERRORLEVEL% EQU 0 (
     echo [OK] Build successful!

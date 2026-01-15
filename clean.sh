@@ -1,7 +1,7 @@
 #!/bin/bash
-# Clean script for JOAL Modern project
+# Clean script for PyJOAL project
 
-echo "🧹 Nettoyage du projet JOAL Modern..."
+echo "🧹 Nettoyage du projet PyJOAL..."
 
 # Remove Python cache
 echo "  → Suppression des caches Python..."

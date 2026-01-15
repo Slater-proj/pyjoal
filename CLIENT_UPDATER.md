@@ -21,7 +21,7 @@ When starting the Docker container, client definitions are **automatically updat
 ```bash
 docker-compose up -d
 # or
-docker run joal-modern:latest
+docker run pyjoal:latest
 ```
 
 The container will fetch the latest versions on startup and log:
@@ -35,7 +35,7 @@ The container will fetch the latest versions on startup and log:
 To update clients in a running container:
 
 ```bash
-docker exec joal-modern python /app/update_clients.py
+docker exec pyjoal python /app/update_clients.py
 ```
 
 ### Manual Update (Local)

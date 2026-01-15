@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Save, RefreshCw } from 'lucide-react'
+import { Save, RefreshCw, HelpCircle } from 'lucide-react'
 import { useStore } from '../store/useStore'
+import axios from 'axios'
 
 export default function SettingsPage() {
   const { config, clients, fetchClients, updateConfig } = useStore()
@@ -42,9 +43,18 @@ export default function SettingsPage() {
     setFormData(prev => ({ ...prev, [field]: value }))
   }
 
-  const handleReset = () => {
-    if (config) {
-      setFormData(config)
+  const handleReset = async () => {
+    if (!confirm('Reset configuration to default values?')) return
+    setSaving(true)
+    try {
+      await axios.post('/api/config/reset')
+      // Fetch updated config
+      const { data } = await axios.get('/api/config')
+      setFormData(data)
+    } catch (error) {
+      console.error('Failed to reset config:', error)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -68,7 +78,7 @@ export default function SettingsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-slate-400 mb-2">
-                  Minimum (kB/s)
+                  Minimum (KB/s)
                 </label>
                 <input
                   type="number"
@@ -76,12 +86,11 @@ export default function SettingsPage() {
                   onChange={(e) => handleChange('minUploadRate', parseInt(e.target.value))}
                   className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   min="0"
-                  max="10000"
                 />
               </div>
               <div>
                 <label className="block text-sm text-slate-400 mb-2">
-                  Maximum (kB/s)
+                  Maximum (KB/s)
                 </label>
                 <input
                   type="number"
@@ -89,8 +98,8 @@ export default function SettingsPage() {
                   onChange={(e) => handleChange('maxUploadRate', parseInt(e.target.value))}
                   className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   min="0"
-                  max="10000"
                 />
+                <p className="text-slate-500 text-xs mt-1">No limit - set as high as needed</p>
               </div>
             </div>
           </div>
@@ -116,8 +125,15 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-slate-400 mb-2">
-                  Ratio Target (-1 = never)
+                <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                  Ratio Target
+                  <div className="group relative">
+                    <HelpCircle className="w-4 h-4 text-slate-500 cursor-help" />
+                    <div className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg">
+                      Set -1 for unlimited seeding.<br/>
+                      Or set ratio (e.g. 2.0 = 200% upload)
+                    </div>
+                  </div>
                 </label>
                 <input
                   type="number"
@@ -125,13 +141,21 @@ export default function SettingsPage() {
                   value={formData.uploadRatioTarget}
                   onChange={(e) => handleChange('uploadRatioTarget', parseFloat(e.target.value))}
                   className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="-1 = unlimited"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm text-slate-400 mb-2">
-                Seeding Duration Limit (hours, -1 = no limit)
+              <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                Seeding Duration Limit (hours)
+                <div className="group relative">
+                  <HelpCircle className="w-4 h-4 text-slate-500 cursor-help" />
+                  <div className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg">
+                    Set -1 for unlimited duration.<br/>
+                    Examples: 24h = 1 day, 168h = 1 week
+                  </div>
+                </div>
               </label>
               <input
                 type="number"
@@ -139,10 +163,10 @@ export default function SettingsPage() {
                 value={formData.seedingDurationLimit}
                 onChange={(e) => handleChange('seedingDurationLimit', parseFloat(e.target.value))}
                 className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="-1 = no limit, or enter hours (e.g. 24, 48, 168)"
+                placeholder="-1 = unlimited"
               />
               <p className="text-slate-500 text-xs mt-1">
-                Torrents will be archived after this duration. Examples: 24h = 1 day, 168h = 1 week
+                Torrents will be archived after this duration
               </p>
             </div>
 
@@ -195,10 +219,11 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={handleReset}
-              className="flex items-center gap-2 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors"
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors disabled:opacity-50"
             >
               <RefreshCw className="w-4 h-4" />
-              Reset
+              Reset to Defaults
             </button>
             <button
               type="submit"

@@ -16,7 +16,7 @@
 docker-compose down -v
 
 # Supprimer l'image existante
-docker rmi joal-modern-joal-modern 2>/dev/null || true
+docker rmi pyjoal-pyjoal 2>/dev/null || true
 
 # Vérifier les fichiers locaux
 ls -la clients/
@@ -30,7 +30,7 @@ ls -la clients/
 docker-compose build --no-cache
 
 # Vérifier que le build a réussi
-docker images | grep joal-modern
+docker images | grep pyjoal
 ```
 
 ### Étape 3: Démarrer avec logs
@@ -40,7 +40,7 @@ docker images | grep joal-modern
 docker-compose up -d
 
 # Suivre les logs en temps réel
-docker-compose logs -f joal-modern
+docker-compose logs -f pyjoal
 ```
 
 ### Étape 4: Vérifier les logs de démarrage
@@ -48,7 +48,7 @@ docker-compose logs -f joal-modern
 **Logs attendus:**
 
 ```
-🚀 Starting JOAL Modern...
+🚀 Starting PyJOAL...
 
 🔄 Updating BitTorrent client definitions...
 📥 Checking qBittorrent...
@@ -83,7 +83,7 @@ INFO:     Started server process [1]
 INFO:     Waiting for application startup.
 🐳 Running in Docker, client update handled by entrypoint
 📱 Client chargé: qBittorrent 4.6.0
-✅ JOAL Modern started on port 8080
+✅ PyJOAL started on port 8080
 🌐 UI available at: /joal/ui/
 ```
 
@@ -155,7 +155,7 @@ curl http://localhost:8080/api/clients | python -m json.tool
 
 7. Vérifier les logs après redémarrage:
    ```bash
-   docker-compose logs joal-modern | grep "Client chargé"
+   docker-compose logs pyjoal | grep "Client chargé"
    # Doit afficher: 📱 Client chargé: qBittorrent 5.1.4
    ```
 
@@ -167,7 +167,7 @@ curl http://localhost:8080/api/clients | python -m json.tool
 
 ```bash
 # 1. Modifier config.json pour pointer vers un client inexistant
-docker exec joal-modern sh -c "echo '{
+docker exec pyjoal sh -c "echo '{
   \"minUploadRate\": 30,
   \"maxUploadRate\": 160,
   \"simultaneousSeed\": 20,
@@ -181,7 +181,7 @@ docker exec joal-modern sh -c "echo '{
 docker-compose restart
 
 # 3. Vérifier les logs
-docker-compose logs joal-modern | tail -20
+docker-compose logs pyjoal | tail -20
 
 # Output attendu:
 # ⚠️  Client configuré 'qbittorrent-99.0.0.client' introuvable
@@ -195,17 +195,17 @@ docker-compose logs joal-modern | tail -20
 
 ```bash
 # 1. Supprimer tous les clients générés (garder juste les 3 de base)
-docker exec joal-modern sh -c "rm -f /app/clients/*-5.*.client /app/clients/*-2.2.*.client /app/clients/*-4.0.6.client"
+docker exec pyjoal sh -c "rm -f /app/clients/*-5.*.client /app/clients/*-2.2.*.client /app/clients/*-4.0.6.client"
 
 # 2. Vérifier
-docker exec joal-modern ls /app/clients
+docker exec pyjoal ls /app/clients
 # Doit montrer seulement 3 fichiers
 
 # 3. Forcer l'update
-docker exec joal-modern python /app/update_clients.py
+docker exec pyjoal python /app/update_clients.py
 
 # 4. Vérifier
-docker exec joal-modern ls /app/clients
+docker exec pyjoal ls /app/clients
 # Doit montrer 6 fichiers
 
 # 5. Redémarrer pour recharger
@@ -283,7 +283,7 @@ docker-compose up -d
 **Solution:** C'est normal ! Le système bascule automatiquement
 ```bash
 # Vérifier les logs
-docker-compose logs joal-modern | grep "Client"
+docker-compose logs pyjoal | grep "Client"
 
 # Output attendu:
 # ⚠️  Client configuré 'xxx' introuvable

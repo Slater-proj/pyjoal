@@ -1,7 +1,7 @@
 # 📁 Structure du Projet
 
 ```
-joal-modern/
+pyjoal/
 ├── 📄 Configuration & Documentation
 │   ├── README.md              # Documentation principale
 │   ├── QUICKSTART.md          # Guide de démarrage rapide
@@ -132,7 +132,7 @@ Volumes Docker définis dans `docker-compose.yml` :
 ```bash
 # Clone
 git clone <repo>
-cd joal-modern
+cd pyjoal
 
 # Configuration
 cp .env.example .env
