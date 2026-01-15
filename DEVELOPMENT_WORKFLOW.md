@@ -61,15 +61,21 @@ gh pr create --title "Add torrent scheduling" --body "Description des changement
 
 ### 📊 Monitoring des Workflows
 
-#### Tests sur branches feature
+#### **🌿 Branches feature uniquement**
 - **Workflow** : `Tests & Validation` 
-- **Déclenché** : Sur tous les `git push`
-- **Objectif** : Valider que le code peut être mergé
+- **Déclenché** : Sur `git push` (toutes branches sauf master)
+- **Objectif** : Valider que le code peut être mergé vers master
+- **Jobs** : test-backend + test-frontend + lint + security
 
-#### Release sur master  
+#### **🚀 Branche master uniquement**
 - **Workflow** : `Release & Deploy`
-- **Déclenché** : Sur `git push` vers `master` uniquement
-- **Objectif** : Déploiement et release automatique
+- **Déclenché** : Sur `git push` vers master uniquement
+- **Objectif** : Pipeline complet de production
+- **Jobs** : test-backend + test-frontend + build-docker + push-dockerhub + auto-release
+
+**💡 Logique simplifiée :**
+- Branches feature → Tests seulement
+- Master → Tests + Build + Release + Deploy automatique
 
 ### 🛠️ Configuration Protection Branche
 
