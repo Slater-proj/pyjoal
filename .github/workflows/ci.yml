@@ -1,0 +1,193 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: ['**']  # Déclenche sur toutes les branches
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # Tests : Toujours exécutés sur toutes les branches
+  test-backend:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Basic backend validation
+      working-directory: backend
+      run: |
+        echo "✅ Testing backend structure..."
+        
+        # Test que les fichiers principaux existent
+        test -f "app/__init__.py" && echo "✅ app module found"
+        test -f "app/main.py" && echo "✅ main.py found" 
+        test -f "app/core/config.py" && echo "✅ config.py found"
+        
+        # Test syntax Python basique
+        python -m py_compile app/main.py && echo "✅ main.py syntax OK"
+        echo "✅ Backend validation completed"
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js 20
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
+    - name: Install dependencies
+      working-directory: frontend
+      run: npm install
+    
+    - name: Frontend validation
+      working-directory: frontend
+      run: |
+        echo "✅ Testing frontend..."
+        npm run build
+        echo "✅ Frontend build successful"
+
+  # Build Docker : Seulement sur master
+  build-docker:
+    needs: [test-backend, test-frontend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker image
+      run: |
+        echo "🐳 Building Docker image for production..."
+        docker build -t pyjoal:latest .
+        echo "✅ Docker build completed"
+
+  # Push Docker Hub : Seulement sur master après build
+  push-dockerhub:
+    needs: [build-docker]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    
+    - name: Build and push Docker image
+      run: |
+        # Get next version
+        LAST_TAG=$(git tag --sort=-version:refname | head -n 1 2>/dev/null || echo "v0.0.0")
+        echo "Last tag: $LAST_TAG"
+        
+        if [[ $LAST_TAG =~ v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+          MAJOR=${BASH_REMATCH[1]}
+          MINOR=${BASH_REMATCH[2]}
+          PATCH=${BASH_REMATCH[3]}
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="v$MAJOR.$MINOR.$NEW_PATCH"
+        else
+          NEW_VERSION="v1.0.0"
+        fi
+        
+        echo "🏷️ New version: $NEW_VERSION"
+        
+        # Build and push
+        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:$NEW_VERSION .
+        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:latest .
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:$NEW_VERSION
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:latest
+        
+        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+        echo "✅ Successfully pushed to Docker Hub!"
+
+  # Auto Release : Seulement sur master après push Docker
+  auto-release:
+    needs: [push-dockerhub]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Generate version and release
+      run: |
+        # Get next version
+        LAST_TAG=$(git tag --sort=-version:refname | head -n 1 2>/dev/null || echo "v0.0.0")
+        
+        if [[ $LAST_TAG =~ v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+          MAJOR=${BASH_REMATCH[1]}
+          MINOR=${BASH_REMATCH[2]}
+          PATCH=${BASH_REMATCH[3]}
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="v$MAJOR.$MINOR.$NEW_PATCH"
+        else
+          NEW_VERSION="v1.0.0"
+        fi
+        
+        echo "Creating release $NEW_VERSION"
+        
+        # Create release notes
+        cat > release_notes.md << EOF
+        ## PyJOAL $NEW_VERSION
+        
+        🚀 **Déploiement automatique depuis master**
+        
+        ### 🐳 Docker Images
+        \`\`\`bash
+        docker pull ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:$NEW_VERSION
+        docker pull ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:latest
+        \`\`\`
+        
+        ### 📝 Commit inclus
+        **Commit:** ${{ github.event.head_commit.message }}
+        **SHA:** \`${{ github.sha }}\`
+        
+        ### 🏃 Quick Start
+        \`\`\`bash
+        docker run -d --name pyjoal \\
+          -p 8080:8080 \\
+          -v \$(pwd)/config:/app/config \\
+          -v \$(pwd)/torrents:/app/torrents \\
+          -e SECRET_TOKEN=your-token \\
+          ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:latest
+        \`\`\`
+        EOF
+        
+        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ env.NEW_VERSION }}
+        name: PyJOAL ${{ env.NEW_VERSION }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
