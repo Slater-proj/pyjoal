@@ -47,19 +47,16 @@ log_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
-# Fonction de confirmation améliorée avec saisie flexible
+# Fonction de confirmation simplifiée et sécurisée
 demander_confirmation() {
     local prompt="$1"
     local default="${2:-non}"
     local response
     
     while true; do
-        if [[ "$default" == "oui" ]]; then
-            echo -n -e "${YELLOW}$prompt (Oui/non): ${NC}"
-        else
-            echo -n -e "${YELLOW}$prompt (oui/Non): ${NC}"
-        fi
+        printf "\n%s (oui/non) [default: %s]: " "$prompt" "$default"
         
+        # Lecture simple sans options
         read -r response
         
         # Si vide, utiliser la valeur par défaut
@@ -67,19 +64,20 @@ demander_confirmation() {
             response="$default"
         fi
         
-        # Normaliser la réponse
-        response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
+        # Normaliser
+        response=$(printf "%s" "$response" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
         
         case "$response" in
-            o|oui|y|yes)
-                return 0  # true
+            oui|yes)
+                printf "→ OUI\n"
+                return 0
                 ;;
-            n|non|no)
-                return 1  # false
+            non|no)
+                printf "→ NON\n"
+                return 1
                 ;;
             *)
-                echo -e "${RED}Veuillez répondre par 'oui' ou 'non' (o/n)${NC}"
-                continue
+                printf "Erreur: Tapez 'oui' ou 'non'\n"
                 ;;
         esac
     done
@@ -438,14 +436,20 @@ update_clients() {
 clean_git_repo() {
     log_step "Nettoyage avancé du dépôt Git..."
     
+    # Désactiver le pager Git pour éviter l'ouverture d'un éditeur
+    export GIT_PAGER=cat
+    export PAGER=cat
+    
     echo ""
     echo -e "${CYAN}=== OPTIONS DE NETTOYAGE ===${NC}"
     
     # Option 1: Supprimer les fichiers non suivis
     echo ""
     echo -e "${YELLOW}Fichiers non suivis qui seraient supprimés :${NC}"
-    if git clean -xdn 2>/dev/null | grep -q "Would remove"; then
-        git clean -xdn 2>/dev/null
+    local git_clean_output
+    git_clean_output=$(git clean -xdn 2>/dev/null)
+    if echo "$git_clean_output" | grep -q "Would remove"; then
+        echo "$git_clean_output"
         echo ""
         if demander_confirmation "Supprimer ces fichiers non suivis ?"; then
             clean_untracked="oui"
@@ -460,8 +464,10 @@ clean_git_repo() {
     # Option 2: Reset --hard
     echo ""
     echo -e "${YELLOW}Fichiers modifiés qui seraient remis à l'état de la branche :${NC}"
-    if git diff --name-only HEAD 2>/dev/null | grep -q "."; then
-        git diff --name-only HEAD 2>/dev/null
+    local git_diff_output
+    git_diff_output=$(git diff --name-only HEAD 2>/dev/null)
+    if [[ -n "$git_diff_output" ]]; then
+        echo "$git_diff_output"
         echo ""
         echo -e "${RED}⚠️  ATTENTION: git reset --hard va PERDRE toutes vos modifications non committées !${NC}"
         if demander_confirmation "Remettre tous les fichiers à l'état de la branche Git ?"; then
@@ -528,8 +534,12 @@ clean_git_repo() {
         log_success "Nettoyage Git terminé"
     else
         log_warn "Nettoyage annulé"
+        unset GIT_PAGER PAGER
         return 1
     fi
+    
+    # Remettre l'environnement Git normal
+    unset GIT_PAGER PAGER
 }
 
 # Fonction d'installation complète avec tests

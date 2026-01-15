@@ -55,12 +55,13 @@ ask_confirmation() {
     
     while true; do
         if [[ "$default" == "yes" ]]; then
-            echo -n -e "${YELLOW}$prompt (Yes/no): ${NC}"
+            printf "${YELLOW}%s (Yes/no): ${NC}" "$prompt"
         else
-            echo -n -e "${YELLOW}$prompt (yes/No): ${NC}"
+            printf "${YELLOW}%s (yes/No): ${NC}" "$prompt"
         fi
         
-        read -r response
+        # Safe reading without special options
+        IFS= read -r response
         
         # If empty, use default
         if [[ -z "$response" ]]; then
@@ -68,18 +69,17 @@ ask_confirmation() {
         fi
         
         # Normalize response
-        response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
+        response=$(printf "%s" "$response" | tr '[:upper:]' '[:lower:]')
         
         case "$response" in
-            y|yes|o|oui)
-                return 0  # true
+            yes|oui)
+                return 0
                 ;;
-            n|no|non)
-                return 1  # false
+            no|non)
+                return 1
                 ;;
             *)
-                echo -e "${RED}Please answer 'yes' or 'no' (y/n)${NC}"
-                continue
+                printf "${RED}Please answer 'yes' or 'no'${NC}\n"
                 ;;
         esac
     done
@@ -440,14 +440,20 @@ update_clients() {
 clean_git_repo() {
     log_step "Advanced Git repository cleanup..."
     
+    # Disable Git pager to avoid opening editor
+    export GIT_PAGER=cat
+    export PAGER=cat
+    
     echo ""
     echo -e "${CYAN}=== CLEANUP OPTIONS ===${NC}"
     
     # Option 1: Remove untracked files
     echo ""
     echo -e "${YELLOW}Untracked files that would be removed:${NC}"
-    if git clean -xdn 2>/dev/null | grep -q "Would remove"; then
-        git clean -xdn 2>/dev/null
+    local git_clean_output
+    git_clean_output=$(git clean -xdn 2>/dev/null)
+    if echo "$git_clean_output" | grep -q "Would remove"; then
+        echo "$git_clean_output"
         echo ""
         if ask_confirmation "Remove these untracked files?"; then
             clean_untracked="yes"
@@ -462,8 +468,10 @@ clean_git_repo() {
     # Option 2: Reset --hard
     echo ""
     echo -e "${YELLOW}Modified files that would be reset to branch state:${NC}"
-    if git diff --name-only HEAD 2>/dev/null | grep -q "."; then
-        git diff --name-only HEAD 2>/dev/null
+    local git_diff_output
+    git_diff_output=$(git diff --name-only HEAD 2>/dev/null)
+    if [[ -n "$git_diff_output" ]]; then
+        echo "$git_diff_output"
         echo ""
         echo -e "${RED}⚠️  WARNING: git reset --hard will LOSE all uncommitted changes!${NC}"
         if ask_confirmation "Reset all files to Git branch state?"; then
@@ -533,8 +541,12 @@ clean_git_repo() {
         log_success "Git cleanup completed"
     else
         log_warn "Cleanup cancelled"
+        unset GIT_PAGER PAGER
         return 1
     fi
+    
+    # Reset Git environment to normal
+    unset GIT_PAGER PAGER
 }
 
 # Full setup with tests function
