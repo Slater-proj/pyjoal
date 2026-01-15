@@ -4,7 +4,6 @@ Torrents API Endpoints
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from typing import List
 from pathlib import Path
-import shutil
 
 from app.models.schemas import TorrentInfo, SuccessResponse
 from app.services.seeder_service import seeder_service

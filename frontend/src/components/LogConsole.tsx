@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { Terminal, X, ChevronDown, Trash2, Pause, Play } from 'lucide-react'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { Terminal, X, ChevronDown, Trash2, Pause, Play, GripHorizontal } from 'lucide-react'
 import { useStore } from '../store/useStore'
 
 interface LogEntry {
@@ -14,9 +14,46 @@ export default function LogConsole() {
   const [isOpen, setIsOpen] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [autoScroll, setAutoScroll] = useState(true)
+  const [height, setHeight] = useState(256) // hauteur initiale en pixels
+  const [isResizing, setIsResizing] = useState(false)
   const logsEndRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const { ws } = useStore()
+
+  // Gestion du redimensionnement
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+  }, [])
+
+  useEffect(() => {
+    if (!isResizing) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newHeight = window.innerHeight - e.clientY
+      // Limiter entre 150px et 80% de la hauteur de l'écran
+      const clampedHeight = Math.min(Math.max(newHeight, 150), window.innerHeight * 0.8)
+      setHeight(clampedHeight)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    
+    // Empêcher la sélection de texte pendant le resize
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'ns-resize'
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+    }
+  }, [isResizing])
 
   useEffect(() => {
     // Fetch recent logs on mount
@@ -62,8 +99,10 @@ export default function LogConsole() {
   }, [ws, isPaused])
 
   useEffect(() => {
-    if (autoScroll && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    // Scroll automatiquement UNIQUEMENT si l'utilisateur est déjà en bas
+    if (autoScroll && containerRef.current) {
+      const { scrollHeight } = containerRef.current
+      containerRef.current.scrollTop = scrollHeight
     }
   }, [logs, autoScroll])
 
@@ -71,8 +110,13 @@ export default function LogConsole() {
     if (!containerRef.current) return
     
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50
-    setAutoScroll(isAtBottom)
+    // Considérer qu'on est en bas si on est à moins de 100px du bas
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 100
+    
+    // Mettre à jour l'état auto-scroll seulement si ça change
+    if (isAtBottom !== autoScroll) {
+      setAutoScroll(isAtBottom)
+    }
   }
 
   const clearLogs = () => {
@@ -115,11 +159,9 @@ export default function LogConsole() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-slate-900 border-t border-slate-700 shadow-2xl"
-      style={{ height: '40vh', maxHeight: '600px' }}
-    >
+    <div className="fixed bottom-0 left-0 right-0 h-64 z-50 bg-slate-900 border-t border-slate-700 shadow-2xl flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700">
+      <div className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 flex-shrink-0">
         <div className="flex items-center gap-3">
           <Terminal className="w-5 h-5 text-green-400" />
           <h3 className="text-white font-semibold">Application Logs</h3>
@@ -131,14 +173,16 @@ export default function LogConsole() {
           {!autoScroll && (
             <button
               onClick={() => {
+                if (containerRef.current) {
+                  containerRef.current.scrollTop = containerRef.current.scrollHeight
+                }
                 setAutoScroll(true)
-                logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
               }}
               className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600/20 text-blue-400 rounded hover:bg-blue-600/30"
-              title="Resume auto-scroll"
+              title="Scroll to bottom"
             >
               <ChevronDown className="w-3 h-3" />
-              Auto-scroll
+              Bas
             </button>
           )}
           
@@ -179,21 +223,20 @@ export default function LogConsole() {
       <div 
         ref={containerRef}
         onScroll={handleScroll}
-        className="overflow-y-auto p-3 font-mono text-xs"
-        style={{ height: 'calc(100% - 48px)' }}
+        className="flex-1 overflow-y-scroll p-2 font-mono text-xs"
       >
         {logs.length === 0 ? (
           <div className="text-center text-slate-500 py-8">
             No logs yet. Logs will appear here in real-time.
           </div>
         ) : (
-          <div className="space-y-0.5">
+          <div className="space-y-0">
             {logs.map((log, index) => (
-              <div key={index} className="flex gap-2 hover:bg-slate-800/50 px-2 py-1 rounded">
-                <span className="text-slate-500 flex-shrink-0 w-32">
+              <div key={index} className="flex gap-2 hover:bg-slate-800/50 px-1.5 py-0.5 rounded text-xs">
+                <span className="text-slate-500 flex-shrink-0 w-20">
                   {new Date(log.timestamp).toLocaleTimeString()}
                 </span>
-                <span className={`flex-shrink-0 w-16 text-center px-1.5 py-0.5 rounded text-xs font-medium ${getLevelBadgeColor(log.level)}`}>
+                <span className={`flex-shrink-0 w-14 text-center px-1 py-0 rounded font-medium ${getLevelBadgeColor(log.level)}`}>
                   {log.level}
                 </span>
                 <span className={`flex-1 break-all ${getLevelColor(log.level)}`}>
