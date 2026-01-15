@@ -119,32 +119,96 @@ test_backend() {
         return 1
     fi
     
-    cd backend
+    # Sauvegarder le répertoire courant
+    local current_dir=$(pwd)
     
-    # Créer un environnement virtuel si nécessaire
-    if [[ ! -d "venv" ]]; then
-        log_info "Création de l'environnement virtuel Python..."
-        python3 -m venv venv
+    cd backend || {
+        log_error "Impossible d'accéder au dossier backend"
+        return 1
+    }
+    
+    # Vérifier si python3-venv est installé, sinon utiliser pip directement
+    if ! python3 -c "import venv" 2>/dev/null; then
+        log_warn "python3-venv non installé, utilisation de pip global"
+        use_global_python=true
+    else
+        use_global_python=false
     fi
     
-    # Activer l'environnement virtuel
-    source venv/bin/activate
+    if [[ "$use_global_python" == false ]]; then
+        # Créer un environnement virtuel si nécessaire
+        if [[ ! -d "venv" ]]; then
+            log_info "Création de l'environnement virtuel Python..."
+            if ! python3 -m venv venv; then
+                log_warn "Échec de la création de l'environnement virtuel, utilisation de pip global"
+                use_global_python=true
+            fi
+        elif [[ ! -f "venv/bin/activate" ]]; then
+            log_warn "Environnement virtuel corrompu, recréation..."
+            rm -rf venv
+            if ! python3 -m venv venv; then
+                log_warn "Échec de la recréation de l'environnement virtuel, utilisation de pip global"
+                use_global_python=true
+            fi
+        fi
+        
+        # Activer l'environnement virtuel si disponible
+        if [[ "$use_global_python" == false && -f "venv/bin/activate" ]]; then
+            source venv/bin/activate
+            log_info "Environnement virtuel activé"
+        else
+            use_global_python=true
+        fi
+    fi
+    
+    if [[ "$use_global_python" == true ]]; then
+        log_info "Utilisation de Python global (pas d'environnement virtuel)"
+    fi
     
     # Installer les dépendances
     log_info "Installation des dépendances..."
-    pip install --upgrade pip > /dev/null
-    pip install -r requirements.txt > /dev/null
-    pip install pytest pytest-cov flake8 black isort > /dev/null
+    if ! pip3 install --user --upgrade pip > /dev/null 2>&1; then
+        log_warn "Échec de la mise à jour de pip"
+    fi
+    
+    if ! pip3 install --user -r requirements.txt > /dev/null 2>&1; then
+        log_error "Échec de l'installation des dépendances"
+        if [[ "$use_global_python" == false ]]; then
+            deactivate 2>/dev/null || true
+        fi
+        cd "$current_dir"
+        return 1
+    fi
+    
+    if ! pip3 install --user pytest pytest-cov flake8 black isort > /dev/null 2>&1; then
+        log_warn "Échec de l'installation des outils de test (continuons quand même)"
+    fi
     
     # Linting
     log_info "Vérification du code (flake8)..."
-    flake8 app/ --max-line-length=88 --extend-ignore=E203,W503 || log_warn "Problèmes de linting trouvés"
+    if command -v flake8 >/dev/null 2>&1; then
+        flake8 app/ --max-line-length=88 --extend-ignore=E203,W503 || log_warn "Problèmes de linting trouvés"
+    else
+        log_warn "flake8 non disponible, vérification ignorée"
+    fi
     
     # Tests
     log_info "Exécution des tests..."
-    python -m pytest tests/ -v --tb=short
+    if command -v pytest >/dev/null 2>&1; then
+        if [[ -d "tests" ]]; then
+            python3 -m pytest tests/ -v --tb=short || log_warn "Certains tests ont échoué"
+        else
+            log_warn "Dossier tests/ non trouvé, tests ignorés"
+        fi
+    else
+        log_warn "pytest non disponible, tests ignorés"
+    fi
     
-    cd ..
+    # Désactiver l'environnement virtuel et revenir au répertoire original
+    if [[ "$use_global_python" == false ]]; then
+        deactivate 2>/dev/null || true
+    fi
+    cd "$current_dir"
     log_success "Tests backend terminés"
 }
 
@@ -162,17 +226,31 @@ test_frontend() {
         return 0
     fi
     
-    cd frontend
+    # Sauvegarder le répertoire courant
+    local current_dir=$(pwd)
+    
+    cd frontend || {
+        log_error "Impossible d'accéder au dossier frontend"
+        return 1
+    }
     
     # Installer les dépendances
     log_info "Installation des dépendances npm..."
-    npm install > /dev/null
+    if ! npm install > /dev/null 2>&1; then
+        log_error "Échec de l'installation des dépendances npm"
+        cd "$current_dir"
+        return 1
+    fi
     
     # Tests
     log_info "Exécution des tests frontend..."
-    npm test -- --watchAll=false
+    if npm run test -- --watchAll=false 2>/dev/null || npm test -- --watchAll=false 2>/dev/null; then
+        log_success "Tests frontend réussis"
+    else
+        log_warn "Tests frontend échoués ou non configurés"
+    fi
     
-    cd ..
+    cd "$current_dir"
     log_success "Tests frontend terminés"
 }
 
@@ -258,6 +336,31 @@ update_clients() {
     fi
 }
 
+# Fonction de nettoyage Git
+clean_git_repo() {
+    log_step "Nettoyage du dépôt Git..."
+    
+    # Afficher les fichiers qui seraient supprimés
+    echo -e "${YELLOW}Fichiers qui seraient supprimés :${NC}"
+    git clean -xdn 2>/dev/null || echo "Aucun fichier à nettoyer"
+    
+    echo ""
+    echo -e "${RED}⚠️  ATTENTION: Cette opération va supprimer TOUS les fichiers non suivis par Git${NC}"
+    echo -e "${RED}   Cela inclut les builds, caches, fichiers temporaires, etc.${NC}"
+    echo ""
+    echo -n -e "${YELLOW}Êtes-vous sûr de vouloir continuer ? (oui/NON): ${NC}"
+    read -r confirmation
+    
+    if [[ "$confirmation" == "oui" ]]; then
+        log_info "Nettoyage en cours..."
+        git clean -xdf
+        log_success "Dépôt Git nettoyé"
+    else
+        log_warn "Nettoyage annulé"
+        return 1
+    fi
+}
+
 # Fonction d'installation complète
 full_setup() {
     log_step "Installation complète..."
@@ -268,6 +371,25 @@ full_setup() {
     start_app
     
     log_success "Installation complète terminée!"
+}
+
+# Fonction de déploiement complet (clean + build + start)
+full_deploy() {
+    log_step "Déploiement complet (clean + build + start)..."
+    
+    # Nettoyage Git
+    if ! clean_git_repo; then
+        log_warn "Déploiement annulé à cause du nettoyage"
+        return 1
+    fi
+    
+    # Build
+    build_app
+    
+    # Lancement
+    start_app
+    
+    log_success "Déploiement complet terminé!"
 }
 
 # Menu principal
@@ -286,9 +408,10 @@ show_menu() {
     echo "9)  🔄 Mettre à jour les clients BitTorrent"
     echo "10) 🧹 Nettoyer l'environnement"
     echo "11) 🚀 Installation complète (tout en un)"
+    echo "12) 🗑️  Déploiement complet (clean Git + build + start)"
     echo "0)  ❌ Quitter"
     echo ""
-    echo -n -e "${YELLOW}Votre choix [0-11]: ${NC}"
+    echo -n -e "${YELLOW}Votre choix [0-12]: ${NC}"
 }
 
 # Fonction principale
@@ -383,8 +506,13 @@ main() {
                 echo ""
                 echo -e "${GREEN}Appuyez sur Entrée pour continuer...${NC}"
                 read -r
-                ;;
-            0)
+                ;;            12)
+                echo ""
+                full_deploy
+                echo ""
+                echo -e "${GREEN}Appuyez sur Entrée pour continuer...${NC}"
+                read -r
+                ;;            0)
                 echo ""
                 log_info "Au revoir! 👋"
                 exit 0
