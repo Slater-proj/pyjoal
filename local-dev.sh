@@ -47,6 +47,44 @@ log_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
+# Fonction de confirmation améliorée avec saisie flexible
+demander_confirmation() {
+    local prompt="$1"
+    local default="${2:-non}"
+    local response
+    
+    while true; do
+        if [[ "$default" == "oui" ]]; then
+            echo -n -e "${YELLOW}$prompt (Oui/non): ${NC}"
+        else
+            echo -n -e "${YELLOW}$prompt (oui/Non): ${NC}"
+        fi
+        
+        read -r response
+        
+        # Si vide, utiliser la valeur par défaut
+        if [[ -z "$response" ]]; then
+            response="$default"
+        fi
+        
+        # Normaliser la réponse
+        response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
+        
+        case "$response" in
+            o|oui|y|yes)
+                return 0  # true
+                ;;
+            n|non|no)
+                return 1  # false
+                ;;
+            *)
+                echo -e "${RED}Veuillez répondre par 'oui' ou 'non' (o/n)${NC}"
+                continue
+                ;;
+        esac
+    done
+}
+
 # Fonction pour générer le fichier .env s'il n'existe pas
 generate_env_if_missing() {
     if [[ ! -f ".env" ]]; then
@@ -409,9 +447,11 @@ clean_git_repo() {
     if git clean -xdn 2>/dev/null | grep -q "Would remove"; then
         git clean -xdn 2>/dev/null
         echo ""
-        echo -n -e "${YELLOW}Supprimer ces fichiers non suivis ? (oui/NON): ${NC}"
-        read -r clean_untracked
-        clean_untracked=${clean_untracked:-NON}
+        if demander_confirmation "Supprimer ces fichiers non suivis ?"; then
+            clean_untracked="oui"
+        else
+            clean_untracked="NON"
+        fi
     else
         echo "Aucun fichier non suivi à supprimer"
         clean_untracked="NON"
@@ -424,9 +464,11 @@ clean_git_repo() {
         git diff --name-only HEAD 2>/dev/null
         echo ""
         echo -e "${RED}⚠️  ATTENTION: git reset --hard va PERDRE toutes vos modifications non committées !${NC}"
-        echo -n -e "${YELLOW}Remettre tous les fichiers à l'état de la branche Git ? (oui/NON): ${NC}"
-        read -r reset_hard
-        reset_hard=${reset_hard:-NON}
+        if demander_confirmation "Remettre tous les fichiers à l'état de la branche Git ?"; then
+            reset_hard="oui"
+        else
+            reset_hard="NON"
+        fi
     else
         echo "Aucun fichier modifié"
         reset_hard="NON"
@@ -451,10 +493,7 @@ clean_git_repo() {
         done
         echo -e "${YELLOW}   Pensez à sauvegarder vos configurations !${NC}"
         echo ""
-        echo -n -e "${RED}Continuer malgré ces fichiers importants ? (oui/NON): ${NC}"
-        read -r force_clean
-        force_clean=${force_clean:-NON}
-        if [[ "$force_clean" != "oui" ]]; then
+        if ! demander_confirmation "Continuer malgré ces fichiers importants ?"; then
             clean_untracked="NON"
         fi
     fi
@@ -471,11 +510,7 @@ clean_git_repo() {
     fi
     
     echo ""
-    echo -n -e "${YELLOW}Confirmer ces actions ? (oui/NON): ${NC}"
-    read -r final_confirm
-    final_confirm=${final_confirm:-NON}
-    
-    if [[ "$final_confirm" == "oui" ]]; then
+    if demander_confirmation "Confirmer ces actions ?"; then
         log_info "Nettoyage en cours..."
         
         if [[ "$reset_hard" == "oui" ]]; then
