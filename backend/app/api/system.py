@@ -69,3 +69,36 @@ async def get_simple_health_status() -> Dict[str, str]:
             'message': 'Vérification système indisponible',
             'uptime': 'Unknown'
         }
+
+
+@router.get("/version/check")
+async def check_version_updates() -> Dict[str, Any]:
+    """Check for PyJOAL version updates from GitHub"""
+    try:
+        from app.services.version_checker import version_checker
+        
+        version_info = await version_checker.get_version_info()
+        
+        return {
+            'current_version': version_info['current_version'],
+            'latest_version': version_info['latest_version'],
+            'update_available': version_info['update_available'],
+            'release_url': version_info.get('release_url', ''),
+            'release_notes': version_info.get('release_notes', ''),
+            'published_at': version_info.get('published_at', ''),
+            'last_check': version_info['last_check'],
+            'error': version_info.get('error', None)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to check version updates: {e}")
+        return {
+            'current_version': '1.5.0',
+            'latest_version': 'unknown',
+            'update_available': False,
+            'release_url': '',
+            'release_notes': '',
+            'published_at': '',
+            'last_check': 'never',
+            'error': 'Version check service unavailable'
+        }

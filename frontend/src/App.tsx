@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import BottomNav from './components/BottomNav'
+import Header from './components/Header'
 import DashboardPage from './components/DashboardPage'
 import SettingsPage from './components/SettingsPage'
 import HistoryPage from './components/HistoryPage'
@@ -51,17 +52,8 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col">
-      {/* Header - Compact */}
-      <header className="bg-slate-800 border-b border-slate-700 sticky top-0 z-40">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-3">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold text-blue-400">PyJOAL</h1>
-              <span className="text-slate-500 text-xs bg-slate-700/50 px-2 py-1 rounded">v{appVersion}</span>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Header with Health Monitoring */}
+      <Header appVersion={appVersion} />
 
       {/* Main Content - Full width */}
       <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-4 pb-20">
