@@ -22,6 +22,10 @@ const EVENT_ICONS: Record<string, any> = {
   system_stop: X,
   torrent_added: Plus,
   torrent_removed: Minus,
+  torrent_archived_ratio: Trash2,
+  torrent_archived_time: Trash2,
+  torrent_archived_error: Trash2,
+  torrent_load_failed: AlertCircle,
   announce_success: Activity,
   announce_failed: AlertCircle,
   config_updated: SettingsIcon,
@@ -32,6 +36,10 @@ const EVENT_COLORS: Record<string, string> = {
   system_stop: 'text-red-400 bg-red-500/10',
   torrent_added: 'text-blue-400 bg-blue-500/10',
   torrent_removed: 'text-orange-400 bg-orange-500/10',
+  torrent_archived_ratio: 'text-purple-400 bg-purple-500/10',
+  torrent_archived_time: 'text-indigo-400 bg-indigo-500/10',
+  torrent_archived_error: 'text-red-400 bg-red-500/10',
+  torrent_load_failed: 'text-red-400 bg-red-500/10',
   announce_success: 'text-green-400 bg-green-500/10',
   announce_failed: 'text-red-400 bg-red-500/10',
   config_updated: 'text-purple-400 bg-purple-500/10',
@@ -97,6 +105,9 @@ export default function HistoryPage() {
     { id: 'torrent_added', label: 'Added' },
     { id: 'torrent_removed', label: 'Removed' },
     { id: 'torrent_load_failed', label: 'Load Failed' },
+    { id: 'torrent_archived_ratio', label: 'Archived (Ratio)' },
+    { id: 'torrent_archived_time', label: 'Archived (Time)' },
+    { id: 'torrent_archived_error', label: 'Archived (Error)' },
   ]
 
   return (

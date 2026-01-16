@@ -146,34 +146,30 @@ class TrackerAnnouncer:
         if not self.is_running:
             return
             
-        # Simulate upload by incrementing uploaded amount
+        # Get configured rate limits
         min_rate, max_rate = self.client.get_upload_rate_range()
         
-        # Calculate upload delta for this interval
-        current_speed = random.randint(min_rate, max_rate)
-        upload_delta = current_speed * min(self.announce_interval, 60)  # Cap at 60s
+        # Generate realistic variable speed within limits
+        # Add some randomness to simulate real torrent behavior
+        base_speed = random.randint(min_rate, max_rate)
+        # Add ±20% variability to make it more realistic
+        variability = random.uniform(0.8, 1.2)
+        current_speed = int(base_speed * variability)
+        
+        # Ensure we stay within absolute bounds
+        current_speed = max(min_rate, min(max_rate, current_speed))
+        
+        # Calculate upload delta for this interval (usually 5s)
+        time_interval = 5  # seeder service calls this every 5 seconds
+        upload_delta = current_speed * time_interval
         self.uploaded += upload_delta
         
-        # Calculate REAL upload speed based on successful announces only
-        current_time = time.time()
-        if self._last_successful_announce is not None and self._last_successful_uploaded is not None:
-            time_since_announce = current_time - self._last_successful_announce
-            uploaded_since_announce = self.uploaded - self._last_successful_uploaded
-            
-            if time_since_announce > 0:
-                # This is the REAL speed that trackers calculate between announces
-                self.upload_speed = uploaded_since_announce / time_since_announce
-                logger.debug(f"📈 REAL upload speed for {self.torrent.name[:30]}: {self.upload_speed/1024:.1f} KB/s")
-            else:
-                self.upload_speed = 0
-        else:
-            # No successful announce yet = no real speed data available
-            self.upload_speed = 0
-            logger.debug(f"📈 No successful announce yet for {self.torrent.name[:30]}, upload_speed = 0")
+        # Set upload speed to the current configured speed (not calculated from announces)
+        # This ensures we respect the config limits while being authentic
+        self.upload_speed = float(current_speed)
         
-        # Store the theoretical speed for logging only
         logger.debug(f"📈 Upload simulation for {self.torrent.name[:30]}:")
-        logger.debug(f"   Theoretical speed: {current_speed / 1024:.2f} KB/s")
+        logger.debug(f"   Current speed: {current_speed / 1024:.2f} KB/s (within {min_rate//1024}-{max_rate//1024} KB/s)")
         logger.debug(f"   Delta: +{upload_delta / (1024**2):.2f} MB")
         logger.debug(f"   Total uploaded: {self.uploaded / (1024**2):.2f} MB")
         logger.debug(f"   Ratio: {self.uploaded / self.torrent.size if self.torrent.size > 0 else 0:.3f}")
