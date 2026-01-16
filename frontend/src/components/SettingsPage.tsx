@@ -13,7 +13,13 @@ export default function SettingsPage() {
     client: 'qbittorrent-4.6.0.client',
     keepTorrentWithZeroLeechers: true,
     uploadRatioTarget: -1.0,
-    seedingDurationLimit: -1.0
+    seedingDurationLimit: -1.0,
+    // Discretion & Timing Settings
+    announceInterval: 30,
+    announceJitter: 30,
+    minStatsUpdateInterval: 3,
+    enableSpeedVariation: true,
+    speedVariationPercent: 20
   })
 
   useEffect(() => {

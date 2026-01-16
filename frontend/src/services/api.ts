@@ -28,6 +28,12 @@ export interface Config {
   keepTorrentWithZeroLeechers: boolean;
   uploadRatioTarget: number;
   seedingDurationLimit: number;
+  // Discretion & Timing Settings
+  announceInterval: number;
+  announceJitter: number;
+  minStatsUpdateInterval: number;
+  enableSpeedVariation: boolean;
+  speedVariationPercent: number;
 }
 
 export interface Torrent {
