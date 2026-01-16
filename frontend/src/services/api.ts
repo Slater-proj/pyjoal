@@ -34,6 +34,8 @@ export interface Config {
   minStatsUpdateInterval: number;
   enableSpeedVariation: boolean;
   speedVariationPercent: number;
+  // Behavior Mode Settings
+  seedingOnlyMode: boolean;
 }
 
 export interface Torrent {

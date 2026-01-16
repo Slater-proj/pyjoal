@@ -19,7 +19,9 @@ export default function SettingsPage() {
     announceJitter: 30,
     minStatsUpdateInterval: 3,
     enableSpeedVariation: true,
-    speedVariationPercent: 20
+    speedVariationPercent: 20,
+    // Behavior Mode Settings
+    seedingOnlyMode: true
   })
 
   useEffect(() => {
@@ -454,6 +456,63 @@ export default function SettingsPage() {
               <label htmlFor="enableSpeedVariation" className="text-sm text-slate-300 cursor-pointer">
                 Enable realistic speed variations (Recommended for stealth)
               </label>
+            </div>
+          </div>
+
+          {/* Torrent Behavior Mode */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wide flex items-center gap-2">
+              <span>🎯</span>
+              <span>Torrent Behavior Mode</span>
+            </h3>
+            <p className="text-sm text-slate-400">
+              Choose how PyJOAL simulates torrent behavior. Most users should use "Seeding Only" mode.
+            </p>
+            
+            <div className="grid grid-cols-1 gap-4">
+              {/* Seeding Only Mode Toggle */}
+              <div className="bg-slate-700 rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-300">Seeding Only Mode</h4>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {formData.seedingOnlyMode 
+                        ? "✅ Pure seeding - torrents appear already downloaded (Recommended)" 
+                        : "📥 Download simulation - simulates full download + seeding cycle"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">Download Sim</span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.seedingOnlyMode ?? true}
+                        onChange={(e) => handleChange('seedingOnlyMode', e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                    <span className="text-xs text-slate-400">Seeding Only</span>
+                  </div>
+                </div>
+                
+                <div className="text-xs text-slate-400 space-y-1">
+                  <p><strong>Seeding Only Mode (Recommended):</strong></p>
+                  <p>• Torrents appear as already 100% downloaded</p>
+                  <p>• Realistic for when your real client downloads first</p>
+                  <p>• Sends "completed" event immediately</p>
+                  <p>• More natural and safer behavior</p>
+                  
+                  {!formData.seedingOnlyMode && (
+                    <div className="mt-3 pt-2 border-t border-slate-600">
+                      <p><strong>Download Simulation Mode:</strong></p>
+                      <p>• Simulates downloading then seeding</p>
+                      <p>• May appear more suspicious to some trackers</p>
+                      <p>• Use only if you understand the implications</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 

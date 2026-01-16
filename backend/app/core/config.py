@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     ENABLE_SPEED_VARIATION: bool = Field(default=True, description="Enable realistic speed variations")
     SPEED_VARIATION_PERCENT: int = Field(default=20, description="Speed variation percentage (±%)")
     
+    # Torrent Behavior Mode
+    SEEDING_ONLY_MODE: bool = Field(default=True, description="Pure seeding mode (true) vs download simulation mode (false)")
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

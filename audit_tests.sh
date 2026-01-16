@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🧪 AUDIT COMPLET DES TESTS - PyJOAL v1.3.8"
+echo "🧪 AUDIT COMPLET DES TESTS - PyJOAL v$(cat VERSION)"
 echo "=========================================="
 
 echo ""

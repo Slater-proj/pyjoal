@@ -1,0 +1,9 @@
+{
+  "name": "Transmission",
+  "version": "4.0.5",
+  "peerIdPattern": {
+    "prefix": "-TR405-"
+  },
+  "userAgent": "Transmission/4.0.5",
+  "numwant": 80
+}

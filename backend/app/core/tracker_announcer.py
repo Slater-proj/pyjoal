@@ -27,7 +27,7 @@ class TrackerAnnouncer:
         self.torrent = torrent
         self.client = client
         self.peer_id = client.generate_peer_id(torrent.info_hash)
-        self.port = random.randint(50000, 60000)
+        self.port = client.get_session_port()  # Use consistent session port
         
         # Discretion configuration
         self.discretion_config = discretion_config or {}
@@ -37,13 +37,25 @@ class TrackerAnnouncer:
         self.enable_speed_variation = self.discretion_config.get("enable_speed_variation", settings.ENABLE_SPEED_VARIATION)
         self.speed_variation_percent = self.discretion_config.get("speed_variation_percent", settings.SPEED_VARIATION_PERCENT)
         
+        # 🎯 Torrent Behavior Mode
+        self.seeding_only_mode = self.discretion_config.get("seedingOnlyMode", settings.SEEDING_ONLY_MODE)
+        
         logger.debug(f"Discretion config for {torrent.name[:30]}: interval={self.announce_interval}s, jitter=±{self.announce_jitter}s, min_update={self.min_stats_update_interval}s")
         
-        # Stats
-        self.uploaded: int = 0
-        self.downloaded: int = 0
-        self.left: int = torrent.size
+        # Enhanced realistic stats simulation
+        # ⚠️ IMPORTANT: Torrent is already downloaded, we're only seeding!
+        self.uploaded: int = 0  # Start with 0 upload (will increase during seeding)
+        self.downloaded: int = torrent.size  # Already fully downloaded
+        self.left: int = 0  # Nothing left to download
         self.upload_speed: int = 0
+        
+        # Realistic behavior simulation based on mode
+        if self.seeding_only_mode:
+            # Mode: Seeding Only (torrents already downloaded by real client)
+            self._simulate_natural_seeding_start()
+        else:
+            # Mode: Download Simulation (simulate full download cycle)
+            self._simulate_natural_download_start()
         
         # Peers info
         self.seeders: int = 0
@@ -62,6 +74,8 @@ class TrackerAnnouncer:
         # State
         self.is_running: bool = False
         self._announce_task: Optional[asyncio.Task] = None
+        self._is_downloading: bool = True  # Start in downloading phase
+        self._download_completion_time: Optional[datetime] = None
         
         # Error tracking
         self.last_error: Optional[str] = None
@@ -87,10 +101,16 @@ class TrackerAnnouncer:
         self.is_running = True
         self._seeding_started_at = datetime.utcnow()  # Start tracking seeding time
         
+        # 🎯 Send initial "completed" event (natural behavior after download)
+        if self._initial_seeding:
+            logger.debug(f"   📋 Sending 'completed' event - torrent finished downloading")
+            await self._send_announce(event="completed")
+            self._initial_seeding = False
+        
         # Initialize upload speed if not set
         if self.upload_speed == 0:
-            min_rate, max_rate = self.client.get_upload_rate_range()
-            self.upload_speed = random.randint(min_rate, max_rate)
+            # Start with activity-based speed
+            self.upload_speed = self._get_activity_based_upload_speed()
             logger.debug(f"   Initial upload speed: {self.upload_speed / 1024:.2f} KB/s")
         
         self._announce_task = asyncio.create_task(self._announce_loop())
@@ -157,7 +177,7 @@ class TrackerAnnouncer:
             self._record_error(f"Announce loop error: {str(e)}")
     
     def _update_stats(self):
-        """Update upload stats with realistic timing and speed variation"""
+        """Update upload stats with realistic behavior based on mode"""
         if not self.is_running:
             return
         
@@ -169,49 +189,103 @@ class TrackerAnnouncer:
                 return
         
         self._last_stats_update = current_time
+        
+        # Handle downloading phase (if download simulation mode enabled)
+        if not self.seeding_only_mode and self._is_in_downloading_phase():
+            self._update_download_stats()
+            return
             
-        # Get configured rate limits
-        min_rate, max_rate = self.client.get_upload_rate_range()
+        # 🌱 Seeding behavior (both modes eventually reach here)
+        current_speed = self._get_activity_based_upload_speed()
         
-        # Generate realistic variable speed within limits
-        base_speed = random.randint(min_rate, max_rate)
-        
-        # Apply speed variation if enabled
-        if self.enable_speed_variation:
+        # Apply speed variation if enabled (natural fluctuations)
+        if self.enable_speed_variation and current_speed > 0:
             variation_factor = 1.0 + random.uniform(
                 -self.speed_variation_percent / 100.0,
                 self.speed_variation_percent / 100.0
             )
-            current_speed = int(base_speed * variation_factor)
-        else:
-            current_speed = base_speed
+            current_speed = int(current_speed * variation_factor)
         
-        # Ensure we stay within absolute bounds
-        current_speed = max(min_rate, min(max_rate, current_speed))
-        
-        # Calculate upload delta based on actual time elapsed (more realistic)
-        if hasattr(self, '_last_upload_time'):
-            time_interval = current_time - self._last_upload_time
-        else:
-            time_interval = 5  # Default for first call
-        
-        self._last_upload_time = current_time
-        upload_delta = current_speed * min(time_interval, 10)  # Cap at 10s intervals
-        self.uploaded += upload_delta
-        
-        # Set upload speed to the current configured speed (not calculated from announces)
-        # This ensures we respect the config limits while being authentic
+        # Calculate realistic upload progress
+        if current_speed > 0:
+            if hasattr(self, '_last_upload_time'):
+                time_interval = current_time - self._last_upload_time
+            else:
+                time_interval = 5  # Default for first call
+            
+            self._last_upload_time = current_time
+            
+            # Calculate bytes uploaded in this interval
+            upload_delta = current_speed * min(time_interval, 10)  # Cap at 10s intervals
+            self.uploaded += upload_delta
+            
+            # Track upload progress for natural seeding patterns
+            self._total_seeding_time = (datetime.utcnow() - self._seeding_session_start).total_seconds()
+            
+        # Set upload speed
         self.upload_speed = float(current_speed)
         
-        logger.debug(f"📈 Upload simulation for {self.torrent.name[:30]}:")
-        logger.debug(f"   Current speed: {current_speed / 1024:.2f} KB/s (within {min_rate//1024}-{max_rate//1024} KB/s)")
-        logger.debug(f"   Delta: +{upload_delta / (1024**2):.2f} MB (over {time_interval:.1f}s)")
-        logger.debug(f"   Total uploaded: {self.uploaded / (1024**2):.2f} MB")
-        logger.debug(f"   Ratio: {self.uploaded / self.torrent.size if self.torrent.size > 0 else 0:.3f}")
+        # Ensure downloaded/left stay correct (seeding mode)
+        self.downloaded = self.torrent.size
+        self.left = 0
         
-        # We never download
-        self.downloaded = 0
-        self.left = 0  # We "have" the complete file
+        logger.debug(f"🌱 Seeding stats for {self.torrent.name[:30]}:")
+        logger.debug(f"   Speed: {current_speed / 1024:.2f} KB/s (activity-based)")
+        if current_speed > 0:
+            logger.debug(f"   Session time: {self._total_seeding_time / 3600:.1f}h")
+            logger.debug(f"   Total uploaded: {self.uploaded / (1024**2):.2f} MB")
+            logger.debug(f"   Ratio: {self.uploaded / self.torrent.size if self.torrent.size > 0 else 0:.3f}")
+    
+    def _update_download_stats(self):
+        """Update download stats during download simulation phase"""
+        current_time = time.time()
+        
+        # Realistic download speed (usually much faster than upload)
+        download_speed = self._get_realistic_download_speed()
+        
+        # Calculate download progress
+        if hasattr(self, '_last_download_time'):
+            time_interval = current_time - self._last_download_time
+        else:
+            time_interval = 5  # Default for first call
+            
+        self._last_download_time = current_time
+        
+        # Calculate bytes downloaded in this interval
+        download_delta = download_speed * min(time_interval, 10)  # Cap at 10s intervals
+        
+        # Update progress
+        self.downloaded = min(self.downloaded + download_delta, self.torrent.size)
+        self.left = max(0, self.torrent.size - self.downloaded)
+        
+        # Small amount of upload during download (normal peer behavior)
+        upload_speed = max(download_speed * 0.1, 1024)  # 10% of download speed
+        upload_delta = upload_speed * min(time_interval, 10)
+        self.uploaded += upload_delta
+        
+        # Set speeds
+        self.download_speed = float(download_speed)
+        self.upload_speed = float(upload_speed)
+        
+        logger.debug(f"📥 Download stats for {self.torrent.name[:30]}:")
+        logger.debug(f"   Progress: {(self.downloaded/self.torrent.size)*100:.1f}% ({self.left/(1024**2):.2f} MB left)")
+        logger.debug(f"   DL Speed: {download_speed/1024:.2f} KB/s, UL Speed: {upload_speed/1024:.2f} KB/s")
+    
+    def _get_realistic_download_speed(self) -> int:
+        """Get realistic download speed during download simulation"""
+        # Base download speed (usually much faster than upload)
+        min_dl, max_dl = self.client.get_download_rate_range() if hasattr(self.client, 'get_download_rate_range') else (102400, 1048576)  # 100KB/s - 1MB/s
+        
+        base_speed = random.randint(min_dl, max_dl)
+        
+        # Adjust based on activity patterns
+        hour = datetime.utcnow().hour
+        if hour in self._peak_hours:
+            base_speed = int(base_speed * 1.2)  # Faster during peak hours
+        elif hour < 6 or hour > 22:  # Late night/early morning
+            base_speed = int(base_speed * 0.8)  # Slower during off hours
+            
+        return max(base_speed, 10240)  # Minimum 10KB/s
     
     async def _send_announce(self, event: Optional[str] = None):
         """Send announce to tracker"""
@@ -248,6 +322,10 @@ class TrackerAnnouncer:
         if event:
             logger.debug(f"   Event: {event}")
         
+        # Simulate occasional network errors for realism
+        if self._simulate_occasional_network_errors():
+            return  # Skip this announce due to simulated error
+            
         try:
             # Setup proxy if configured
             proxies = None
@@ -413,3 +491,175 @@ class TrackerAnnouncer:
                 self.last_announce > self.last_error_time
             )
         }
+    
+    def _simulate_natural_download_start(self):
+        """Simulate realistic download start behavior - full download cycle simulation"""
+        
+        # Simulate partial download state
+        completion_percentage = random.uniform(0.0, 0.95)  # Start at 0-95% completed
+        self.downloaded = int(self.torrent.size * completion_percentage)
+        self.left = self.torrent.size - self.downloaded
+        self.uploaded = 0  # Start with minimal upload
+        
+        # Download will complete in realistic timeframe (5-60 minutes)
+        download_duration_minutes = random.randint(5, 60)
+        self._download_completion_time = datetime.utcnow() + timedelta(minutes=download_duration_minutes)
+        self._seeding_session_start = self._download_completion_time
+        
+        # Track download state
+        self._is_downloading = True
+        self._initial_seeding = False  # Will transition later
+        self._total_seeding_time = 0
+        self._last_speed_change = datetime.utcnow()
+        
+        # Natural patterns (for later seeding phase)
+        self._peak_hours = self._determine_user_peak_hours()
+        self._user_activity_pattern = self._generate_user_activity_pattern()
+        
+        logger.debug(f"📥 Natural download start for {self.torrent.name[:30]}: {completion_percentage:.1%} completed, {self.left / (1024**2):.2f} MB remaining")
+    
+    def _simulate_natural_seeding_start(self):
+        """Simulate realistic seeding start behavior - torrent already downloaded"""
+        # Torrent is already 100% downloaded (user placed .torrent file after download)
+        self.downloaded = self.torrent.size
+        self.left = 0
+        self.uploaded = 0  # Start seeding with 0 upload
+        
+        # Simulate when download actually completed (recent past)
+        # Real users typically start seeding within minutes of download completion
+        completion_delay_minutes = random.randint(1, 30)  # 1-30 minutes ago
+        self._download_completion_time = datetime.utcnow() - timedelta(minutes=completion_delay_minutes)
+        self._seeding_session_start = datetime.utcnow()
+        
+        # Initialize seeding characteristics
+        self._initial_seeding = True  # First announces show "completed" event
+        self._is_downloading = False  # Pure seeding mode
+        self._total_seeding_time = 0
+        self._last_speed_change = datetime.utcnow()
+        
+        # Natural seeding patterns
+        self._peak_hours = self._determine_user_peak_hours()
+        self._user_activity_pattern = self._generate_user_activity_pattern()
+        
+        logger.debug(f"🌱 Natural seeding start for {self.torrent.name[:30]}: download completed {completion_delay_minutes}min ago, ready to seed")
+    
+    def _is_in_downloading_phase(self) -> bool:
+        """Check if torrent is still in realistic downloading phase"""
+        if not self._is_downloading:
+            return False
+        
+        # Transition to seeding after some realistic time (5-30 minutes)
+        if self._download_completion_time:
+            seeding_start_delay = random.randint(5, 30)  # minutes
+            should_start_seeding = datetime.utcnow() > (self._download_completion_time + timedelta(minutes=seeding_start_delay))
+            
+            if should_start_seeding:
+                self._is_downloading = False
+                self.left = 0  # Complete download
+                logger.debug(f"🔄 {self.torrent.name[:30]} transitioned from downloading to seeding")
+                
+        return self._is_downloading
+    
+    def _get_realistic_upload_speed_based_on_swarm(self) -> int:
+        """Calculate realistic upload speed based on swarm activity"""
+        min_rate, max_rate = self.client.get_upload_rate_range()
+        
+        # Base speed calculation
+        base_speed = random.randint(min_rate, max_rate)
+        
+        # Adjust based on swarm activity
+        total_peers = self.seeders + self.leechers
+        swarm_factor = 1.0
+        
+        if total_peers == 0:
+            # Dead swarm - very low speed
+            swarm_factor = 0.1
+        elif self.leechers == 0:
+            # No leechers - reduce speed significantly  
+            swarm_factor = 0.3
+        elif self.leechers > self.seeders * 2:
+            # High demand - increase speed
+            swarm_factor = 1.3
+        elif self.leechers < self.seeders * 0.5:
+            # Low demand - reduce speed
+            swarm_factor = 0.7
+        
+        # Apply swarm factor
+        realistic_speed = int(base_speed * swarm_factor)
+        
+        # Ensure within bounds
+        return max(int(min_rate * 0.1), min(max_rate, realistic_speed))
+        
+    def _simulate_occasional_network_errors(self) -> bool:
+        """Simulate realistic network errors (1-3% chance)"""
+        error_chance = random.uniform(0.01, 0.03)  # 1-3% chance
+        if random.random() < error_chance:
+            error_types = [
+                "Connection timeout",
+                "DNS resolution failed", 
+                "Network unreachable",
+                "Connection reset by peer"
+            ]
+            simulated_error = random.choice(error_types)
+            logger.debug(f"🎭 Simulating network error for {self.torrent.name[:30]}: {simulated_error}")
+            self._record_error(f"Simulated: {simulated_error}")
+            return True
+        return False
+    
+    def _determine_user_peak_hours(self) -> tuple:
+        """Determine user's typical active hours (when upload speeds are higher)"""
+        # Simulate different user types
+        user_types = [
+            (18, 24),  # Evening user (6PM-12AM)
+            (20, 2),   # Night owl (8PM-2AM) 
+            (9, 17),   # Day user (9AM-5PM)
+            (7, 11),   # Morning user (7AM-11AM)
+        ]
+        return random.choice(user_types)
+    
+    def _generate_user_activity_pattern(self) -> dict:
+        """Generate realistic user activity pattern"""
+        return {
+            'active_days': random.randint(4, 7),  # Active 4-7 days per week
+            'session_length': random.randint(2, 12),  # 2-12 hour sessions
+            'break_frequency': random.uniform(0.1, 0.3),  # 10-30% chance of temporary breaks
+            'speed_consistency': random.uniform(0.6, 0.9)  # How consistent upload speeds are
+        }
+    
+    def _is_user_active_hour(self) -> bool:
+        """Check if current time is within user's peak activity hours"""
+        current_hour = datetime.utcnow().hour
+        start_hour, end_hour = self._peak_hours
+        
+        if start_hour < end_hour:
+            return start_hour <= current_hour <= end_hour
+        else:  # Crosses midnight
+            return current_hour >= start_hour or current_hour <= end_hour
+    
+    def _get_activity_based_upload_speed(self) -> int:
+        """Get upload speed based on user activity patterns"""
+        min_rate, max_rate = self.client.get_upload_rate_range()
+        
+        # Base speed
+        if self._is_user_active_hour():
+            # User is active - higher speeds
+            speed_range = (int(max_rate * 0.6), max_rate)
+        else:
+            # User is away/sleeping - lower speeds or paused
+            if random.random() < 0.3:  # 30% chance of being paused when inactive
+                return 0
+            speed_range = (int(min_rate), int(max_rate * 0.4))
+        
+        # Apply activity pattern consistency
+        consistency = self._user_activity_pattern['speed_consistency']
+        if hasattr(self, '_last_speed') and consistency > 0.7:
+            # Keep speed similar to last speed (consistent user)
+            variation = int(self._last_speed * 0.2)
+            speed = max(speed_range[0], min(speed_range[1], 
+                       self._last_speed + random.randint(-variation, variation)))
+        else:
+            # More variable speed
+            speed = random.randint(*speed_range)
+        
+        self._last_speed = speed
+        return speed

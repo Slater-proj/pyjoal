@@ -21,6 +21,9 @@ class BitTorrentClient:
         self.config: Dict = {}
         self._load_client_config()
         
+        # Consistent port for all torrents (more realistic)
+        self._session_port = random.randint(50000, 60000)
+        
     def _load_client_config(self):
         """Load client configuration from file"""
         client_path = settings.CLIENTS_DIR / self.client_file
@@ -110,6 +113,10 @@ class BitTorrentClient:
             settings.MIN_UPLOAD_RATE * 1024,  # Convert to bytes
             settings.MAX_UPLOAD_RATE * 1024
         )
+    
+    def get_session_port(self) -> int:
+        """Get consistent port for this client session (realistic behavior)"""
+        return self._session_port
     
     @property
     def name(self) -> str:

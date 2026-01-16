@@ -61,13 +61,16 @@ class SeederService:
         
         # Validate configured client exists
         if configured_client not in available_clients:
-            fallback_client = available_clients[0]
+            # Smart fallback: try to find similar client or use most recent version
+            fallback_client = self._find_best_fallback_client(configured_client, available_clients)
             logger.warning(f"⚠️  Client configuré '{configured_client}' introuvable")
-            logger.info(f"🔄 Utilisation du client par défaut: {fallback_client}")
+            logger.info(f"🔄 Fallback automatique vers: {fallback_client}")
+            logger.info(f"   💡 Autres clients disponibles: {', '.join(available_clients)}")
             configured_client = fallback_client
             # Update config with valid client
             self._config["client"] = configured_client
             await self.save_config()
+            logger.info(f"💾 Configuration mise à jour automatiquement")
         
         # Initialize client
         try:
@@ -109,7 +112,9 @@ class SeederService:
                 "announceJitter": settings.ANNOUNCE_JITTER,
                 "minStatsUpdateInterval": settings.MIN_STATS_UPDATE_INTERVAL,
                 "enableSpeedVariation": settings.ENABLE_SPEED_VARIATION,
-                "speedVariationPercent": settings.SPEED_VARIATION_PERCENT
+                "speedVariationPercent": settings.SPEED_VARIATION_PERCENT,
+                # Torrent Behavior Mode
+                "seedingOnlyMode": settings.SEEDING_ONLY_MODE
             }
             await self.save_config()
             logger.info(f"   Default config created: {self._config}")
@@ -146,6 +151,40 @@ class SeederService:
                 pass
             raise e
     
+    def _find_best_fallback_client(self, missing_client: str, available_clients: list) -> str:
+        """Find the best fallback client when the configured one is missing"""
+        if not available_clients:
+            raise RuntimeError("No available clients for fallback")
+        
+        # Extract client name and version from missing client
+        try:
+            missing_parts = missing_client.replace('.client', '').split('-')
+            if len(missing_parts) >= 2:
+                missing_name = missing_parts[0]
+                missing_version = missing_parts[1]
+                
+                # Try to find same client with different version
+                same_client_candidates = [c for c in available_clients if c.startswith(missing_name)]
+                if same_client_candidates:
+                    # Sort by version (newest first) and return the best match
+                    same_client_candidates.sort(reverse=True)
+                    return same_client_candidates[0]
+                
+                # If no same client, try to find a similar popular client
+                preferred_order = ['qbittorrent', 'deluge', 'transmission']
+                for preferred in preferred_order:
+                    candidates = [c for c in available_clients if c.startswith(preferred)]
+                    if candidates:
+                        candidates.sort(reverse=True)  # Newest version first
+                        return candidates[0]
+                
+        except Exception as e:
+            logger.debug(f"Error parsing client name '{missing_client}': {e}")
+        
+        # Fallback to first available client (sorted for consistency)
+        available_clients.sort(reverse=True)
+        return available_clients[0]
+
     async def load_torrents(self):
         """Load torrents from directory"""
         logger.debug(f"📂 Loading torrents from: {settings.TORRENTS_DIR}")

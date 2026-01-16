@@ -42,6 +42,9 @@ class ConfigSchema(BaseModel):
     enableSpeedVariation: bool = Field(default=True, description="Enable realistic speed variations")
     speedVariationPercent: int = Field(default=20, ge=0, le=50, description="Speed variation percentage (±%)")
     
+    # Torrent Behavior Mode
+    seedingOnlyMode: bool = Field(default=True, description="Pure seeding mode (true) vs download simulation mode (false)")
+    
     @validator("minUploadRate")
     def validate_min_rate(cls, v):
         if v < 0:

@@ -1,0 +1,9 @@
+{
+  "name": "Deluge",
+  "version": "2.1.1",
+  "peerIdPattern": {
+    "prefix": "-DE211-"
+  },
+  "userAgent": "Deluge 2.1.1",
+  "numwant": 200
+}
