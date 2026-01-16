@@ -15,6 +15,7 @@ from app.core.torrent_parser import Torrent
 from app.models.schemas import AnnounceResponse
 from app.core.config import settings
 from app.services.history_service import history_service, EventType
+from app.services.stealth_service import stealth_service
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +82,16 @@ class TrackerAnnouncer:
         self.last_error: Optional[str] = None
         self.error_count: int = 0
         self.last_error_time: Optional[datetime] = None
+        
+        # 🛡️ Retry logic for stealth
+        self.consecutive_failures: int = 0
+        self.max_retries: int = 5
+        self.base_retry_delay: int = 30  # Base delay in seconds
+        self.last_retry_attempt: Optional[datetime] = None
+        self._in_backoff: bool = False
+        
+        # 🎭 Stealth profile for this session
+        self.stealth_profile = stealth_service.get_session_profile(torrent.info_hash)
         
         # Track real announce success for speed calculation
         self._last_successful_announce: Optional[datetime] = None
@@ -152,23 +163,39 @@ class TrackerAnnouncer:
             await self._send_announce(event="started")
             
             while self.is_running:
-                # Add random jitter to avoid synchronized updates across torrents
-                base_interval = self.announce_interval
-                jitter = random.randint(-self.announce_jitter, self.announce_jitter)
-                actual_interval = max(base_interval + jitter, 60)  # Minimum 60s
+                # 🎭 Use intelligent stealth timing instead of basic jitter
+                actual_interval = stealth_service.get_natural_announce_interval(
+                    self.torrent.info_hash, 
+                    self.announce_interval
+                )
                 
-                logger.debug(f"⏰ Waiting {actual_interval}s before next announce for {self.torrent.name}")
+                # 🛡️ Check if in backoff period due to failures
+                if self._in_backoff and self.last_retry_attempt:
+                    backoff_time = self._calculate_backoff_delay()
+                    time_since_last_retry = (datetime.utcnow() - self.last_retry_attempt).total_seconds()
+                    if time_since_last_retry < backoff_time:
+                        remaining_backoff = int(backoff_time - time_since_last_retry)
+                        actual_interval = max(actual_interval, remaining_backoff)
+                        logger.debug(f"🛡️ In backoff period, waiting {remaining_backoff}s more")
+                
+                # 🎲 Natural disconnection simulation
+                if stealth_service.should_simulate_temporary_disconnect(self.torrent.info_hash):
+                    disconnect_duration = stealth_service.get_disconnect_duration()
+                    logger.debug(f"🎭 Simulating natural disconnect for {disconnect_duration}s")
+                    actual_interval += disconnect_duration
+                
+                logger.debug(f"⏰ Natural interval: {actual_interval}s for {self.torrent.name}")
                 await asyncio.sleep(actual_interval)
                 
                 if not self.is_running:
                     break
                 
-                # Update stats BEFORE announce with individual timing
-                self._update_stats()
+                # Update stats with stealth variations
+                self._update_stats_with_stealth()
                 logger.debug(f"📊 Stats updated for {self.torrent.name}: uploaded={self.uploaded / (1024**2):.2f} MB, speed={self.upload_speed / 1024:.2f} KB/s")
                 
-                # Send regular announce
-                await self._send_announce()
+                # 🛡️ Send announce with retry logic
+                await self._send_announce_with_retry()
                 
         except asyncio.CancelledError:
             logger.debug(f"Announce loop cancelled for {self.torrent.name}")
@@ -464,15 +491,194 @@ class TrackerAnnouncer:
         self.error_count += 1
         self.last_error_time = datetime.utcnow()
         logger.debug(f"Error recorded for {self.torrent.name}: {error_message}")
+
+    def _update_stats_with_stealth(self):
+        """Update stats with stealth service natural variations"""
+        if not self.is_running:
+            return
+        
+        # Check if enough time has passed for realistic update
+        current_time = time.time()
+        if hasattr(self, '_last_stats_update'):
+            time_since_last = current_time - self._last_stats_update
+            if time_since_last < self.min_stats_update_interval:
+                return
+        
+        self._last_stats_update = current_time
+        
+        # Handle downloading phase (if download simulation mode enabled)
+        if not self.seeding_only_mode and self._is_in_downloading_phase():
+            self._update_download_stats()
+            return
+            
+        # 🌱 Enhanced seeding behavior with stealth variations
+        base_speed = self._get_activity_based_upload_speed()
+        
+        # 🎭 Apply stealth service natural speed variations
+        current_speed = stealth_service.get_natural_speed_variation(
+            base_speed, 
+            self.torrent.info_hash
+        )
+        
+        # Calculate realistic upload progress
+        if current_speed > 0:
+            if hasattr(self, '_last_upload_time'):
+                time_interval = current_time - self._last_upload_time
+            else:
+                time_interval = 5  # Default for first call
+            
+            self._last_upload_time = current_time
+            
+            # Calculate bytes uploaded in this interval
+            upload_delta = current_speed * min(time_interval, 10)  # Cap at 10s intervals
+            self.uploaded += upload_delta
+            
+            # Track upload progress for natural seeding patterns
+            if hasattr(self, '_seeding_session_start'):
+                self._total_seeding_time = (datetime.utcnow() - self._seeding_session_start).total_seconds()
+            
+        # Set upload speed
+        self.upload_speed = float(current_speed)
+        
+        # Ensure downloaded/left stay correct (seeding mode)
+        self.downloaded = self.torrent.size
+        self.left = 0
+        
+        logger.debug(f"🎭 Stealth seeding stats for {self.torrent.name[:30]}:")
+        logger.debug(f"   Speed: {current_speed / 1024:.2f} KB/s (stealth-enhanced)")
+
+    async def _send_announce_with_retry(self, event: Optional[str] = None):
+        """Send announce with intelligent retry logic"""
+        max_attempts = self.max_retries + 1
+        
+        for attempt in range(max_attempts):
+            try:
+                # 🎭 Use stealth profile for User-Agent and port
+                await self._send_announce_stealth(event)
+                
+                # ✅ Success - reset failure tracking
+                self.consecutive_failures = 0
+                self._in_backoff = False
+                return
+                
+            except Exception as e:
+                self.consecutive_failures += 1
+                error_msg = str(e)
+                
+                # 🛡️ Silent retry logic - don't expose errors on early attempts
+                is_last_attempt = attempt == max_attempts - 1
+                
+                if is_last_attempt:
+                    # Only record error on final failure
+                    self._record_error_silent(f"Final retry failed: {error_msg}")
+                    logger.warning(f"🛡️ All {max_attempts} announce attempts failed for {self.torrent.name}: {error_msg}")
+                    break
+                else:
+                    # Silent retry with backoff
+                    backoff_delay = self._calculate_backoff_delay()
+                    self._in_backoff = True
+                    self.last_retry_attempt = datetime.utcnow()
+                    
+                    logger.debug(f"🛡️ Announce attempt {attempt + 1} failed, retrying in {backoff_delay}s: {error_msg}")
+                    await asyncio.sleep(backoff_delay)
+
+    async def _send_announce_stealth(self, event: Optional[str] = None):
+        """Send announce using stealth profile"""
+        if not self.torrent.primary_tracker:
+            raise Exception("No primary tracker available")
+        
+        # 🎭 Build announce URL with stealth profile
+        params = self._build_announce_params_stealth(event)
+        url = f"{self.torrent.primary_tracker}?{params}"
+        
+        # 🎭 Use stealth User-Agent
+        headers = {
+            'User-Agent': self.stealth_profile['user_agent']
+        }
+        
+        timeout = httpx.Timeout(30.0)
+        
+        async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+            logger.debug(f"🎭 Stealth announce to {self.torrent.primary_tracker}")
+            logger.debug(f"   Client: {self.stealth_profile['client_name']}")
+            logger.debug(f"   Port: {self.stealth_profile['session_port']}")
+            
+            start_time = time.time()
+            response = await client.get(url)
+            response_time = (time.time() - start_time) * 1000
+            
+            if response.status_code != 200:
+                raise Exception(f"HTTP {response.status_code}: {response.text}")
+            
+            # Parse and handle response
+            await self._parse_announce_response(response.content)
+            
+            logger.debug(f"✅ Stealth announce successful ({response_time:.0f}ms)")
+            
+            # Record success in history
+            await history_service.log_event(
+                EventType.ANNOUNCE,
+                f"Stealth announce successful for {self.torrent.name}",
+                {"tracker": self.torrent.primary_tracker, "response_time_ms": int(response_time)}
+            )
+
+    def _build_announce_params_stealth(self, event: Optional[str] = None) -> str:
+        """Build announce parameters using stealth profile"""
+        params = {
+            'info_hash': self.torrent.info_hash,
+            'peer_id': self.peer_id,
+            'port': self.stealth_profile['session_port'],  # Use stealth session port
+            'uploaded': self.uploaded,
+            'downloaded': self.downloaded,
+            'left': self.left,
+            'compact': 1,
+            'no_peer_id': 1
+        }
+        
+        if event:
+            params['event'] = event
+            
+        # Convert to URL parameters
+        param_strings = []
+        for key, value in params.items():
+            if isinstance(value, bytes):
+                param_strings.append(f"{key}={value.hex()}")
+            else:
+                param_strings.append(f"{key}={value}")
+        
+        return "&".join(param_strings)
+
+    def _calculate_backoff_delay(self) -> int:
+        """Calculate exponential backoff delay"""
+        # Exponential backoff: base_delay * 2^(failures-1)
+        delay = self.base_retry_delay * (2 ** (self.consecutive_failures - 1))
+        
+        # Cap at maximum delay and add jitter
+        max_delay = 300  # 5 minutes max
+        delay = min(delay, max_delay)
+        
+        # Add jitter (±20%) to avoid synchronized retries
+        jitter = random.uniform(0.8, 1.2)
+        return int(delay * jitter)
+
+    def _record_error_silent(self, error_message: str):
+        """Record error silently (only after all retries exhausted)"""
+        self.last_error = error_message
+        self.error_count += 1
+        self.last_error_time = datetime.utcnow()
+        logger.debug(f"Silent error recorded for {self.torrent.name}: {error_message}")
     
     def get_stats(self) -> Dict:
-        """Get current stats"""
+        """Get current stats with stealth information"""
         # Calculate current seeding time including ongoing session
         current_seeding_time = self.seeding_time
         if self._seeding_started_at:
             current_seeding_time += int((datetime.utcnow() - self._seeding_started_at).total_seconds())
         
-        return {
+        # Get stealth session information
+        stealth_stats = stealth_service.get_session_stats(self.torrent.info_hash)
+        
+        base_stats = {
             "uploaded": self.uploaded,
             "downloaded": self.downloaded,
             "uploadSpeed": int(self.upload_speed),  # Convert to int for schema compliance
@@ -491,6 +697,19 @@ class TrackerAnnouncer:
                 self.last_announce > self.last_error_time
             )
         }
+        
+        # Add stealth information
+        if stealth_stats:
+            base_stats["stealth"] = {
+                "client": stealth_stats.get("client", "Unknown"),
+                "sessionDuration": stealth_stats.get("session_duration_hours", 0),
+                "activityPattern": stealth_stats.get("activity_pattern", "steady"),
+                "connectionStability": stealth_stats.get("connection_stability", 95.0),
+                "consecutiveFailures": self.consecutive_failures,
+                "inBackoff": self._in_backoff
+            }
+        
+        return base_stats
     
     def _simulate_natural_download_start(self):
         """Simulate realistic download start behavior - full download cycle simulation"""

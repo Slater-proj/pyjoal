@@ -14,7 +14,7 @@
 - 🐳 **Docker Ready** - Image optimisée multi-stage
 - 🔐 **Sécurisé** - Token API et path obfuscation
 
-## 📋 Améliorations Récentes (v1.5.0)
+## 📋 Améliorations Récentes (v1.6.0)
 
 - 🎭 **Discrétion améliorée** - Système anti-détection avancé pour éviter l'analyse des trackers
 - ⏱️ **Timing réaliste** - Désynchronisation des annonces avec jitter configurable (±30s par défaut)
@@ -23,7 +23,7 @@
 - 🛡️ **Anti-fingerprinting** - Suppression des patterns synchrones détectables par les trackers
 - ✅ **Tests étendus** - Couverture complète des nouvelles fonctionnalités de discrétion
 
-### Corrections précédentes (v1.5.0-1.5.0)
+### Corrections précédentes (v1.6.0-1.6.0)
 - ✅ **Onglet Historique** - Filtre "Load Failed" pour voir les torrents échoués
 - ✅ **Colonne Duration** - Renommée de "Dur" vers "Duration" pour plus de clarté
 - ✅ **Vitesses authentiques** - Les vitesses affichées correspondent exactement aux données tracker
@@ -79,7 +79,7 @@ setup.bat   # Windows
 | `SIMULTANEOUS_SEED` | ❌ | 20 | Nombre de torrents simultanés |
 | `HTTP_PROXY_HOST` | ❌ | - | Hôte du proxy HTTP |
 | `HTTP_PROXY_PORT` | ❌ | - | Port du proxy HTTP |
-| `DEFAULT_CLIENT` | ❌ | qbittorrent-1.5.0.client | Client par défaut |
+| `DEFAULT_CLIENT` | ❌ | qbittorrent-1.6.0.client | Client par défaut |
 
 ### Configuration JSON (config/config.json)
 
@@ -90,7 +90,7 @@ Le fichier de configuration est créé automatiquement au premier lancement :
   "minUploadRate": 30,
   "maxUploadRate": 160,
   "simultaneousSeed": 20,
-  "client": "qbittorrent-1.5.0.client",
+  "client": "qbittorrent-1.6.0.client",
   "keepTorrentWithZeroLeechers": true,
   "uploadRatioTarget": -1.0,
   "seedingDurationLimit": -1.0
@@ -99,7 +99,7 @@ Le fichier de configuration est créé automatiquement au premier lancement :
 
 ## 🎭 Discrétion & Anti-détection
 
-PyJOAL v1.5.0+ intègre des mécanismes avancés pour éviter la détection par les trackers :
+PyJOAL v1.6.0+ intègre des mécanismes avancés pour éviter la détection par les trackers :
 
 ### 🛡️ Fonctionnalités de discrétion
 - **Désynchronisation temporelle** - Chaque torrent a son propre cycle d'announce avec jitter aléatoire
@@ -171,9 +171,9 @@ docker exec pyjoal python scripts/update_clients.py
 ```
 
 Le script récupère automatiquement les dernières versions depuis GitHub pour :
-- **qBittorrent** (dernière stable : 1.5.0)
-- **Deluge** (dernière stable : 1.5.0)
-- **Transmission** (dernière stable : 1.5.0)
+- **qBittorrent** (dernière stable : 1.6.0)
+- **Deluge** (dernière stable : 1.6.0)
+- **Transmission** (dernière stable : 1.6.0)
 
 📖 Plus d'infos : [CLIENT_UPDATER.md](CLIENT_UPDATER.md)
 
