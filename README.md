@@ -82,7 +82,7 @@ cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --host 1.3.3.0 --port 8080
+uvicorn app.main:app --host 1.3.4.0 --port 8080
 ```
 
 **Frontend:**
@@ -101,7 +101,7 @@ npm run dev
   "minUploadRate": 30,
   "maxUploadRate": 160,
   "simultaneousSeed": 20,
-  "client": "qbittorrent-1.3.3.client",
+  "client": "qbittorrent-1.3.4.client",
   "keepTorrentWithZeroLeechers": true,
   "uploadRatioTarget": -1.0
 }
@@ -167,9 +167,9 @@ python update_clients.py
 ```
 
 Le script récupère automatiquement les dernières versions depuis GitHub pour :
-- **qBittorrent** (dernière stable : 1.3.3)
-- **Deluge** (dernière stable : 1.3.3)
-- **Transmission** (dernière stable : 1.3.3)
+- **qBittorrent** (dernière stable : 1.3.4)
+- **Deluge** (dernière stable : 1.3.4)
+- **Transmission** (dernière stable : 1.3.4)
 
 📖 Plus d'infos : [CLIENT_UPDATER.md](CLIENT_UPDATER.md)
 
