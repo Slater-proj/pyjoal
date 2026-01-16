@@ -45,9 +45,14 @@ class Settings(BaseSettings):
             return None
         return v
     
-    # Announce intervals
+    # Announce intervals (defaults, can be overridden in config)
     ANNOUNCE_INTERVAL: int = Field(default=30, description="Base announce interval (seconds)")
-    ANNOUNCE_JITTER: int = Field(default=10, description="Random jitter for announces (seconds)")
+    ANNOUNCE_JITTER: int = Field(default=30, description="Random jitter for announces (seconds)")
+    
+    # Discretion Settings
+    MIN_STATS_UPDATE_INTERVAL: int = Field(default=3, description="Minimum interval between stats updates (seconds)")
+    ENABLE_SPEED_VARIATION: bool = Field(default=True, description="Enable realistic speed variations")
+    SPEED_VARIATION_PERCENT: int = Field(default=20, description="Speed variation percentage (±%)")
     
     class Config:
         env_file = ".env"

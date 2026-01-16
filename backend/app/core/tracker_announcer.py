@@ -22,12 +22,22 @@ logger = logging.getLogger(__name__)
 class TrackerAnnouncer:
     """Handles tracker announces for a torrent"""
     
-    def __init__(self, torrent: Torrent, client: BitTorrentClient):
-        """Initialize announcer"""
+    def __init__(self, torrent: Torrent, client: BitTorrentClient, discretion_config: Optional[Dict] = None):
+        """Initialize announcer with optional discretion settings"""
         self.torrent = torrent
         self.client = client
         self.peer_id = client.generate_peer_id(torrent.info_hash)
         self.port = random.randint(50000, 60000)
+        
+        # Discretion configuration
+        self.discretion_config = discretion_config or {}
+        self.announce_interval = self.discretion_config.get("announce_interval", settings.ANNOUNCE_INTERVAL)
+        self.announce_jitter = self.discretion_config.get("announce_jitter", settings.ANNOUNCE_JITTER)
+        self.min_stats_update_interval = self.discretion_config.get("min_stats_update_interval", settings.MIN_STATS_UPDATE_INTERVAL)
+        self.enable_speed_variation = self.discretion_config.get("enable_speed_variation", settings.ENABLE_SPEED_VARIATION)
+        self.speed_variation_percent = self.discretion_config.get("speed_variation_percent", settings.SPEED_VARIATION_PERCENT)
+        
+        logger.debug(f"Discretion config for {torrent.name[:30]}: interval={self.announce_interval}s, jitter=±{self.announce_jitter}s, min_update={self.min_stats_update_interval}s")
         
         # Stats
         self.uploaded: int = 0
@@ -42,7 +52,8 @@ class TrackerAnnouncer:
         # Timing
         self.last_announce: Optional[datetime] = None
         self.next_announce: Optional[datetime] = None
-        self.announce_interval: int = settings.ANNOUNCE_INTERVAL
+        # Use instance config instead of global settings
+        # self.announce_interval is set in __init__ from discretion_config
         
         # Seeding time tracking (in seconds)
         self.seeding_time: int = 0
@@ -121,14 +132,18 @@ class TrackerAnnouncer:
             await self._send_announce(event="started")
             
             while self.is_running:
-                # Wait for next announce
-                logger.debug(f"⏰ Waiting {self.announce_interval}s before next announce for {self.torrent.name}")
-                await asyncio.sleep(self.announce_interval)
+                # Add random jitter to avoid synchronized updates across torrents
+                base_interval = self.announce_interval
+                jitter = random.randint(-self.announce_jitter, self.announce_jitter)
+                actual_interval = max(base_interval + jitter, 60)  # Minimum 60s
+                
+                logger.debug(f"⏰ Waiting {actual_interval}s before next announce for {self.torrent.name}")
+                await asyncio.sleep(actual_interval)
                 
                 if not self.is_running:
                     break
                 
-                # Update stats BEFORE announce
+                # Update stats BEFORE announce with individual timing
                 self._update_stats()
                 logger.debug(f"📊 Stats updated for {self.torrent.name}: uploaded={self.uploaded / (1024**2):.2f} MB, speed={self.upload_speed / 1024:.2f} KB/s")
                 
@@ -142,26 +157,46 @@ class TrackerAnnouncer:
             self._record_error(f"Announce loop error: {str(e)}")
     
     def _update_stats(self):
-        """Update upload stats - only increments uploaded amount"""
+        """Update upload stats with realistic timing and speed variation"""
         if not self.is_running:
             return
+        
+        # Check if enough time has passed for realistic update (avoid too frequent updates)
+        current_time = time.time()
+        if hasattr(self, '_last_stats_update'):
+            time_since_last = current_time - self._last_stats_update
+            if time_since_last < self.min_stats_update_interval:
+                return
+        
+        self._last_stats_update = current_time
             
         # Get configured rate limits
         min_rate, max_rate = self.client.get_upload_rate_range()
         
         # Generate realistic variable speed within limits
-        # Add some randomness to simulate real torrent behavior
         base_speed = random.randint(min_rate, max_rate)
-        # Add ±20% variability to make it more realistic
-        variability = random.uniform(0.8, 1.2)
-        current_speed = int(base_speed * variability)
+        
+        # Apply speed variation if enabled
+        if self.enable_speed_variation:
+            variation_factor = 1.0 + random.uniform(
+                -self.speed_variation_percent / 100.0,
+                self.speed_variation_percent / 100.0
+            )
+            current_speed = int(base_speed * variation_factor)
+        else:
+            current_speed = base_speed
         
         # Ensure we stay within absolute bounds
         current_speed = max(min_rate, min(max_rate, current_speed))
         
-        # Calculate upload delta for this interval (usually 5s)
-        time_interval = 5  # seeder service calls this every 5 seconds
-        upload_delta = current_speed * time_interval
+        # Calculate upload delta based on actual time elapsed (more realistic)
+        if hasattr(self, '_last_upload_time'):
+            time_interval = current_time - self._last_upload_time
+        else:
+            time_interval = 5  # Default for first call
+        
+        self._last_upload_time = current_time
+        upload_delta = current_speed * min(time_interval, 10)  # Cap at 10s intervals
         self.uploaded += upload_delta
         
         # Set upload speed to the current configured speed (not calculated from announces)
@@ -170,7 +205,7 @@ class TrackerAnnouncer:
         
         logger.debug(f"📈 Upload simulation for {self.torrent.name[:30]}:")
         logger.debug(f"   Current speed: {current_speed / 1024:.2f} KB/s (within {min_rate//1024}-{max_rate//1024} KB/s)")
-        logger.debug(f"   Delta: +{upload_delta / (1024**2):.2f} MB")
+        logger.debug(f"   Delta: +{upload_delta / (1024**2):.2f} MB (over {time_interval:.1f}s)")
         logger.debug(f"   Total uploaded: {self.uploaded / (1024**2):.2f} MB")
         logger.debug(f"   Ratio: {self.uploaded / self.torrent.size if self.torrent.size > 0 else 0:.3f}")
         
@@ -245,8 +280,8 @@ class TrackerAnnouncer:
                 
                 self.last_announce = datetime.utcnow()
                 
-                # Calculate next announce with jitter
-                jitter = random.randint(-settings.ANNOUNCE_JITTER, settings.ANNOUNCE_JITTER)
+                # Calculate next announce with configured jitter
+                jitter = random.randint(-self.announce_jitter, self.announce_jitter)
                 self.next_announce = self.last_announce + timedelta(
                     seconds=self.announce_interval + jitter
                 )

@@ -13,7 +13,13 @@ export default function ConfigPanel() {
     client: 'qbittorrent-4.6.0.client',
     keepTorrentWithZeroLeechers: true,
     uploadRatioTarget: -1.0,
-    seedingDurationLimit: -1.0
+    seedingDurationLimit: -1.0,
+    // Discretion & Timing Settings
+    announceInterval: 30,
+    announceJitter: 30,
+    minStatsUpdateInterval: 3,
+    enableSpeedVariation: true,
+    speedVariationPercent: 20
   })
 
   useEffect(() => {
@@ -194,6 +200,99 @@ export default function ConfigPanel() {
                   Keep torrents with zero leechers/seeders
                 </span>
               </label>
+            </div>
+          </div>
+
+          {/* Discretion & Timing Settings Section */}
+          <div className="border-t border-slate-600 pt-6">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
+              <span>🎭</span>
+              <span>Discretion & Timing Settings</span>
+            </h3>
+            <p className="text-sm text-slate-400 mb-4">
+              Advanced settings to improve stealth and avoid detection by tracker analysis.
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Announce Interval */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Announce Interval (seconds)
+                </label>
+                <input
+                  type="number"
+                  value={formData.announceInterval}
+                  onChange={(e) => handleChange('announceInterval', parseInt(e.target.value))}
+                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="15"
+                  max="300"
+                />
+                <p className="text-xs text-slate-500 mt-1">Base time between announces (15-300s)</p>
+              </div>
+
+              {/* Announce Jitter */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Announce Jitter (±seconds)
+                </label>
+                <input
+                  type="number"
+                  value={formData.announceJitter}
+                  onChange={(e) => handleChange('announceJitter', parseInt(e.target.value))}
+                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="0"
+                  max="180"
+                />
+                <p className="text-xs text-slate-500 mt-1">Random timing variation to avoid synchronization</p>
+              </div>
+
+              {/* Min Stats Update Interval */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Min Stats Update Interval (seconds)
+                </label>
+                <input
+                  type="number"
+                  value={formData.minStatsUpdateInterval}
+                  onChange={(e) => handleChange('minStatsUpdateInterval', parseInt(e.target.value))}
+                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="1"
+                  max="30"
+                />
+                <p className="text-xs text-slate-500 mt-1">Minimum time between speed updates (1-30s)</p>
+              </div>
+
+              {/* Speed Variation Percent */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Speed Variation (±%)
+                </label>
+                <input
+                  type="number"
+                  value={formData.speedVariationPercent}
+                  onChange={(e) => handleChange('speedVariationPercent', parseInt(e.target.value))}
+                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  min="0"
+                  max="50"
+                />
+                <p className="text-xs text-slate-500 mt-1">Realistic speed fluctuation percentage (0-50%)</p>
+              </div>
+
+              {/* Enable Speed Variation */}
+              <div className="md:col-span-2">
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.enableSpeedVariation}
+                    onChange={(e) => handleChange('enableSpeedVariation', e.target.checked)}
+                    className="w-5 h-5 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-slate-300">
+                    Enable realistic speed variations
+                  </span>
+                  <span className="text-slate-500 text-sm">(Recommended for stealth)</span>
+                </label>
+              </div>
             </div>
           </div>
 

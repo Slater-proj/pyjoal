@@ -1,5 +1,48 @@
 # Changelog - PyJOAL
 
+## [1.3.8] - 2026-01-16
+
+### ✨ Major Feature: Advanced Discretion & Anti-Detection System
+
+#### 🛡️ Anti-Fingerprinting
+- **Desynchronized Announces** - Each torrent now has individual announce timing with random jitter
+- **Realistic Speed Variations** - Configurable speed fluctuations (±20% default) to mimic real clients
+- **Anti-Pattern Detection** - Eliminated synchronized speed updates that trackers can detect
+- **Authentic Timing** - Variable intervals based on real torrent client behavior patterns
+
+#### ⚙️ New Configuration Options
+- **Announce Interval** - Base time between announces (15-300s, default: 30s)
+- **Announce Jitter** - Random variation to avoid synchronization (0-180s, default: ±30s)
+- **Min Stats Update Interval** - Minimum time between speed updates (1-30s, default: 3s)
+- **Speed Variation Toggle** - Enable/disable realistic speed fluctuations
+- **Speed Variation Percentage** - Control fluctuation intensity (0-50%, default: 20%)
+
+#### 🎭 UI Enhancements
+- **Discretion Settings Panel** - New dedicated section in Configuration tab
+- **Real-time Parameter Validation** - Bounds checking with helpful tooltips
+- **Security Recommendations** - Built-in guidance for optimal stealth settings
+
+#### 🧪 Enhanced Testing
+- **Comprehensive Test Suite** - New tests for discretion features and timing validation
+- **Configuration Schema Tests** - Validation of all new discretion parameters
+- **Timing Logic Tests** - Verification of anti-synchronization mechanisms
+
+#### 📚 Documentation Updates
+- **Discretion Guide** - Detailed explanation of anti-detection features
+- **Security Best Practices** - Recommendations for tracker evasion
+- **Configuration Reference** - Complete parameter documentation with examples
+
+### 🔧 Technical Improvements
+- **TrackerAnnouncer Refactoring** - Support for per-instance discretion configuration
+- **Settings Enhancement** - New discretion-related global settings with proper validation
+- **Timing Precision** - Improved time-based calculations for more realistic behavior
+- **Code Quality** - Enhanced error handling and logging for discretion features
+
+### 🐛 Bug Fixes
+- **Synchronized Speed Updates** - Fixed major fingerprinting vulnerability where all torrents updated simultaneously
+- **Configuration Duplication** - Resolved code duplication in default config generation
+- **Syntax Errors** - Fixed indentation and structure issues in seeder service
+
 ## [1.3.5] - 2026-01-16
 
 ### Fixed

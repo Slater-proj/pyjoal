@@ -103,7 +103,13 @@ class SeederService:
                 "client": settings.DEFAULT_CLIENT,
                 "keepTorrentWithZeroLeechers": settings.KEEP_TORRENT_WITH_ZERO_LEECHERS,
                 "uploadRatioTarget": settings.UPLOAD_RATIO_TARGET,
-                "seedingDurationLimit": settings.SEEDING_DURATION_LIMIT
+                "seedingDurationLimit": settings.SEEDING_DURATION_LIMIT,
+                # Discretion settings
+                "announceInterval": settings.ANNOUNCE_INTERVAL,
+                "announceJitter": settings.ANNOUNCE_JITTER,
+                "minStatsUpdateInterval": settings.MIN_STATS_UPDATE_INTERVAL,
+                "enableSpeedVariation": settings.ENABLE_SPEED_VARIATION,
+                "speedVariationPercent": settings.SPEED_VARIATION_PERCENT
             }
             await self.save_config()
             logger.info(f"   Default config created: {self._config}")
@@ -226,7 +232,18 @@ class SeederService:
         logger.debug(f"   Size: {torrent.size / (1024**3):.2f} GB")
         logger.debug(f"   Tracker: {torrent.primary_tracker}")
         
-        announcer = TrackerAnnouncer(torrent, self.client)
+        # Create announcer with discretion config
+        announcer = TrackerAnnouncer(
+            torrent, 
+            self.client, 
+            discretion_config={
+                "announce_interval": self._config.get("announceInterval", settings.ANNOUNCE_INTERVAL),
+                "announce_jitter": self._config.get("announceJitter", settings.ANNOUNCE_JITTER),
+                "min_stats_update_interval": self._config.get("minStatsUpdateInterval", settings.MIN_STATS_UPDATE_INTERVAL),
+                "enable_speed_variation": self._config.get("enableSpeedVariation", settings.ENABLE_SPEED_VARIATION),
+                "speed_variation_percent": self._config.get("speedVariationPercent", settings.SPEED_VARIATION_PERCENT)
+            }
+        )
         self.announcers[torrent.info_hash] = announcer
         
         # Start if service is running
@@ -413,10 +430,8 @@ class SeederService:
                 stats = self.get_stats()
                 torrents = self.get_torrents()
                 
-                # Force stats update for all running announcers to ensure speeds are simulated
-                for announcer in self.announcers.values():
-                    if announcer.is_running:
-                        announcer._update_stats()
+                # DO NOT force synchronous stats update - let each announcer update independently
+                # This was causing all torrents to update speeds at the same time (security issue)
                 
                 logger.debug(f"🔄 Monitor update: {stats['activeTorrents']} active, {len(torrents)} total torrents, total speed: {stats['uploadSpeed']/1024:.1f} KB/s")
                 

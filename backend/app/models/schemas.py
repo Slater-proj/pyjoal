@@ -35,6 +35,13 @@ class ConfigSchema(BaseModel):
     uploadRatioTarget: float = Field(description="Upload ratio target (-1 = never)")
     seedingDurationLimit: float = Field(default=-1.0, description="Seeding duration limit in hours (-1 = no limit)")
     
+    # Discretion & Timing Settings
+    announceInterval: int = Field(default=30, ge=15, le=300, description="Base announce interval (seconds)")
+    announceJitter: int = Field(default=30, ge=0, le=180, description="Random jitter for announces (seconds)")
+    minStatsUpdateInterval: int = Field(default=3, ge=1, le=30, description="Minimum interval between stats updates (seconds)")
+    enableSpeedVariation: bool = Field(default=True, description="Enable realistic speed variations")
+    speedVariationPercent: int = Field(default=20, ge=0, le=50, description="Speed variation percentage (±%)")
+    
     @validator("minUploadRate")
     def validate_min_rate(cls, v):
         if v < 0:
