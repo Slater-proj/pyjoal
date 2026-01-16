@@ -44,18 +44,24 @@ export interface Torrent {
   lastAnnounce: string | null;
   nextAnnounce: string | null;
   tracker: string | null;
-  seedingTime: number; // Actual seeding time in seconds
+  seedingTime: number;
 }
 
-export interface Stats {\n  totalUploaded: number;\n  totalRatio: number;\n  activeTorrents: number;\n  avgUploadSpeed: number;\n}\n\nexport interface Version {\n  version: string;\n}
-  isRunning: boolean;
-  activeTorrents: number;
-  totalTorrents: number;
+export interface Stats {
   totalUploaded: number;
+  totalRatio: number;
+  activeTorrents: number;
+  avgUploadSpeed: number;
+  isRunning: boolean;
+  totalTorrents: number;
   totalDownloaded: number;
   uploadSpeed: number;
   startedAt: string | null;
   uptime: number | null;
+}
+
+export interface Version {
+  version: string;
 }
 
 export const api = {
@@ -125,4 +131,18 @@ export const api = {
     const { data } = await axios.get(`${API_BASE}/stats`);
     return data;
   },
+
+  // Version
+  getVersion: async (): Promise<Version> => {
+    const { data } = await axios.get(`${API_BASE}/version`);
+    return data;
+  },
+};
+
+export const fetchConfig = async (): Promise<Config> => {
+  return api.getConfig();
+};
+
+export const fetchVersion = async (): Promise<Version> => {
+  return api.getVersion();
 };

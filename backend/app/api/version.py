@@ -6,16 +6,39 @@ from pathlib import Path
 
 router = APIRouter(prefix="/api/version", tags=["version"])
 
+"""
+Version API endpoint
+"""
+from fastapi import APIRouter
+from pathlib import Path
+
+router = APIRouter(prefix="/api/version", tags=["version"])
+
 def get_version():
     """Get application version from VERSION file"""
     try:
+        # In container, VERSION is at /app/VERSION
+        version_file = Path("/app/VERSION")
+        if version_file.exists():
+            return version_file.read_text().strip()
+        
+        # Fallback: try relative path from this file
         version_file = Path(__file__).parent.parent.parent.parent / "VERSION"
         if version_file.exists():
             return version_file.read_text().strip()
         else:
-            return "1.2.2"  # fallback
-    except:
-        return "1.2.2"  # fallback
+            # Try to get version from git tag as last resort
+            try:
+                import subprocess
+                result = subprocess.run(['git', 'describe', '--tags', '--exact-match', 'HEAD'], 
+                                     capture_output=True, text=True, cwd=Path(__file__).parent.parent.parent.parent)
+                if result.returncode == 0:
+                    return result.stdout.strip().lstrip('v')
+            except:
+                pass
+            return "dev"  # development fallback
+    except Exception:
+        return "dev"  # development fallback
 
 @router.get("")
 async def get_app_version():

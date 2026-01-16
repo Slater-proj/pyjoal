@@ -18,6 +18,12 @@ from pathlib import Path
 # Read version from VERSION file
 def get_version():
     try:
+        # In container, VERSION is at /app/VERSION
+        version_file = Path("/app/VERSION")
+        if version_file.exists():
+            return version_file.read_text().strip()
+        
+        # Fallback: try relative path from this file
         version_file = Path(__file__).parent.parent.parent / "VERSION"
         if version_file.exists():
             return version_file.read_text().strip()
@@ -154,7 +160,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="PyJOAL API",
     description="BitTorrent Ratio Client - Python reimplementation of JOAL",
-    version="1.0.0",
+    version=APP_VERSION,
     lifespan=lifespan
 )
 
@@ -183,7 +189,7 @@ async def health_check():
     return {
         "status": "healthy",
         "app": "PyJOAL",
-        "version": "1.0.0",
+        "version": APP_VERSION,
         "seeding": seeder_service.is_running
     }
 
