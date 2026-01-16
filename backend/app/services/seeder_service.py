@@ -16,6 +16,7 @@ from app.core.tracker_announcer import TrackerAnnouncer
 from app.services.websocket_manager import websocket_manager
 from app.services.history_service import history_service, EventType
 from app.core.cache_manager import cache_manager
+from app.services.resource_optimizer import resource_optimizer
 
 logger = logging.getLogger(__name__)
 
@@ -395,6 +396,10 @@ class SeederService:
         self._monitor_task = asyncio.create_task(self._monitor_loop())
         logger.debug("   Monitor task started")
         
+        # Start resource optimization background task
+        self._resource_optimizer_task = asyncio.create_task(resource_optimizer.periodic_optimization())
+        logger.debug("   Resource optimizer started")
+        
         # Notify via WebSocket
         await websocket_manager.broadcast({
             "type": "seeding_started",
@@ -424,6 +429,15 @@ class SeederService:
             self._monitor_task.cancel()
             try:
                 await self._monitor_task
+            except asyncio.CancelledError:
+                pass
+        
+        # Stop resource optimizer task
+        if hasattr(self, '_resource_optimizer_task') and self._resource_optimizer_task:
+            logger.debug("   Stopping resource optimizer...")
+            self._resource_optimizer_task.cancel()
+            try:
+                await self._resource_optimizer_task
             except asyncio.CancelledError:
                 pass
         
@@ -464,7 +478,7 @@ class SeederService:
         """Monitor torrents and send updates"""
         try:
             while self.is_running:
-                await asyncio.sleep(5)  # Update every 5 seconds
+                await asyncio.sleep(10)  # Optimized: Update every 10 seconds instead of 5
                 
                 # Get current data with caching optimization
                 stats = self.get_stats_cached()

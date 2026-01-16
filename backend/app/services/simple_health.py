@@ -18,6 +18,9 @@ class SimpleHealthCheck:
         self.start_time = time.time()
         self._last_check = 0
         self._cached_status = None
+        # For CPU calculation
+        self._last_cpu_time = None
+        self._last_cpu_check = None
         
     def get_health_status(self, force_check: bool = False) -> Dict:
         """Get current health status with smart caching"""
@@ -37,6 +40,7 @@ class SimpleHealthCheck:
         """Perform lightweight health checks"""
         checks = {
             'memory': self._check_memory(),
+            'cpu': self._check_cpu(),
             'tracker_health': self._check_tracker_health(), 
             'torrent_health': self._check_torrent_health(),
             'uptime': self._get_uptime()
@@ -64,19 +68,24 @@ class SimpleHealthCheck:
         }
     
     def _check_memory(self) -> Dict:
-        """Check memory usage"""
+        """Check memory usage of PyJOAL process"""
         try:
-            memory = psutil.virtual_memory()
-            memory_mb = memory.used // (1024 * 1024)
-            memory_percent = memory.percent
+            # Get current process memory (not system memory)
+            process = psutil.Process()
+            memory_info = process.memory_info()
+            memory_mb = memory_info.rss // (1024 * 1024)  # RSS = Resident Set Size
             
-            if memory_percent > 90:
+            # Calculate percentage based on container limits or reasonable thresholds
+            # For containers, 200MB is a reasonable warning threshold
+            memory_percent = min((memory_mb / 200) * 100, 100)  # 200MB = 100%
+            
+            if memory_mb > 300:  # 300MB is critical for PyJOAL
                 return {
                     'status': 'error',
-                    'value': f"{memory_mb}MB ({memory_percent:.1f}%)",
-                    'message': f"Mémoire critique: {memory_percent:.1f}%"
+                    'value': f"{memory_mb}MB",
+                    'message': f"Mémoire PyJOAL critique: {memory_mb}MB"
                 }
-            elif memory_percent > 75:
+            elif memory_mb > 200:  # 200MB is warning
                 return {
                     'status': 'warning', 
                     'value': f"{memory_mb}MB ({memory_percent:.1f}%)",
@@ -95,6 +104,49 @@ class SimpleHealthCheck:
                 'status': 'error',
                 'value': 'Unknown',
                 'message': 'Impossible de vérifier la mémoire'
+            }
+
+    def _check_cpu(self) -> Dict:
+        """Check CPU usage of PyJOAL process"""
+        try:
+            process = psutil.Process()
+            current_time = time.time()
+            
+            # Get CPU percent (this requires an interval for accurate measurement)
+            if self._last_cpu_time is None:
+                # First call - initialize and return 0
+                self._last_cpu_time = current_time
+                cpu_percent = 0.0
+            else:
+                # Calculate CPU usage since last check
+                cpu_percent = process.cpu_percent()
+                self._last_cpu_time = current_time
+            
+            if cpu_percent > 80:
+                return {
+                    'status': 'error',
+                    'value': f"{cpu_percent:.1f}%",
+                    'message': f"CPU critique: {cpu_percent:.1f}%"
+                }
+            elif cpu_percent > 50:
+                return {
+                    'status': 'warning',
+                    'value': f"{cpu_percent:.1f}%", 
+                    'message': f"CPU élevé: {cpu_percent:.1f}%"
+                }
+            else:
+                return {
+                    'status': 'healthy',
+                    'value': f"{cpu_percent:.1f}%",
+                    'message': "CPU OK"
+                }
+                
+        except Exception as e:
+            logger.warning(f"Failed to check CPU: {e}")
+            return {
+                'status': 'error',
+                'value': 'Unknown',
+                'message': 'Impossible de vérifier le CPU'
             }
     
     def _check_tracker_health(self) -> Dict:

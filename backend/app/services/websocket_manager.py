@@ -28,11 +28,11 @@ class WebSocketManager:
         # Batching and throttling
         self._message_buffer: Dict[str, Dict[str, Any]] = {}
         self._last_batch_send = defaultdict(float)
-        self._batch_interval = 0.1  # 100ms batching
+        self._batch_interval = 0.2  # Optimized: 200ms batching (was 100ms)
         self._throttle_intervals = {
-            'stats_update': 1.0,      # Max 1/second for stats
-            'torrents_update': 2.0,   # Max 1/2seconds for torrent list
-            'logs': 0.5               # Max 2/second for logs
+            'stats_update': 2.0,      # Optimized: Max 1/2seconds for stats (was 1s)
+            'torrents_update': 4.0,   # Optimized: Max 1/4seconds for torrent list (was 2s)
+            'logs': 0.5               # Keep 2/second for logs (responsive)
         }
     
     async def start_log_broadcasting(self):
@@ -56,13 +56,13 @@ class WebSocketManager:
         logger.info("📡 Stopped log broadcasting")
     
     async def _log_broadcast_loop(self):
-        """Background task to broadcast logs to WebSocket clients"""
+        """Background task to broadcast logs to WebSocket clients - optimized event-driven"""
         from app.services.log_stream_service import log_handler
         
         try:
             while self._running:
-                # Get new logs (non-blocking)
-                new_logs = log_handler.get_new_logs(timeout=0.5)
+                # Optimized: Get logs with longer timeout to reduce CPU polling
+                new_logs = log_handler.get_new_logs(timeout=1.0)  # Increased from 0.5s to 1.0s
                 
                 if new_logs and self.active_connections:
                     # Broadcast logs to all connected clients
@@ -71,8 +71,9 @@ class WebSocketManager:
                         "data": new_logs
                     })
                 
-                # Small sleep to prevent CPU spinning
-                await asyncio.sleep(0.1)
+                # Optimized: Only sleep if no logs found to reduce unnecessary wake-ups
+                if not new_logs:
+                    await asyncio.sleep(0.5)  # Longer sleep when no activity
         except asyncio.CancelledError:
             pass
         except Exception as e:

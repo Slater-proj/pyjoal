@@ -10,12 +10,30 @@ import json
 import os
 from pathlib import Path
 
+# Import version from main module
+def get_current_version():
+    """Get current version safely"""
+    try:
+        # Try to read from VERSION file (Docker environment)
+        version_file = Path("/app/VERSION")
+        if version_file.exists():
+            return version_file.read_text().strip()
+        
+        # Fallback: try relative path
+        version_file = Path(__file__).parent.parent.parent / "VERSION"
+        if version_file.exists():
+            return version_file.read_text().strip()
+        
+        return "dev"
+    except Exception:
+        return "dev"
+
 class VersionChecker:
     def __init__(self):
         self.cache_file = Path("/tmp/pyjoal_version_check.json")
         self.cache_duration = timedelta(hours=24)  # Check once per day
-        self.github_api_url = "https://api.github.com/repos/anthonyraymond/pyjoal/releases/latest"
-        self.current_version = "1.5.0"  # Current version
+        self.github_api_url = "https://api.github.com/repos/Slater-proj/pyjoal/releases/latest"
+        self.current_version = get_current_version()  # Use dynamic version
         
     async def get_version_info(self) -> Dict:
         """Get version info with daily caching"""

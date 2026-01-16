@@ -38,9 +38,14 @@ class StealthService:
     ]
     
     def __init__(self):
-        """Initialize stealth service"""
+        """Initialize stealth service with caching"""
         self.session_profiles: Dict[str, Dict] = {}  # Per-torrent session data
         self._natural_timing_cache = {}
+        # Optimization: Cache expensive calculations
+        self._time_factor_cache = {}  # Cache time factors by hour
+        self._activity_factor_cache = {}  # Cache activity factors
+        self._speed_cache = {}  # Cache speed calculations
+        self._cache_timestamp = datetime.utcnow()
         
     def get_session_profile(self, torrent_hash: str) -> Dict:
         """Get or create persistent session profile for torrent"""
@@ -121,16 +126,30 @@ class StealthService:
         return final_interval
     
     def _get_time_factor(self, hour: int) -> float:
-        """Natural activity variation by time of day"""
-        # Higher activity during evening/night hours (18-24, 0-2)
+        """Natural activity variation by time of day - cached"""
+        # Optimization: Cache time factors since they only change hourly
+        if hour in self._time_factor_cache:
+            cache_time = self._time_factor_cache[hour].get('timestamp')
+            if cache_time and (datetime.utcnow() - cache_time).total_seconds() < 3600:  # 1 hour cache
+                return self._time_factor_cache[hour]['factor']
+        
+        # Calculate new time factor
         if 18 <= hour <= 23 or 0 <= hour <= 2:
-            return random.uniform(1.1, 1.3)  # More active
+            factor = random.uniform(1.1, 1.3)  # More active
         elif 3 <= hour <= 7:
-            return random.uniform(0.7, 0.9)  # Less active (night)
+            factor = random.uniform(0.7, 0.9)  # Less active (night)
         elif 8 <= hour <= 17:
-            return random.uniform(0.9, 1.1)  # Normal (work hours)
+            factor = random.uniform(0.9, 1.1)  # Normal (work hours)
         else:
-            return 1.0
+            factor = 1.0
+        
+        # Cache the result
+        self._time_factor_cache[hour] = {
+            'factor': factor,
+            'timestamp': datetime.utcnow()
+        }
+        
+        return factor
     
     def _get_activity_factor(self, pattern: str, session_start: datetime) -> float:
         """Activity factor based on seeding pattern and session age"""
@@ -170,9 +189,16 @@ class StealthService:
         return random.randint(120, 900)
     
     def get_natural_speed_variation(self, base_speed: int, torrent_hash: str) -> int:
-        """Apply natural speed variations based on time and activity"""
+        """Apply natural speed variations with caching - optimized"""
         if base_speed <= 0:
             return 0
+        
+        # Optimization: Cache speed calculations for 30 seconds to reduce CPU
+        cache_key = f"{torrent_hash}_{base_speed}_{datetime.now().hour}"
+        cached_result = self._speed_cache.get(cache_key)
+        
+        if cached_result and (datetime.utcnow() - cached_result['timestamp']).total_seconds() < 30:
+            return cached_result['speed']
         
         profile = self.get_session_profile(torrent_hash)
         current_hour = datetime.now().hour
@@ -188,8 +214,22 @@ class StealthService:
         
         # Combine all factors
         final_speed = int(base_speed * time_multiplier * activity_speed_factor * micro_variation)
+        final_speed = max(final_speed, 0)
         
-        return max(final_speed, 0)
+        # Cache the result
+        self._speed_cache[cache_key] = {
+            'speed': final_speed,
+            'timestamp': datetime.utcnow()
+        }
+        
+        # Cleanup old cache entries (simple GC)
+        if len(self._speed_cache) > 1000:  # Limit cache size
+            old_keys = [k for k, v in self._speed_cache.items() 
+                       if (datetime.utcnow() - v['timestamp']).total_seconds() > 60]
+            for k in old_keys[:500]:  # Remove oldest 500
+                del self._speed_cache[k]
+        
+        return final_speed
     
     def _get_speed_time_multiplier(self, hour: int) -> float:
         """Network speed variations by time (realistic ISP patterns)"""
