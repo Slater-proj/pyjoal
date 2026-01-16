@@ -44,7 +44,7 @@ def get_version():
 APP_VERSION = get_version()
 
 from app.core.config import settings
-from app.api import config, torrents, client, history, logs, errors, version, cache
+from app.api import config, torrents, client, history, logs, errors, version, cache, system
 from app.services.websocket_manager import websocket_manager
 from app.services.seeder_service import seeder_service
 from app.services.history_service import history_service, EventType
@@ -227,18 +227,47 @@ app.include_router(history.router, prefix="/api", tags=["History"])
 app.include_router(logs.router, prefix="/api", tags=["Logs"])
 app.include_router(errors.router, prefix="/api", tags=["Error Information"])
 app.include_router(cache.router, tags=["Cache Management"])
+app.include_router(system.router, tags=["System Health"])
 app.include_router(version.router, tags=["Version"])
 
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "app": "PyJOAL",
-        "version": APP_VERSION,
-        "seeding": seeder_service.is_running
-    }
+    """Enhanced health check endpoint with system monitoring"""
+    try:
+        from app.services.simple_health import health_checker
+        
+        # Get detailed health status
+        health_status = health_checker.get_health_status()
+        
+        # Basic response for external monitoring
+        basic_status = {
+            "status": "healthy" if health_status['status'] in ['healthy', 'warning'] else "unhealthy",
+            "app": "PyJOAL", 
+            "version": APP_VERSION,
+            "seeding": seeder_service.is_running,
+            "uptime": health_status['uptime_seconds']
+        }
+        
+        # Add detailed info for UI
+        if health_status['status'] != 'healthy':
+            basic_status.update({
+                "health_status": health_status['status'],
+                "issues": health_status['issues'][:3],  # Top 3 issues
+                "suggestions": health_status['suggestions'][:2]  # Top 2 suggestions
+            })
+        
+        return basic_status
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "app": "PyJOAL",
+            "version": APP_VERSION, 
+            "seeding": seeder_service.is_running,
+            "error": "Health check system error"
+        }
 
 
 @app.websocket("/ws")

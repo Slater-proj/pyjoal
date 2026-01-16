@@ -1,5 +1,6 @@
 import { Play, Pause, Activity } from 'lucide-react'
 import { useStore } from '../store/useStore'
+import HealthBadge from './HealthBadge'
 
 export default function Header() {
   const { stats, startSeeding, stopSeeding, connected } = useStore()
@@ -30,16 +31,18 @@ export default function Header() {
             </div>
           </div>
 
-          <button
-            onClick={handleToggle}
-            className={`
-              flex items-center space-x-2 px-6 py-3 rounded-lg font-semibold
-              transition-all duration-200 transform hover:scale-105
-              ${isRunning 
-                ? 'bg-red-600 hover:bg-red-700 text-white' 
-                : 'bg-green-600 hover:bg-green-700 text-white'}
-            `}
-          >
+          <div className="flex items-center space-x-4">
+            <HealthBadge />
+            <button
+              onClick={handleToggle}
+              className={`
+                flex items-center space-x-2 px-6 py-3 rounded-lg font-semibold
+                transition-all duration-200 transform hover:scale-105
+                ${isRunning 
+                  ? 'bg-red-600 hover:bg-red-700 text-white' 
+                  : 'bg-green-600 hover:bg-green-700 text-white'}
+              `}
+            >
             {isRunning ? (
               <>
                 <Pause className="w-5 h-5" />
@@ -51,7 +54,8 @@ export default function Header() {
                 <span>Start Seeding</span>
               </>
             )}
-          </button>
+            </button>
+          </div>
         </div>
       </div>
     </header>
