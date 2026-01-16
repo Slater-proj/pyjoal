@@ -111,11 +111,6 @@ export const api = {
     return data;
   },
 
-  // Alias for backward compatibility
-  uploadTorrent: async (file: File) => {
-    return api.addTorrent(file);
-  },
-
   // Control
   start: async () => {
     const { data } = await axios.post(`${API_BASE}/start`);
@@ -137,7 +132,13 @@ export const api = {
     const { data } = await axios.get(`${API_BASE}/version`);
     return data;
   },
+
+  // Alias for backward compatibility - will be assigned after object creation
+  uploadTorrent: null as any,
 };
+
+// Assign the alias after object creation
+api.uploadTorrent = api.addTorrent;
 
 export const fetchConfig = async (): Promise<Config> => {
   return api.getConfig();
