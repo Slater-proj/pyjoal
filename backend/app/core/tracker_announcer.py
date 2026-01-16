@@ -366,7 +366,7 @@ class TrackerAnnouncer:
         return {
             "uploaded": self.uploaded,
             "downloaded": self.downloaded,
-            "uploadSpeed": self.upload_speed,
+            "uploadSpeed": int(self.upload_speed),  # Convert to int for schema compliance
             "seeders": self.seeders,
             "leechers": self.leechers,
             "lastAnnounce": self.last_announce,

@@ -608,7 +608,7 @@ class SeederService:
             "totalTorrents": len(self.announcers),
             "totalUploaded": total_uploaded,
             "totalDownloaded": 0,
-            "uploadSpeed": total_speed,
+            "uploadSpeed": int(total_speed),  # Convert to int for schema compliance
             "startedAt": self.started_at.isoformat() if self.started_at else None,
             "uptime": uptime
         }
