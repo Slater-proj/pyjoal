@@ -22,9 +22,9 @@ def get_version():
         if version_file.exists():
             return version_file.read_text().strip()
         else:
-            return "1.2.2"  # fallback
-    except:
-        return "1.2.2"  # fallback
+            return "1.3.1"  # fallback to current version
+    except Exception:
+        return "1.3.1"  # fallback to current version
 
 APP_VERSION = get_version()
 
