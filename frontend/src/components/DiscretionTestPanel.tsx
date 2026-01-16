@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react'
 
+interface TestConfig {
+  announceInterval?: number
+  announceJitter?: number
+  minStatsUpdateInterval?: number
+  enableSpeedVariation?: boolean
+  speedVariationPercent?: number
+  [key: string]: any
+}
+
 export default function DiscretionTestPanel() {
-  const [config, setConfig] = useState(null)
+  const [config, setConfig] = useState<TestConfig | null>(null)
   
   useEffect(() => {
     // Test direct de l'API
@@ -11,7 +20,7 @@ export default function DiscretionTestPanel() {
       }
     })
     .then(res => res.json())
-    .then(data => {
+    .then((data: TestConfig) => {
       console.log('🧪 Test Config:', data)
       setConfig(data)
     })
