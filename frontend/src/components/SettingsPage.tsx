@@ -38,11 +38,11 @@ export default function SettingsPage() {
     if (formData.maxUploadRate < 0) {
       errors.push("La vitesse maximum ne peut pas être négative")
     }
-    if (formData.minUploadRate > 100000) {
-      errors.push("La vitesse minimum ne peut pas dépasser 100 MB/s (100000 KB/s)")
+    if (formData.minUploadRate > 1000000) {
+      errors.push("La vitesse minimum ne peut pas dépasser 1000 MB/s (1000000 KB/s)")
     }
-    if (formData.maxUploadRate > 100000) {
-      errors.push("La vitesse maximum ne peut pas dépasser 100 MB/s (100000 KB/s)")
+    if (formData.maxUploadRate > 1000000) {
+      errors.push("La vitesse maximum ne peut pas dépasser 1000 MB/s (1000000 KB/s)")
     }
     if (formData.maxUploadRate > 0 && formData.maxUploadRate < formData.minUploadRate) {
       errors.push(`La vitesse maximum (${formData.maxUploadRate} KB/s) doit être supérieure ou égale à la vitesse minimum (${formData.minUploadRate} KB/s)`)
@@ -132,7 +132,7 @@ export default function SettingsPage() {
                   onChange={(e) => handleChange('minUploadRate', parseInt(e.target.value))}
                   className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   min="0"
-                  max="100000"
+                  max="1000000"
                 />
               </div>
               <div>
@@ -145,9 +145,9 @@ export default function SettingsPage() {
                   onChange={(e) => handleChange('maxUploadRate', parseInt(e.target.value))}
                   className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   min="0"
-                  max="100000"
+                  max="1000000"
                 />
-                <p className="text-slate-500 text-xs mt-1">Limite : 100000 KB/s (100 MB/s max)</p>
+                <p className="text-slate-500 text-xs mt-1">Limite : 1000000 KB/s (1000 MB/s max)</p>
               </div>
             </div>
           </div>

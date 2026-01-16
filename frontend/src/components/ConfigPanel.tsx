@@ -78,7 +78,7 @@ export default function ConfigPanel() {
                 onChange={(e) => handleChange('minUploadRate', parseInt(e.target.value))}
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min="0"
-                max="100000"
+                max="1000000"
               />
             </div>
 
@@ -92,7 +92,7 @@ export default function ConfigPanel() {
                 onChange={(e) => handleChange('maxUploadRate', parseInt(e.target.value))}
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min="0"
-                max="100000"
+                max="1000000"
               />
             </div>
 

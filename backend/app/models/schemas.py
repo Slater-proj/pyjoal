@@ -27,8 +27,8 @@ class TorrentState(str, Enum):
 
 class ConfigSchema(BaseModel):
     """Application configuration schema"""
-    minUploadRate: int = Field(ge=0, le=100000, description="Min upload rate (kB/s)")
-    maxUploadRate: int = Field(ge=0, le=100000, description="Max upload rate (kB/s)")
+    minUploadRate: int = Field(ge=0, le=1000000, description="Min upload rate (kB/s)")
+    maxUploadRate: int = Field(ge=0, le=1000000, description="Max upload rate (kB/s)")
     simultaneousSeed: int = Field(ge=1, le=1000, description="Simultaneous seeds")
     client: str = Field(description="Client file name")
     keepTorrentWithZeroLeechers: bool = Field(description="Keep torrents with no peers")
@@ -39,16 +39,16 @@ class ConfigSchema(BaseModel):
     def validate_min_rate(cls, v):
         if v < 0:
             raise ValueError("La vitesse minimum ne peut pas être négative")
-        if v > 100000:
-            raise ValueError("La vitesse minimum ne peut pas dépasser 100 MB/s (100000 KB/s)")
+        if v > 1000000:
+            raise ValueError("La vitesse minimum ne peut pas dépasser 1000 MB/s (1000000 KB/s)")
         return v
     
     @validator("maxUploadRate")
     def validate_max_rate(cls, v, values):
         if v < 0:
             raise ValueError("La vitesse maximum ne peut pas être négative")
-        if v > 100000:
-            raise ValueError("La vitesse maximum ne peut pas dépasser 100 MB/s (100000 KB/s)")
+        if v > 1000000:
+            raise ValueError("La vitesse maximum ne peut pas dépasser 1000 MB/s (1000000 KB/s)")
         if "minUploadRate" in values and v > 0 and v < values["minUploadRate"]:
             raise ValueError(f"La vitesse maximum ({v} KB/s) doit être supérieure ou égale à la vitesse minimum ({values['minUploadRate']} KB/s)")
         return v
