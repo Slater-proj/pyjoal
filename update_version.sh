@@ -1,11 +1,11 @@
 #!/bin/bash
 # Version Update Script - PyJOAL
 # Usage: ./update_version.sh <new_version>
-# Example: ./update_version.sh 1.3.0
+# Example: ./update_version.sh X.Y.Z
 
 if [ -z "$1" ]; then
     echo "❌ Usage: $0 <version>"
-    echo "   Example: $0 1.3.0"
+    echo "   Example: $0 X.Y.Z"
     exit 1
 fi
 
@@ -13,7 +13,7 @@ NEW_VERSION="$1"
 
 # Validate version format (x.y.z)
 if [[ ! "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "❌ Invalid version format. Use x.y.z (e.g., 1.3.0)"
+    echo "❌ Invalid version format. Use X.Y.Z format"
     exit 1
 fi
 
@@ -27,7 +27,12 @@ echo "✅ Updated VERSION file"
 sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" frontend/package.json
 echo "✅ Updated frontend/package.json"
 
-# 3. Update CHANGELOG.md
+# 3. Update documentation examples (replace old version examples with new ones)
+echo "📝 Updating documentation examples..."
+find . -name "*.md" -not -path "./CHANGELOG.md" -exec sed -i "s/[0-9]\+\.[0-9]\+\.[0-9]\+/$NEW_VERSION/g" {} \;
+echo "✅ Updated documentation examples"
+
+# 4. Update CHANGELOG.md
 CHANGELOG_ENTRY="## [$NEW_VERSION] - $(date +%Y-%m-%d)
 
 ### Changed

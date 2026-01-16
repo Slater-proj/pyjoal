@@ -47,7 +47,7 @@ export interface Torrent {
   seedingTime: number; // Actual seeding time in seconds
 }
 
-export interface Stats {
+export interface Stats {\n  totalUploaded: number;\n  totalRatio: number;\n  activeTorrents: number;\n  avgUploadSpeed: number;\n}\n\nexport interface Version {\n  version: string;\n}
   isRunning: boolean;
   activeTorrents: number;
   totalTorrents: number;

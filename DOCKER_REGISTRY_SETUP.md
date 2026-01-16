@@ -22,18 +22,18 @@ To get access token:
 ### 3. Test Local Docker Build
 ```bash
 # Build with version tags
-docker build -t pyjoal:1.3.0 -t pyjoal:latest .
+docker build -t pyjoal:1.3.3 -t pyjoal:latest .
 
 # Tag for registries
-docker tag pyjoal:1.3.0 username/pyjoal:1.3.0
+docker tag pyjoal:1.3.3 username/pyjoal:1.3.3
 docker tag pyjoal:latest username/pyjoal:latest
-docker tag pyjoal:1.3.0 ghcr.io/username/pyjoal:1.3.0
+docker tag pyjoal:1.3.3 ghcr.io/username/pyjoal:1.3.3
 docker tag pyjoal:latest ghcr.io/username/pyjoal:latest
 
 # Push to registries
-docker push username/pyjoal:1.3.0
+docker push username/pyjoal:1.3.3
 docker push username/pyjoal:latest
-docker push ghcr.io/username/pyjoal:1.3.0
+docker push ghcr.io/username/pyjoal:1.3.3
 docker push ghcr.io/username/pyjoal:latest
 ```
 
@@ -42,14 +42,14 @@ docker push ghcr.io/username/pyjoal:latest
 ### Complete Release Workflow
 ```bash
 # 1. Update version (updates VERSION, package.json, CHANGELOG)
-./update_version.sh 1.4.0
+./update_version.sh 1.3.3
 
 # 2. Push changes
 git push origin master
 
 # 3. Create and push tag (triggers GitHub Actions)
-git tag v1.4.0
-git push origin v1.4.0
+git tag v1.3.3
+git push origin v1.3.3
 ```
 
 ### What GitHub Actions Does Automatically
@@ -63,11 +63,11 @@ git push origin v1.4.0
 ## 📍 Registry URLs
 
 ### GitHub Container Registry
-- `ghcr.io/username/pyjoal:1.3.0`
+- `ghcr.io/username/pyjoal:1.3.3`
 - `ghcr.io/username/pyjoal:latest`
 
 ### Docker Hub
-- `username/pyjoal:1.3.0`
+- `username/pyjoal:1.3.3`
 - `username/pyjoal:latest`
 
 ## 🔍 Version Verification
@@ -141,13 +141,13 @@ docker push username/pyjoal:latest
 If VERSION file doesn't match tag:
 ```bash
 # Fix and re-tag
-echo "1.3.0" > VERSION
+echo "1.3.3" > VERSION
 git add VERSION
 git commit -m "fix: sync VERSION file"
-git tag -d v1.3.0  # delete old tag
-git tag v1.3.0     # create new tag
-git push --delete origin v1.3.0  # delete remote tag
-git push origin v1.3.0           # push new tag
+git tag -d v1.3.3  # delete old tag
+git tag v1.3.3     # create new tag
+git push --delete origin v1.3.3  # delete remote tag
+git push origin v1.3.3           # push new tag
 ```
 
 ### Docker Build Fails

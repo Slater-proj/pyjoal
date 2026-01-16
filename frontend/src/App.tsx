@@ -11,9 +11,16 @@ type Page = 'dashboard' | 'settings' | 'history'
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard')
+  const [appVersion, setAppVersion] = useState<string>('dev')
   const { connectWebSocket, fetchConfig, fetchTorrents, fetchStats, fetchClients, toasts, removeToast } = useStore()
 
   useEffect(() => {
+    // Fetch app version
+    fetch('/api/version')
+      .then(res => res.json())
+      .then(data => setAppVersion(data.version))
+      .catch(() => setAppVersion('dev'))
+
     // Initial data fetch
     fetchConfig()
     fetchTorrents()
@@ -50,7 +57,7 @@ function App() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-bold text-blue-400">PyJOAL</h1>
-              <span className="text-slate-500 text-xs bg-slate-700/50 px-2 py-1 rounded">v1.0.0</span>
+              <span className="text-slate-500 text-xs bg-slate-700/50 px-2 py-1 rounded">v{appVersion}</span>
             </div>
           </div>
         </div>

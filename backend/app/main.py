@@ -22,9 +22,18 @@ def get_version():
         if version_file.exists():
             return version_file.read_text().strip()
         else:
-            return "1.3.1"  # fallback to current version
+            # Try to get version from git tag as last resort
+            try:
+                import subprocess
+                result = subprocess.run(['git', 'describe', '--tags', '--exact-match', 'HEAD'], 
+                                     capture_output=True, text=True, cwd=Path(__file__).parent.parent.parent)
+                if result.returncode == 0:
+                    return result.stdout.strip().lstrip('v')
+            except:
+                pass
+            return "dev"  # development fallback
     except Exception:
-        return "1.3.1"  # fallback to current version
+        return "dev"  # development fallback
 
 APP_VERSION = get_version()
 

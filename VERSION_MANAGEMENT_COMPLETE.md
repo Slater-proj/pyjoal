@@ -6,7 +6,7 @@ Le système de versioning est maintenant **complètement unifié** et utilise le
 ## 📋 Ce qui a été implémenté
 
 ### ✅ 1. Source Unique de Vérité
-- **Fichier VERSION** : Contient la version actuelle (`1.3.1`)
+- **Fichier VERSION** : Contient la version actuelle (`1.3.3`)
 - Lecture dynamique par l'application Python
 - Synchronisation automatique avec `package.json`
 - API endpoint `/api/version` pour récupérer la version
@@ -32,7 +32,7 @@ Le système de versioning est maintenant **complètement unifié** et utilise le
 ### Pour une nouvelle version :
 ```bash
 # 1. Mettre à jour la version (fait tout automatiquement)
-./update_version.sh 1.4.0
+./update_version.sh 1.3.3
 
 # 2. Pousser les changements  
 git push origin master
@@ -43,17 +43,17 @@ git push origin master
 ### Ce qui se passe automatiquement :
 1. ✅ **Tests** (backend + frontend + sécurité)
 2. ✅ **Build Docker** avec la version du fichier `VERSION`
-3. ✅ **Publication Docker Hub** : `adminclem/pyjoal:v1.4.0` + `latest`
+3. ✅ **Publication Docker Hub** : `adminclem/pyjoal:v1.3.3` + `latest`
 4. ✅ **Release GitHub** créée avec notes automatiques
 5. ✅ **Documentation API** générée et archivée
 
 ## 🔍 Points de Vérification
 
 ### ✅ Version synchronisée partout
-- `VERSION` file: `1.3.1` 
-- `package.json`: `1.3.1`
-- Application logs: `PyJOAL v1.3.1`
-- API endpoint: `/api/version` → `{"version": "1.3.1"}`
+- `VERSION` file: `1.3.3` 
+- `package.json`: `1.3.3`
+- Application logs: `PyJOAL v1.3.3`
+- API endpoint: `/api/version` → `{"version": "1.3.3"}`
 
 ### ✅ Workflow CI adapté
 - Lit `VERSION` au lieu d'auto-incrémenter
@@ -72,11 +72,11 @@ Après le prochain push vers master, les images seront disponibles :
 
 ```bash
 # Docker Hub (via ton CI existant)
-docker pull adminclem/pyjoal:v1.3.1
+docker pull adminclem/pyjoal:v1.3.3
 docker pull adminclem/pyjoal:latest
 
 # GitHub Container Registry (si configuré)  
-docker pull ghcr.io/adminclem/pyjoal:v1.3.1
+docker pull ghcr.io/adminclem/pyjoal:v1.3.3
 docker pull ghcr.io/adminclem/pyjoal:latest
 ```
 
@@ -90,7 +90,7 @@ docker pull ghcr.io/adminclem/pyjoal:latest
 
 **Le problème de versioning incohérent est résolu !**
 
-- ✅ Plus de v1.0.0 partout alors que l'app est en v1.3.1
+- ✅ Plus de v1.3.3 partout alors que l'app est en v1.3.3
 - ✅ Version unique gérée centralement 
 - ✅ CI/CD utilise la vraie version
 - ✅ Docker Hub aura les bonnes versions

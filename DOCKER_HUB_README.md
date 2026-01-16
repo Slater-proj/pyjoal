@@ -117,7 +117,7 @@ docker-compose up -d
 | `KEEP_TORRENT_WITH_ZERO_LEECHERS` | `true` | Keep seeding when no leechers |
 | `UPLOAD_RATIO_TARGET` | `-1.0` | Upload ratio goal (`-1` = unlimited) |
 | `SEEDING_DURATION_LIMIT` | `-1.0` | Max seed time in hours (`-1` = unlimited) |
-| `DEFAULT_CLIENT` | `qbittorrent-4.6.0.client` | Default client emulation |
+| `DEFAULT_CLIENT` | `qbittorrent-1.3.3.client` | Default client emulation |
 
 ### Proxy (Optional)
 
@@ -256,7 +256,7 @@ On first start, a `config/config.json` is created with your environment variable
   "minUploadRate": 30,
   "maxUploadRate": 160,
   "simultaneousSeed": 20,
-  "client": "qbittorrent-4.6.0.client",
+  "client": "qbittorrent-1.3.3.client",
   "keepTorrentWithZeroLeechers": true,
   "uploadRatioTarget": -1.0,
   "seedingDurationLimit": -1.0
@@ -301,9 +301,9 @@ pyjoal.yourdomain.com {
 
 PyJOAL can emulate various BitTorrent clients:
 
-- **qBittorrent** 4.6.0, 4.5.5, 4.4.5
-- **Deluge** 2.1.1
-- **Transmission** 4.0.5
+- **qBittorrent** 1.3.3, 1.3.3, 1.3.3
+- **Deluge** 1.3.3
+- **Transmission** 1.3.3
 - **µTorrent** and more...
 
 Client definitions are automatically updated from the official repository on container start.
