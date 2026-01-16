@@ -5,6 +5,7 @@ import SettingsPage from './components/SettingsPage'
 import HistoryPage from './components/HistoryPage'
 import Toast from './components/Toast'
 import LogConsole from './components/LogConsole'
+import DiscretionTestPanel from './components/DiscretionTestPanel'
 import { useStore } from './store/useStore'
 
 type Page = 'dashboard' | 'settings' | 'history'
@@ -82,7 +83,8 @@ function App() {
           />
         ))}
       </div>
-
+      {/* Test Panel for Discretion Settings */}
+      <DiscretionTestPanel />
       {/* Log Console */}
       <LogConsole />
     </div>
