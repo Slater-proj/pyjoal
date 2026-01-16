@@ -1,19 +1,25 @@
 """
 Torrent File Parser
-Handles .torrent file parsing and metadata extraction
+Handles .torrent file parsing and metadata extraction with intelligent caching
 """
 import hashlib
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
 import bencodepy
+import logging
+
+from app.core.cache_manager import cache_manager
+
+logger = logging.getLogger(__name__)
 
 
 class Torrent:
     """Represents a .torrent file"""
     
     def __init__(self, torrent_path: Path):
-        """Initialize torrent from file"""
+        """Initialize torrent from file with caching support"""
         self.path = torrent_path
         self.filename = torrent_path.name
         self.data: Dict = {}
@@ -23,10 +29,55 @@ class Torrent:
         self.trackers: List[str] = []
         self.added_at: datetime = datetime.utcnow()
         
-        self._parse()
+        # Generate cache key based on path and modification time
+        stat = self.path.stat()
+        self._cache_key = f"{self.path}:{stat.st_mtime}:{stat.st_size}"
+        
+        self._parse_with_cache()
     
-    def _parse(self):
-        """Parse torrent file"""
+    def _parse_with_cache(self):
+        """Parse torrent file with intelligent caching"""
+        # Try to get from cache first
+        cached_metadata = cache_manager.get_torrent_metadata(self._cache_key)
+        
+        if cached_metadata:
+            # Use cached data
+            self._load_from_cache(cached_metadata)
+            logger.debug(f"📦 Torrent metadata loaded from cache: {self.filename}")
+            return
+        
+        # Cache miss - parse from file
+        logger.debug(f"🔍 Parsing torrent file (cache miss): {self.filename}")
+        self._parse_from_file()
+        
+        # Cache the results
+        metadata = self._get_cacheable_metadata()
+        cache_manager.set_torrent_metadata(self._cache_key, metadata)
+        logger.debug(f"💾 Torrent metadata cached: {self.filename}")
+    
+    def _load_from_cache(self, cached_metadata: Dict):
+        """Load torrent data from cached metadata"""
+        self.info_hash = cached_metadata['info_hash']
+        self.name = cached_metadata['name']
+        self.size = cached_metadata['size']
+        self.trackers = cached_metadata['trackers']
+        # Don't cache the full data dict (memory optimization)
+    
+    def _get_cacheable_metadata(self) -> Dict:
+        """Get metadata safe for caching (without large data)"""
+        return {
+            'info_hash': self.info_hash,
+            'name': self.name,
+            'size': self.size,
+            'trackers': self.trackers,
+            'filename': self.filename,
+            'parsed_at': datetime.utcnow().isoformat()
+        }
+    
+    def _parse_from_file(self):
+        """Parse torrent file from disk (original logic)"""
+    def _parse_from_file(self):
+        """Parse torrent file from disk (original logic)"""
         try:
             with open(self.path, 'rb') as f:
                 self.data = bencodepy.decode(f.read())

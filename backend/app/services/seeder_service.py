@@ -1,6 +1,6 @@
 """
 Seeder Service
-Manages multiple torrent seeders and orchestrates announces
+Manages multiple torrent seeders and orchestrates announces with intelligent caching
 """
 import asyncio
 import logging
@@ -15,6 +15,7 @@ from app.core.torrent_parser import Torrent, load_torrents_from_directory
 from app.core.tracker_announcer import TrackerAnnouncer
 from app.services.websocket_manager import websocket_manager
 from app.services.history_service import history_service, EventType
+from app.core.cache_manager import cache_manager
 
 logger = logging.getLogger(__name__)
 
@@ -465,22 +466,22 @@ class SeederService:
             while self.is_running:
                 await asyncio.sleep(5)  # Update every 5 seconds
                 
-                # Get current data
-                stats = self.get_stats()
-                torrents = self.get_torrents()
+                # Get current data with caching optimization
+                stats = self.get_stats_cached()
+                torrents = self.get_torrents_cached()
                 
                 # DO NOT force synchronous stats update - let each announcer update independently
                 # This was causing all torrents to update speeds at the same time (security issue)
                 
                 logger.debug(f"🔄 Monitor update: {stats['activeTorrents']} active, {len(torrents)} total torrents, total speed: {stats['uploadSpeed']/1024:.1f} KB/s")
                 
-                # Send global stats update
+                # Send global stats update (with intelligent batching)
                 await websocket_manager.broadcast({
                     "type": "stats_update",
                     "data": stats
                 })
                 
-                # Send individual torrent updates
+                # Send individual torrent updates (with intelligent batching)
                 await websocket_manager.broadcast({
                     "type": "torrents_update",
                     "data": {
@@ -495,6 +496,9 @@ class SeederService:
                 
                 # Check ratio targets
                 await self._check_ratio_targets()
+                
+                # Periodic cache cleanup
+                cache_manager.periodic_cleanup()
                 
                 # Check for new torrents
                 await self.load_torrents()
@@ -745,6 +749,36 @@ class SeederService:
             "startedAt": self.started_at.isoformat() if self.started_at else None,
             "uptime": uptime
         }
+    
+    def get_stats_cached(self) -> Dict:
+        """Get stats with intelligent caching (30s TTL)"""
+        cached_stats = cache_manager.get_aggregated_stats("global_stats")
+        
+        if cached_stats:
+            logger.debug("📊 Stats loaded from cache")
+            return cached_stats
+        
+        # Cache miss - compute stats
+        stats = self.get_stats()
+        cache_manager.set_aggregated_stats("global_stats", stats)
+        logger.debug("💾 Stats computed and cached")
+        
+        return stats
+    
+    def get_torrents_cached(self) -> List[Dict]:
+        """Get torrents with intelligent caching (5s TTL for faster updates)"""
+        cached_torrents = cache_manager.get_aggregated_stats("torrents_list")
+        
+        if cached_torrents:
+            logger.debug("📋 Torrents list loaded from cache")
+            return cached_torrents
+        
+        # Cache miss - compute torrents list
+        torrents = self.get_torrents()
+        cache_manager.set_aggregated_stats("torrents_list", torrents)
+        logger.debug("💾 Torrents list computed and cached")
+        
+        return torrents
 
 
 # Global service instance

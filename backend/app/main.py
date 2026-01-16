@@ -44,7 +44,7 @@ def get_version():
 APP_VERSION = get_version()
 
 from app.core.config import settings
-from app.api import config, torrents, client, history, logs, errors, version
+from app.api import config, torrents, client, history, logs, errors, version, cache
 from app.services.websocket_manager import websocket_manager
 from app.services.seeder_service import seeder_service
 from app.services.history_service import history_service, EventType
@@ -226,6 +226,7 @@ app.include_router(client.router, prefix="/api", tags=["Client Control"])
 app.include_router(history.router, prefix="/api", tags=["History"])
 app.include_router(logs.router, prefix="/api", tags=["Logs"])
 app.include_router(errors.router, prefix="/api", tags=["Error Information"])
+app.include_router(cache.router, tags=["Cache Management"])
 app.include_router(version.router, tags=["Version"])
 
 
