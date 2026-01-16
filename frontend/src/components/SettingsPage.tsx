@@ -111,7 +111,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="w-full max-w-6xl mx-auto px-4">
       <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-700">
           <h2 className="text-xl font-bold text-white">Configuration</h2>
@@ -127,7 +127,7 @@ export default function SettingsPage() {
               Upload Rate
             </h3>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-slate-400 mb-2">
                   Minimum (KB/s)
@@ -164,7 +164,7 @@ export default function SettingsPage() {
               Seeding
             </h3>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-slate-400 mb-2">
                   Simultaneous Seeds
@@ -287,6 +287,173 @@ export default function SettingsPage() {
                   ))
                 )}
               </select>
+            </div>
+          </div>
+
+          {/* Discretion & Anti-Detection Settings */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wide flex items-center gap-2">
+              <span>🎭</span>
+              <span>Discretion & Anti-Detection</span>
+            </h3>
+            <p className="text-sm text-slate-400">
+              Configure timing parameters to avoid detection by trackers. These settings help make your seeding behavior appear more natural.
+            </p>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Announce Interval */}
+              <div>
+                <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                  Announce Interval (seconds)
+                  <div className="group relative">
+                    <HelpCircle className="w-4 h-4 text-slate-500 cursor-help" />
+                    <div className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg">
+                      Base time between announces (15-300s)
+                    </div>
+                  </div>
+                </label>
+                <input
+                  type="number"
+                  value={formData.announceInterval ?? 30}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      handleChange('announceInterval', '')
+                    } else {
+                      const parsed = parseInt(value)
+                      handleChange('announceInterval', isNaN(parsed) ? 30 : Math.max(15, Math.min(300, parsed)))
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === '' || parseInt(e.target.value) < 15) {
+                      handleChange('announceInterval', 30)
+                    }
+                  }}
+                  className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  min="15"
+                  max="300"
+                  placeholder="30"
+                />
+              </div>
+
+              {/* Announce Jitter */}
+              <div>
+                <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                  Announce Jitter (±seconds)
+                  <div className="group relative">
+                    <HelpCircle className="w-4 h-4 text-slate-500 cursor-help" />
+                    <div className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg">
+                      Random timing variation to avoid synchronization
+                    </div>
+                  </div>
+                </label>
+                <input
+                  type="number"
+                  value={formData.announceJitter ?? 30}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      handleChange('announceJitter', '')
+                    } else {
+                      const parsed = parseInt(value)
+                      handleChange('announceJitter', isNaN(parsed) ? 30 : Math.max(0, Math.min(180, parsed)))
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === '' || parseInt(e.target.value) < 0) {
+                      handleChange('announceJitter', 30)
+                    }
+                  }}
+                  className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  min="0"
+                  max="180"
+                  placeholder="30"
+                />
+              </div>
+
+              {/* Min Stats Update Interval */}
+              <div>
+                <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                  Min Stats Update Interval (seconds)
+                  <div className="group relative">
+                    <HelpCircle className="w-4 h-4 text-slate-500 cursor-help" />
+                    <div className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg">
+                      Minimum time between speed updates (1-30s)
+                    </div>
+                  </div>
+                </label>
+                <input
+                  type="number"
+                  value={formData.minStatsUpdateInterval ?? 3}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      handleChange('minStatsUpdateInterval', '')
+                    } else {
+                      const parsed = parseInt(value)
+                      handleChange('minStatsUpdateInterval', isNaN(parsed) ? 3 : Math.max(1, Math.min(30, parsed)))
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                      handleChange('minStatsUpdateInterval', 3)
+                    }
+                  }}
+                  className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  min="1"
+                  max="30"
+                  placeholder="3"
+                />
+              </div>
+
+              {/* Speed Variation Percent */}
+              <div>
+                <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                  Speed Variation (±%)
+                  <div className="group relative">
+                    <HelpCircle className="w-4 h-4 text-slate-500 cursor-help" />
+                    <div className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg">
+                      Realistic speed fluctuation percentage (0-50%)
+                    </div>
+                  </div>
+                </label>
+                <input
+                  type="number"
+                  value={formData.speedVariationPercent ?? 20}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      handleChange('speedVariationPercent', '')
+                    } else {
+                      const parsed = parseInt(value)
+                      handleChange('speedVariationPercent', isNaN(parsed) ? 20 : Math.max(0, Math.min(50, parsed)))
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value === '' || parseInt(e.target.value) < 0) {
+                      handleChange('speedVariationPercent', 20)
+                    }
+                  }}
+                  className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  min="0"
+                  max="50"
+                  placeholder="20"
+                />
+              </div>
+            </div>
+
+            {/* Enable Speed Variation */}
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="enableSpeedVariation"
+                checked={formData.enableSpeedVariation ?? true}
+                onChange={(e) => handleChange('enableSpeedVariation', e.target.checked)}
+                className="w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-2 focus:ring-blue-500"
+              />
+              <label htmlFor="enableSpeedVariation" className="text-sm text-slate-300 cursor-pointer">
+                Enable realistic speed variations (Recommended for stealth)
+              </label>
             </div>
           </div>
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🧪 AUDIT COMPLET DES TESTS - PyJOAL v1.3.4"
+echo "🧪 AUDIT COMPLET DES TESTS - PyJOAL v1.3.8"
 echo "=========================================="
 
 echo ""
@@ -9,7 +9,7 @@ echo ""
 
 # Frontend Components
 echo "🎨 FRONTEND - Composants testés:"
-echo "✅ api.test.ts - Service API principal"
+echo "✅ api.test.ts - Service API principal + nouveaux champs de discrétion"
 echo "✅ ClientInfoPanel.test.tsx - Panneau d'informations client" 
 echo "✅ BottomNav.test.tsx - Navigation principale"
 echo "✅ Toast.test.tsx - Système de notifications"
@@ -17,7 +17,7 @@ echo ""
 
 echo "❌ FRONTEND - Composants NON testés:"
 echo "❌ TorrentsTableNew.tsx - Tableau principal des torrents"
-echo "❌ SettingsPage.tsx - Page de configuration"
+echo "❌ SettingsPage.tsx - Page de configuration (incluant section discrétion)"
 echo "❌ HistoryPage.tsx - Page d'historique" 
 echo "❌ DashboardPage.tsx - Page tableau de bord"
 echo "❌ LogConsole.tsx - Console de logs"

@@ -22,9 +22,7 @@ const EVENT_ICONS: Record<string, any> = {
   system_stop: X,
   torrent_added: Plus,
   torrent_removed: Minus,
-  torrent_archived_ratio: Trash2,
-  torrent_archived_time: Trash2,
-  torrent_archived_error: Trash2,
+  torrent_archived: Trash2,  // Unified archived category
   torrent_load_failed: AlertCircle,
   announce_success: Activity,
   announce_failed: AlertCircle,
@@ -36,13 +34,22 @@ const EVENT_COLORS: Record<string, string> = {
   system_stop: 'text-red-400 bg-red-500/10',
   torrent_added: 'text-blue-400 bg-blue-500/10',
   torrent_removed: 'text-orange-400 bg-orange-500/10',
-  torrent_archived_ratio: 'text-purple-400 bg-purple-500/10',
-  torrent_archived_time: 'text-indigo-400 bg-indigo-500/10',
-  torrent_archived_error: 'text-red-400 bg-red-500/10',
+  torrent_archived: 'text-purple-400 bg-purple-500/10',  // Default archived color
   torrent_load_failed: 'text-red-400 bg-red-500/10',
   announce_success: 'text-green-400 bg-green-500/10',
   announce_failed: 'text-red-400 bg-red-500/10',
   config_updated: 'text-purple-400 bg-purple-500/10',
+}
+
+// Function to get color based on archive reason
+const getArchiveColor = (reason: string) => {
+  switch (reason) {
+    case 'ratio_target': return 'text-purple-400 bg-purple-500/10'
+    case 'duration_limit': return 'text-indigo-400 bg-indigo-500/10'
+    case 'zero_peers': return 'text-red-400 bg-red-500/10'
+    case 'error': return 'text-red-400 bg-red-500/10'
+    default: return 'text-purple-400 bg-purple-500/10'
+  }
 }
 
 export default function HistoryPage() {
@@ -99,19 +106,17 @@ export default function HistoryPage() {
   }
 
   const filters = [
-    { id: 'all', label: 'All' },
-    { id: 'announce_success', label: 'Success' },
-    { id: 'announce_failed', label: 'Failed' },
-    { id: 'torrent_added', label: 'Added' },
-    { id: 'torrent_removed', label: 'Removed' },
+    { id: 'all', label: 'All Events' },
+    { id: 'announce_success', label: 'Announce Success' },
+    { id: 'announce_failed', label: 'Announce Failed' },
+    { id: 'torrent_added', label: 'Torrents Added' },
+    { id: 'torrent_removed', label: 'Manually Removed' },
+    { id: 'torrent_archived', label: 'Auto Archived' },
     { id: 'torrent_load_failed', label: 'Load Failed' },
-    { id: 'torrent_archived_ratio', label: 'Archived (Ratio)' },
-    { id: 'torrent_archived_time', label: 'Archived (Time)' },
-    { id: 'torrent_archived_error', label: 'Archived (Error)' },
   ]
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="w-full max-w-6xl mx-auto px-4">
       <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
@@ -141,12 +146,12 @@ export default function HistoryPage() {
         </div>
 
         {/* Filters */}
-        <div className="px-6 py-3 border-b border-slate-700 flex gap-2 overflow-x-auto">
+        <div className="px-4 py-3 border-b border-slate-700 flex flex-wrap gap-2 sm:gap-3">
           {filters.map((f) => (
             <button
               key={f.id}
               onClick={() => setFilter(f.id)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                 filter === f.id
                   ? 'bg-blue-600 text-white'
                   : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
@@ -158,7 +163,7 @@ export default function HistoryPage() {
         </div>
 
         {/* Events List */}
-        <div className="divide-y divide-slate-700 max-h-[calc(100vh-350px)] overflow-y-auto">
+        <div className="divide-y divide-slate-700 max-h-[calc(100vh-250px)] overflow-y-auto">
           {loading && entries.length === 0 ? (
             <div className="px-6 py-12 text-center text-slate-400">
               <RefreshCw className="w-8 h-8 mx-auto mb-3 animate-spin" />
@@ -170,9 +175,27 @@ export default function HistoryPage() {
             </div>
           ) : (
             entries.map((entry, index) => {
+              // Get icon and colors
               const Icon = EVENT_ICONS[entry.eventType] || Activity
-              const colors = EVENT_COLORS[entry.eventType] || 'text-slate-400 bg-slate-500/10'
+              const defaultColors = EVENT_COLORS[entry.eventType] || 'text-slate-400 bg-slate-500/10'
+              
+              // Special handling for archived torrents with reason-specific colors
+              const colors = entry.eventType === 'torrent_archived' && entry.data.reason 
+                ? getArchiveColor(entry.data.reason)
+                : defaultColors
+                
               const [textColor, bgColor] = colors.split(' ')
+
+              // Format archive reason for display
+              const formatArchiveReason = (reason: string) => {
+                switch (reason) {
+                  case 'ratio_target': return 'Ratio Target Reached'
+                  case 'duration_limit': return 'Time Limit Reached' 
+                  case 'zero_peers': return 'No Active Peers'
+                  case 'error': return 'Error Condition'
+                  default: return 'Auto Archived'
+                }
+              }
 
               return (
                 <div key={index} className="px-6 py-3 hover:bg-slate-700/30 transition-colors">
@@ -182,7 +205,42 @@ export default function HistoryPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-white text-sm">{entry.message}</p>
-                      {Object.keys(entry.data).length > 0 && (
+                      
+                      {/* Enhanced data display with archive reason */}
+                      {entry.eventType === 'torrent_archived' && entry.data.reason && (
+                        <div className="mt-1 flex items-center gap-3">
+                          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-slate-700 text-slate-300">
+                            📋 {formatArchiveReason(entry.data.reason)}
+                          </span>
+                          {entry.data.ratio && (
+                            <span className="text-xs text-slate-400">
+                              📊 Ratio: {entry.data.ratio} (Target: {entry.data.target})
+                            </span>
+                          )}
+                          {entry.data.seeding_hours && (
+                            <span className="text-xs text-slate-400">
+                              ⏱️ Duration: {entry.data.seeding_hours}h (Limit: {entry.data.limit}h)
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Enhanced data display for load failures */}
+                      {entry.eventType === 'torrent_load_failed' && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-red-900 text-red-300">
+                            ❌ {entry.data.error || 'Unknown error'}
+                          </span>
+                          {entry.data.filename && (
+                            <span className="ml-2 text-xs text-slate-400">
+                              📄 File: {entry.data.filename}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Default data display for other events */}
+                      {entry.eventType !== 'torrent_archived' && entry.eventType !== 'torrent_load_failed' && Object.keys(entry.data).length > 0 && (
                         <div className="mt-1 text-xs text-slate-500">
                           {Object.entries(entry.data).slice(0, 3).map(([key, value]) => (
                             <span key={key} className="mr-3">

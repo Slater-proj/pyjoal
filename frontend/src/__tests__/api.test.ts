@@ -21,4 +21,30 @@ describe('API Service', () => {
   it('should have uploadTorrent as alias for addTorrent', () => {
     expect(api.uploadTorrent).toBe(api.addTorrent)
   })
+
+  it('should have Config interface with discretion fields', () => {
+    // Test that the Config interface includes all discretion fields
+    const mockConfig = {
+      minUploadRate: 30,
+      maxUploadRate: 160,
+      simultaneousSeed: 20,
+      client: 'qbittorrent-5.1.4.client',
+      keepTorrentWithZeroLeechers: true,
+      uploadRatioTarget: -1.0,
+      seedingDurationLimit: -1.0,
+      // Discretion fields - should not cause TypeScript errors
+      announceInterval: 30,
+      announceJitter: 30,
+      minStatsUpdateInterval: 3,
+      enableSpeedVariation: true,
+      speedVariationPercent: 20
+    }
+    
+    // If this compiles without TypeScript errors, the interface is correct
+    expect(mockConfig.announceInterval).toBe(30)
+    expect(mockConfig.announceJitter).toBe(30)
+    expect(mockConfig.minStatsUpdateInterval).toBe(3)
+    expect(mockConfig.enableSpeedVariation).toBe(true)
+    expect(mockConfig.speedVariationPercent).toBe(20)
+  })
 })

@@ -1,5 +1,40 @@
 # Changelog - PyJOAL
 
+## [1.4.0] - 2026-01-16
+
+### 🎨 Major UI/UX Improvements & History Optimization
+
+#### 📊 Enhanced History System
+- **Unified Archive Categories** - Simplified from 3 separate types (ratio/time/error) to 1 unified "Auto Archived" category
+- **Detailed Reason Display** - Clear badge system with color coding:
+  - 🟣 Purple badges for ratio targets achieved
+  - 🔵 Indigo badges for duration limits reached
+  - 🔴 Red badges for errors and zero peer situations
+- **Enhanced Information** - Detailed tooltips showing exact values (e.g., "Ratio: 2.5 (Target: 2.0)")
+- **Better Event Tracking** - Comprehensive event logging with structured data for analysis
+
+#### 🎯 Responsive Design & Layout
+- **Unified Panel Widths** - Harmonized History and Settings panels to same max width (6xl)
+- **Improved Mobile Experience** - Responsive grids that adapt to screen size:
+  - Mobile: Single column layout
+  - Tablet: Two column layout  
+  - Desktop: Three column layout for discretion settings
+- **Enhanced History Panel** - Increased height by 100px for better visibility without scrollbars
+- **Smart Filter Layout** - Flex-wrap filters instead of horizontal scroll for better mobile UX
+
+#### 🔧 Input Field Improvements
+- **Complete Value Deletion** - Fixed UX bug where last digit couldn't be deleted in discretion fields
+- **Better Validation** - OnBlur validation with proper empty string handling
+- **Placeholder Values** - Clear default values shown for better user guidance
+- **Enhanced Form UX** - Smoother interaction with proper focus and blur handling
+
+#### 📝 Optimized Logging System
+- **Real-time Log Streaming** - Live WebSocket log broadcasting to frontend console
+- **Structured Log Levels** - Color-coded log levels (DEBUG/INFO/WARNING/ERROR/CRITICAL)
+- **Smart Log Retention** - Keep last 500 logs in UI, 1000 in backend queue
+- **Comprehensive Tracking** - All major operations logged with appropriate detail level
+- **Performance Optimized** - Batched log transmission and efficient memory management
+
 ## [1.3.8] - 2026-01-16
 
 ### ✨ Major Feature: Advanced Discretion & Anti-Detection System

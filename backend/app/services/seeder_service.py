@@ -478,9 +478,16 @@ class SeederService:
             # Check ratio target (if enabled)
             if ratio_target > 0 and stats["ratio"] >= ratio_target:
                 history_service.add_entry(
-                    EventType.TORRENT_ARCHIVED_RATIO,
-                    f"Archived {torrent.name} - ratio target reached ({stats['ratio']:.2f} >= {ratio_target})",
-                    {"info_hash": info_hash, "ratio": stats["ratio"], "target": ratio_target, "reason": "ratio_target"}
+                    EventType.TORRENT_ARCHIVED,
+                    f"📦 Archived {torrent.name} - ratio target reached ({stats['ratio']:.2f} >= {ratio_target})",
+                    {
+                        "info_hash": info_hash, 
+                        "ratio": stats["ratio"], 
+                        "target": ratio_target, 
+                        "reason": "ratio_target",
+                        "torrent_name": torrent.name,
+                        "reason_detail": f"Ratio {stats['ratio']:.2f} exceeded target of {ratio_target}"
+                    }
                 )
                 to_remove.append(info_hash)
                 continue
@@ -490,9 +497,16 @@ class SeederService:
                 seeding_time_hours = stats["seedingTime"] / 3600  # Convert seconds to hours
                 if seeding_time_hours >= duration_limit:
                     history_service.add_entry(
-                        EventType.TORRENT_ARCHIVED_TIME,
-                        f"Archived {torrent.name} - duration limit reached ({seeding_time_hours:.1f}h >= {duration_limit}h)",
-                        {"info_hash": info_hash, "seeding_hours": seeding_time_hours, "limit": duration_limit, "reason": "duration_limit"}
+                        EventType.TORRENT_ARCHIVED,
+                        f"📦 Archived {torrent.name} - duration limit reached ({seeding_time_hours:.1f}h >= {duration_limit}h)",
+                        {
+                            "info_hash": info_hash, 
+                            "seeding_hours": seeding_time_hours, 
+                            "limit": duration_limit, 
+                            "reason": "duration_limit",
+                            "torrent_name": torrent.name,
+                            "reason_detail": f"Seeded for {seeding_time_hours:.1f} hours, limit is {duration_limit} hours"
+                        }
                     )
                     to_remove.append(info_hash)
                     continue

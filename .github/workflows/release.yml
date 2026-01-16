@@ -1,0 +1,110 @@
+# GitHub Actions Workflow - Automated Release and Docker Build
+name: Release and Docker Build
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.2.3
+
+env:
+  REGISTRY: ghcr.io
+  DOCKERHUB_REGISTRY: docker.io
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Verify VERSION file matches tag
+        run: |
+          FILE_VERSION=$(cat VERSION | tr -d '\n')
+          TAG_VERSION="${{ steps.version.outputs.version }}"
+          echo "VERSION file: $FILE_VERSION"
+          echo "Git tag: $TAG_VERSION"
+          if [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ VERSION file ($FILE_VERSION) doesn't match git tag ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "✅ VERSION file matches git tag"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKERHUB_REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ github.repository }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest
+            type=raw,value=${{ steps.version.outputs.version }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: PyJOAL v${{ steps.version.outputs.version }}
+          body: |
+            ## PyJOAL v${{ steps.version.outputs.version }}
+            
+            ### 🐳 Docker Images
+            **GitHub Container Registry:**
+            - `${{ env.REGISTRY }}/${{ github.repository }}:${{ steps.version.outputs.version }}`
+            - `${{ env.REGISTRY }}/${{ github.repository }}:latest`
+            
+            **Docker Hub:**
+            - `${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:${{ steps.version.outputs.version }}`
+            - `${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:latest`
+            
+            ### 🚀 Quick Start
+            ```bash
+            # GitHub Container Registry
+            docker pull ${{ env.REGISTRY }}/${{ github.repository }}:${{ steps.version.outputs.version }}
+            
+            # Docker Hub
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:${{ steps.version.outputs.version }}
+            ```
+            
+            ### 📋 What's Changed
+            See [CHANGELOG.md](./CHANGELOG.md) for detailed changes.
+          draft: false
+          prerelease: false
