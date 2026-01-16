@@ -15,8 +15,21 @@ import html
 import subprocess
 from pathlib import Path
 
+# Read version from VERSION file
+def get_version():
+    try:
+        version_file = Path(__file__).parent.parent.parent / "VERSION"
+        if version_file.exists():
+            return version_file.read_text().strip()
+        else:
+            return "1.2.2"  # fallback
+    except:
+        return "1.2.2"  # fallback
+
+APP_VERSION = get_version()
+
 from app.core.config import settings
-from app.api import config, torrents, client, history, logs, errors
+from app.api import config, torrents, client, history, logs, errors, version
 from app.services.websocket_manager import websocket_manager
 from app.services.seeder_service import seeder_service
 from app.services.history_service import history_service, EventType
@@ -111,7 +124,7 @@ async def lifespan(app: FastAPI):
         logger.info("💤 No torrents found, seeder service remains stopped")
     
     logger.info("=" * 80)
-    logger.info(f"✅ PyJOAL v1.2.1 started successfully on port {settings.PORT}")
+    logger.info(f"✅ PyJOAL v{APP_VERSION} started successfully on port {settings.PORT}")
     logger.info(f"🌐 UI available at: http://localhost:{settings.PORT}/{settings.UI_PATH_PREFIX}/ui/")
     logger.info(f"📚 API docs at: http://localhost:{settings.PORT}/docs")
     logger.info(f"🔐 Secret token: {settings.SECRET_TOKEN}")
@@ -152,6 +165,7 @@ app.include_router(client.router, prefix="/api", tags=["Client Control"])
 app.include_router(history.router, prefix="/api", tags=["History"])
 app.include_router(logs.router, prefix="/api", tags=["Logs"])
 app.include_router(errors.router, prefix="/api", tags=["Error Information"])
+app.include_router(version.router, tags=["Version"])
 
 
 @app.get("/health")
