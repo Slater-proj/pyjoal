@@ -24,6 +24,14 @@ export default function ConfigPanel() {
 
   useEffect(() => {
     if (config) {
+      console.log('🔧 ConfigPanel: Received config:', config)
+      console.log('🔧 ConfigPanel: Discretion fields:', {
+        announceInterval: config.announceInterval,
+        announceJitter: config.announceJitter,
+        minStatsUpdateInterval: config.minStatsUpdateInterval,
+        enableSpeedVariation: config.enableSpeedVariation,
+        speedVariationPercent: config.speedVariationPercent
+      })
       setFormData(config)
     }
   }, [config])
@@ -208,10 +216,15 @@ export default function ConfigPanel() {
             <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
               <span>🎭</span>
               <span>Discretion & Timing Settings</span>
+              <span className="text-xs bg-green-600 px-2 py-1 rounded">DEBUG: RENDERED</span>
             </h3>
             <p className="text-sm text-slate-400 mb-4">
               Advanced settings to improve stealth and avoid detection by tracker analysis.
             </p>
+            
+            <div className="text-xs text-yellow-400 mb-4 font-mono">
+              DEBUG - FormData: announceInterval={formData.announceInterval}, jitter={formData.announceJitter}
+            </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Announce Interval */}
