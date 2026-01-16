@@ -52,7 +52,8 @@ describe('ClientInfoPanel', () => {
 
   it('should display current upload speed', () => {
     render(<ClientInfoPanel />)
-    expect(screen.getByText('1 MB/s')).toBeInTheDocument()
+    // The speed is formatted as 1024000 / 1024 = 1000 KB/s, not 1 MB/s
+    expect(screen.getByText('1000 KB/s')).toBeInTheDocument()
   })
 
   it('should show paused status when not running', () => {
@@ -101,6 +102,8 @@ describe('ClientInfoPanel', () => {
     
     // Should show default values
     expect(screen.getByText('Unknown Client')).toBeInTheDocument()
-    expect(screen.getByText('0 B/s')).toBeInTheDocument() // Min and max should show 0
+    // There are two elements with '0 B/s' text (min and max), use getAllByText
+    const speedElements = screen.getAllByText('0 B/s')
+    expect(speedElements).toHaveLength(2) // Min and max should show 0
   })
 })
