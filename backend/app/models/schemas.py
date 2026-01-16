@@ -27,18 +27,52 @@ class TorrentState(str, Enum):
 
 class ConfigSchema(BaseModel):
     """Application configuration schema"""
-    minUploadRate: int = Field(ge=0, le=10000, description="Min upload rate (kB/s)")
-    maxUploadRate: int = Field(ge=0, le=10000, description="Max upload rate (kB/s)")
-    simultaneousSeed: int = Field(ge=1, le=100, description="Simultaneous seeds")
+    minUploadRate: int = Field(ge=0, le=100000, description="Min upload rate (kB/s)")
+    maxUploadRate: int = Field(ge=0, le=100000, description="Max upload rate (kB/s)")
+    simultaneousSeed: int = Field(ge=1, le=1000, description="Simultaneous seeds")
     client: str = Field(description="Client file name")
     keepTorrentWithZeroLeechers: bool = Field(description="Keep torrents with no peers")
     uploadRatioTarget: float = Field(description="Upload ratio target (-1 = never)")
     seedingDurationLimit: float = Field(default=-1.0, description="Seeding duration limit in hours (-1 = no limit)")
     
+    @validator("minUploadRate")
+    def validate_min_rate(cls, v):
+        if v < 0:
+            raise ValueError("La vitesse minimum ne peut pas être négative")
+        if v > 100000:
+            raise ValueError("La vitesse minimum ne peut pas dépasser 100 MB/s (100000 KB/s)")
+        return v
+    
     @validator("maxUploadRate")
-    def max_must_be_greater_than_min(cls, v, values):
-        if "minUploadRate" in values and v < values["minUploadRate"]:
-            raise ValueError("maxUploadRate must be >= minUploadRate")
+    def validate_max_rate(cls, v, values):
+        if v < 0:
+            raise ValueError("La vitesse maximum ne peut pas être négative")
+        if v > 100000:
+            raise ValueError("La vitesse maximum ne peut pas dépasser 100 MB/s (100000 KB/s)")
+        if "minUploadRate" in values and v > 0 and v < values["minUploadRate"]:
+            raise ValueError(f"La vitesse maximum ({v} KB/s) doit être supérieure ou égale à la vitesse minimum ({values['minUploadRate']} KB/s)")
+        return v
+    
+    @validator("simultaneousSeed")
+    def validate_simultaneous_seed(cls, v):
+        if v < 1:
+            raise ValueError("Le nombre de seeds simultanés doit être au moins 1")
+        if v > 1000:
+            raise ValueError("Le nombre de seeds simultanés ne peut pas dépasser 1000")
+        return v
+    
+    @validator("uploadRatioTarget")
+    def validate_ratio(cls, v):
+        if v < -1:
+            raise ValueError("Le ratio cible doit être -1 (illimité) ou un nombre positif")
+        return v
+    
+    @validator("seedingDurationLimit")
+    def validate_duration(cls, v):
+        if v < -1:
+            raise ValueError("La durée de seed doit être -1 (illimitée) ou un nombre positif")
+        if v > 8760:  # 1 year in hours
+            raise ValueError("La durée de seed ne peut pas dépasser 8760 heures (1 an)")
         return v
 
 

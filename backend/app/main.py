@@ -164,6 +164,52 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Add custom exception handler for validation errors
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+
+@app.exception_handler(ValidationError)
+async def validation_exception_handler(request: Request, exc: ValidationError):
+    """Convert Pydantic validation errors to user-friendly messages"""
+    error_msg = "Données de configuration invalides"
+    
+    # Extract the first meaningful error message
+    if exc.errors():
+        error = exc.errors()[0]
+        field = error.get('loc', [''])[-1] if error.get('loc') else ''
+        error_type = error.get('type', '')
+        msg = error.get('msg', '')
+        
+        # Translate common Pydantic error messages to French
+        if error_type == 'value_error' and 'ctx' in error and 'error' in error['ctx']:
+            # Custom validator error - use the message directly
+            error_msg = msg.replace('Value error, ', '')
+        elif error_type == 'greater_than_equal':
+            if 'minUploadRate' in field:
+                error_msg = "La vitesse minimum ne peut pas être négative"
+            elif 'maxUploadRate' in field:
+                error_msg = "La vitesse maximum ne peut pas être négative"
+            else:
+                error_msg = f"La valeur de {field} ne peut pas être négative"
+        elif error_type == 'less_than_equal':
+            if 'Upload' in field:
+                error_msg = "La vitesse ne peut pas dépasser 100 MB/s (100000 KB/s)"
+            else:
+                error_msg = f"La valeur de {field} est trop élevée"
+        elif error_type == 'missing':
+            error_msg = f"Le champ {field} est obligatoire"
+        elif 'type' in error_type:
+            error_msg = f"Le format de {field} est incorrect"
+        else:
+            error_msg = msg
+    
+    logger.warning(f"⚠️ Validation error: {error_msg}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": error_msg}
+    )
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,

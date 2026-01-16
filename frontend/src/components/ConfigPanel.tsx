@@ -30,11 +30,16 @@ export default function ConfigPanel() {
     e.preventDefault()
     setSaving(true)
     try {
+      console.log('🔧 ConfigPanel: Submitting config:', formData)
       await updateConfig(formData)
-      addToast('Configuration updated successfully!', 'success')
-    } catch (error) {
-      console.error('Configuration update error:', error)
-      addToast('Failed to update configuration', 'error')
+      addToast('✅ Configuration mise à jour avec succès !', 'success')
+    } catch (error: any) {
+      console.error('❌ ConfigPanel: Configuration update error:', error)
+      
+      // Use the user-friendly message from the store
+      const errorMsg = error.isUserFriendly ? error.message : 'Erreur lors de la mise à jour de la configuration'
+      
+      addToast(`❌ ${errorMsg}`, 'error')
     } finally {
       setSaving(false)
     }
@@ -73,7 +78,7 @@ export default function ConfigPanel() {
                 onChange={(e) => handleChange('minUploadRate', parseInt(e.target.value))}
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min="0"
-                max="10000"
+                max="100000"
               />
             </div>
 
@@ -87,7 +92,7 @@ export default function ConfigPanel() {
                 onChange={(e) => handleChange('maxUploadRate', parseInt(e.target.value))}
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min="0"
-                max="10000"
+                max="100000"
               />
             </div>
 

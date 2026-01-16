@@ -6,7 +6,9 @@ from app.models.schemas import ConfigSchema, SuccessResponse
 from app.services.seeder_service import seeder_service
 from app.core.bittorrent_client import list_available_clients
 from app.core.auth import verify_token
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(verify_token)])
 
 
@@ -22,14 +24,35 @@ async def update_config(config: ConfigSchema):
     """Update configuration"""
     try:
         config_dict = config.model_dump()
+        logger.info(f"🔧 API: Received config update request: {config_dict}")
         await seeder_service.update_config(config_dict)
         
+        # Get the updated config to ensure consistency
+        updated_config = seeder_service.get_config()
+        logger.info(f"✅ API: Configuration updated successfully")
+        
         return SuccessResponse(
-            message="Configuration updated successfully",
-            data=config_dict
+            message="Configuration mise à jour avec succès",
+            data=updated_config  # Return actual saved config
         )
+    except ValueError as ve:
+        # Validation errors from Pydantic - user friendly
+        error_msg = str(ve)
+        logger.warning(f"⚠️ API: Config validation error: {error_msg}")
+        raise HTTPException(status_code=400, detail=error_msg)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        # System errors - simplified for user
+        logger.error(f"❌ API: Config update failed: {e}")
+        if "permission" in str(e).lower():
+            error_msg = "Erreur de sauvegarde : vérifiez les permissions du fichier de configuration"
+        elif "disk" in str(e).lower() or "space" in str(e).lower():
+            error_msg = "Erreur de sauvegarde : espace disque insuffisant"
+        elif "network" in str(e).lower():
+            error_msg = "Erreur réseau lors de la mise à jour de la configuration"
+        else:
+            error_msg = "Erreur interne lors de la mise à jour de la configuration"
+        
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 @router.get("/clients")

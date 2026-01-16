@@ -28,13 +28,58 @@ export default function SettingsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Client-side validation before sending to server
+    const errors: string[] = []
+    
+    if (formData.minUploadRate < 0) {
+      errors.push("La vitesse minimum ne peut pas être négative")
+    }
+    if (formData.maxUploadRate < 0) {
+      errors.push("La vitesse maximum ne peut pas être négative")
+    }
+    if (formData.minUploadRate > 100000) {
+      errors.push("La vitesse minimum ne peut pas dépasser 100 MB/s (100000 KB/s)")
+    }
+    if (formData.maxUploadRate > 100000) {
+      errors.push("La vitesse maximum ne peut pas dépasser 100 MB/s (100000 KB/s)")
+    }
+    if (formData.maxUploadRate > 0 && formData.maxUploadRate < formData.minUploadRate) {
+      errors.push(`La vitesse maximum (${formData.maxUploadRate} KB/s) doit être supérieure ou égale à la vitesse minimum (${formData.minUploadRate} KB/s)`)
+    }
+    if (formData.simultaneousSeed < 1) {
+      errors.push("Le nombre de seeds simultanés doit être au moins 1")
+    }
+    if (formData.simultaneousSeed > 1000) {
+      errors.push("Le nombre de seeds simultanés ne peut pas dépasser 1000")
+    }
+    if (formData.uploadRatioTarget < -1) {
+      errors.push("Le ratio cible doit être -1 (illimité) ou un nombre positif")
+    }
+    if (formData.seedingDurationLimit < -1) {
+      errors.push("La durée de seed doit être -1 (illimitée) ou un nombre positif")
+    }
+    if (formData.seedingDurationLimit > 8760) {
+      errors.push("La durée de seed ne peut pas dépasser 8760 heures (1 an)")
+    }
+    
+    if (errors.length > 0) {
+      addToast(`❌ ${errors[0]}`, 'error')
+      return
+    }
+    
     setSaving(true)
     try {
+      console.log('🔧 SettingsPage: Submitting config:', formData)
       await updateConfig(formData)
-      addToast('Configuration updated successfully!', 'success')
-    } catch (error) {
-      console.error('Failed to update config:', error)
-      addToast('Failed to update configuration', 'error')
+      addToast('✅ Configuration mise à jour avec succès !', 'success')
+    } catch (error: any) {
+      console.error('❌ SettingsPage: Failed to update config:', error)
+      
+      // Use the user-friendly message from the store
+      const errorMsg = error.isUserFriendly ? error.message : 'Erreur lors de la mise à jour de la configuration'
+      
+      addToast(`❌ ${errorMsg}`, 'error')
     } finally {
       setSaving(false)
     }
@@ -87,6 +132,7 @@ export default function SettingsPage() {
                   onChange={(e) => handleChange('minUploadRate', parseInt(e.target.value))}
                   className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   min="0"
+                  max="100000"
                 />
               </div>
               <div>
@@ -99,8 +145,9 @@ export default function SettingsPage() {
                   onChange={(e) => handleChange('maxUploadRate', parseInt(e.target.value))}
                   className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   min="0"
+                  max="100000"
                 />
-                <p className="text-slate-500 text-xs mt-1">No limit - set as high as needed</p>
+                <p className="text-slate-500 text-xs mt-1">Limite : 100000 KB/s (100 MB/s max)</p>
               </div>
             </div>
           </div>

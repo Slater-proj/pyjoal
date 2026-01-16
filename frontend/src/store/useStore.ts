@@ -105,13 +105,70 @@ export const useStore = create<Store>((set, get) => ({
 
   updateConfig: async (config) => {
     try {
-      await api.updateConfig(config);
+      console.log('🔧 Frontend: Updating config:', config);
+      console.log('📤 Frontend: Sending config update request...');
+      const response = await api.updateConfig(config);
+      console.log('✅ Frontend: Config update response:', response);
+      
       // Refetch config from server to ensure UI is in sync
+      console.log('📥 Frontend: Refetching config from server...');
       const updatedConfig = await api.getConfig();
+      console.log('✅ Frontend: Updated config received:', updatedConfig);
       set({ config: updatedConfig });
-    } catch (error) {
-      console.error("Failed to update config:", error);
-      throw error;
+      console.log('🎯 Frontend: Config state updated successfully');
+    } catch (error: any) {
+      console.error("❌ Frontend: Failed to update config:", error);
+      console.error("❌ Frontend: Full error details:", {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message,
+        stack: error.stack
+      });
+      
+      // Extract user-friendly error message
+      let userMessage = "Erreur lors de la mise à jour de la configuration";
+      
+      if (error.response?.data?.detail) {
+        // Server returned a specific error message
+        userMessage = error.response.data.detail;
+      } else if (error.response?.status) {
+        // HTTP error codes - translate to user-friendly messages
+        switch (error.response.status) {
+          case 400:
+            userMessage = "Données de configuration invalides";
+            break;
+          case 401:
+            userMessage = "Session expirée, veuillez recharger la page";
+            break;
+          case 403:
+            userMessage = "Accès refusé pour modifier la configuration";
+            break;
+          case 422:
+            userMessage = "Valeurs de configuration incorrectes";
+            break;
+          case 500:
+            userMessage = "Erreur serveur lors de la sauvegarde";
+            break;
+          case 503:
+            userMessage = "Service temporairement indisponible";
+            break;
+          default:
+            userMessage = "Erreur de communication avec le serveur";
+        }
+      } else if (error.code === 'NETWORK_ERROR' || error.message?.includes('Network')) {
+        userMessage = "Problème de connexion réseau";
+      } else if (error.message?.includes('timeout')) {
+        userMessage = "Délai d'attente dépassé";
+      }
+      
+      console.error("📢 Frontend: User will see message:", userMessage);
+      
+      // Create simplified error for UI (no HTTP codes or technical details)
+      const enhancedError = new Error(userMessage);
+      (enhancedError as any).isUserFriendly = true;
+      
+      throw enhancedError;
     }
   },
 

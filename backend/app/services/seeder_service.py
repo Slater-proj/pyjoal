@@ -109,10 +109,36 @@ class SeederService:
             logger.info(f"   Default config created: {self._config}")
     
     async def save_config(self):
-        """Save configuration to file"""
+        """Save configuration to file atomically"""
+        import tempfile
+        import shutil
+        
         config_file = settings.CONFIG_DIR / "config.json"
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(self._config, f, indent=2)
+        
+        try:
+            # Create config dir if it doesn't exist
+            config_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write to temporary file first (atomic operation)
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', 
+                                          dir=config_file.parent, delete=False) as temp_file:
+                json.dump(self._config, temp_file, indent=2)
+                temp_file.flush()  # Ensure data is written
+                temp_file_path = temp_file.name
+            
+            # Atomically replace the config file
+            shutil.move(temp_file_path, config_file)
+            logger.debug(f"✅ Config saved to {config_file}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to save config to {config_file}: {e}")
+            # Clean up temp file if it exists
+            try:
+                if 'temp_file_path' in locals():
+                    Path(temp_file_path).unlink(missing_ok=True)
+            except:
+                pass
+            raise e
     
     async def load_torrents(self):
         """Load torrents from directory"""
@@ -505,34 +531,73 @@ class SeederService:
     async def update_config(self, new_config: Dict):
         """Update configuration"""
         logger.info(f"⚙️  Updating configuration: {new_config}")
-        self._config.update(new_config)
-        await self.save_config()
         
-        # Log config update
-        history_service.add_entry(
-            EventType.CONFIG_UPDATED,
-            "Configuration updated",
-            new_config
-        )
+        # Validate config before applying
+        try:
+            # Create a backup of current config
+            backup_config = self._config.copy()
+            
+            # Validate numeric values
+            if "minUploadRate" in new_config:
+                rate = new_config["minUploadRate"]
+                if not isinstance(rate, (int, float)) or rate < 0:
+                    raise ValueError(f"Invalid minUploadRate: {rate} (must be >= 0)")
+                    
+            if "maxUploadRate" in new_config:
+                rate = new_config["maxUploadRate"]
+                if not isinstance(rate, (int, float)) or rate < 0:
+                    raise ValueError(f"Invalid maxUploadRate: {rate} (must be >= 0)")
+                    
+            if "uploadRatioTarget" in new_config:
+                ratio = new_config["uploadRatioTarget"]
+                if not isinstance(ratio, (int, float)) or (ratio < -1 and ratio != -1):
+                    raise ValueError(f"Invalid uploadRatioTarget: {ratio} (must be -1 or >= 0)")
+                    
+            if "seedingDurationLimit" in new_config:
+                duration = new_config["seedingDurationLimit"]
+                if not isinstance(duration, (int, float)) or (duration < -1 and duration != -1):
+                    raise ValueError(f"Invalid seedingDurationLimit: {duration} (must be -1 or >= 0)")
+            
+            # Update configuration
+            self._config.update(new_config)
+            await self.save_config()
+            logger.info("✅ Configuration saved successfully")
+            
+            # Log config update
+            history_service.add_entry(
+                EventType.CONFIG_UPDATED,
+                "Configuration updated",
+                new_config
+            )
+            
+        except Exception as save_error:
+            logger.error(f"❌ Failed to save config: {save_error}")
+            # Restore backup if save failed
+            self._config = backup_config
+            raise save_error
         
-        # Update settings
-        if "minUploadRate" in new_config:
-            settings.MIN_UPLOAD_RATE = new_config["minUploadRate"]
-            logger.debug(f"   Min upload rate: {settings.MIN_UPLOAD_RATE} KB/s")
-        if "maxUploadRate" in new_config:
-            settings.MAX_UPLOAD_RATE = new_config["maxUploadRate"]
-            logger.debug(f"   Max upload rate: {settings.MAX_UPLOAD_RATE} KB/s")
-        if "seedingDurationLimit" in new_config:
-            settings.SEEDING_DURATION_LIMIT = new_config["seedingDurationLimit"]
-            logger.debug(f"   Seeding duration limit: {settings.SEEDING_DURATION_LIMIT}h")
-        
-        # Reload client if changed
-        if "client" in new_config and new_config["client"] != self.client.client_file:
-            try:
-                self.client = BitTorrentClient(new_config["client"])
-                logger.info(f"✅ Switched to client: {self.client.name} {self.client.version}")
-            except Exception as e:
-                logger.error(f"⚠️  Failed to switch client: {e}")
+        # Update settings after successful save
+        try:
+            if "minUploadRate" in new_config:
+                settings.MIN_UPLOAD_RATE = new_config["minUploadRate"]
+                logger.debug(f"   Min upload rate: {settings.MIN_UPLOAD_RATE} KB/s")
+            if "maxUploadRate" in new_config:
+                settings.MAX_UPLOAD_RATE = new_config["maxUploadRate"]
+                logger.debug(f"   Max upload rate: {settings.MAX_UPLOAD_RATE} KB/s")
+            if "seedingDurationLimit" in new_config:
+                settings.SEEDING_DURATION_LIMIT = new_config["seedingDurationLimit"]
+                logger.debug(f"   Seeding duration limit: {settings.SEEDING_DURATION_LIMIT}h")
+            
+            # Reload client if changed
+            if "client" in new_config and new_config["client"] != self.client.client_file:
+                try:
+                    self.client = BitTorrentClient(new_config["client"])
+                    logger.info(f"✅ Switched to client: {self.client.name} {self.client.version}")
+                except Exception as e:
+                    logger.error(f"⚠️  Failed to switch client: {e}")
+        except Exception as settings_error:
+            logger.error(f"⚠️  Failed to update settings: {settings_error}")
+            # Don't fail the whole operation for settings update issues
     
     def get_torrents(self) -> List[Dict]:
         """Get working torrents info (failed torrents are handled via toast/history)"""
