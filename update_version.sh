@@ -35,11 +35,19 @@ CHANGELOG_ENTRY="## [$NEW_VERSION] - $(date +%Y-%m-%d)
 
 "
 
-# Insert at the top of changelog after header
-sed -i "/^# Changelog - PyJOAL/a\\
-\\
-$CHANGELOG_ENTRY" CHANGELOG.md
-echo "✅ Updated CHANGELOG.md"
+# Insert at the top of changelog after header (more robust sed)
+if grep -q "^# Changelog - PyJOAL" CHANGELOG.md; then
+    # Create temp file with new content
+    {
+        sed -n '1,/^# Changelog - PyJOAL/p' CHANGELOG.md
+        echo ""
+        echo "$CHANGELOG_ENTRY"
+        sed -n '/^# Changelog - PyJOAL/,$p' CHANGELOG.md | tail -n +2
+    } > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+    echo "✅ Updated CHANGELOG.md"
+else
+    echo "⚠️  Could not update CHANGELOG.md automatically"
+fi
 
 # 4. Git commit
 git add VERSION frontend/package.json CHANGELOG.md

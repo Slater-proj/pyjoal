@@ -359,6 +359,13 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Extract version from VERSION file
+      id: version
+      run: |
+        VERSION=$(cat VERSION | tr -d '\n')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "📋 Using version: $VERSION"
+    
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
     
@@ -370,30 +377,17 @@ jobs:
     
     - name: Build and push Docker image
       run: |
-        # Get next version
-        LAST_TAG=$(git tag --sort=-version:refname | head -n 1 2>/dev/null || echo "v0.0.0")
-        echo "Last tag: $LAST_TAG"
+        VERSION="${{ steps.version.outputs.version }}"
+        echo "🏷️ Building version: v$VERSION"
         
-        if [[ $LAST_TAG =~ v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-          MAJOR=${BASH_REMATCH[1]}
-          MINOR=${BASH_REMATCH[2]}
-          PATCH=${BASH_REMATCH[3]}
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="v$MAJOR.$MINOR.$NEW_PATCH"
-        else
-          NEW_VERSION="v1.0.0"
-        fi
-        
-        echo "🏷️ New version: $NEW_VERSION"
-        
-        # Build and push
-        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:$NEW_VERSION .
+        # Build and push with version from VERSION file
+        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:v$VERSION .
         docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:latest .
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:$NEW_VERSION
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:v$VERSION
         docker push ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:latest
         
-        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
-        echo "✅ Successfully pushed to Docker Hub!"
+        echo "NEW_VERSION=v$VERSION" >> $GITHUB_ENV
+        echo "✅ Successfully pushed to Docker Hub: v$VERSION"
     
     - name: Update Docker Hub description
       uses: peter-evans/dockerhub-description@v4
@@ -418,20 +412,10 @@ jobs:
     
     - name: Generate version and release
       run: |
-        # Get next version
-        LAST_TAG=$(git tag --sort=-version:refname | head -n 1 2>/dev/null || echo "v0.0.0")
+        VERSION=$(cat VERSION | tr -d '\n')
+        NEW_VERSION="v$VERSION"
         
-        if [[ $LAST_TAG =~ v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-          MAJOR=${BASH_REMATCH[1]}
-          MINOR=${BASH_REMATCH[2]}
-          PATCH=${BASH_REMATCH[3]}
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="v$MAJOR.$MINOR.$NEW_PATCH"
-        else
-          NEW_VERSION="v1.0.0"
-        fi
-        
-        echo "Creating release $NEW_VERSION"
+        echo "Creating release $NEW_VERSION from VERSION file"
         
         # Create release notes
         cat > release_notes.md << EOF
