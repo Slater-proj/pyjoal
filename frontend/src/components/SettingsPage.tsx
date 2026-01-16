@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore'
 import axios from 'axios'
 
 export default function SettingsPage() {
-  const { config, clients, fetchClients, updateConfig } = useStore()
+  const { config, clients, fetchClients, updateConfig, addToast } = useStore()
   const [saving, setSaving] = useState(false)
   const [formData, setFormData] = useState({
     minUploadRate: 30,
@@ -31,9 +31,10 @@ export default function SettingsPage() {
     setSaving(true)
     try {
       await updateConfig(formData)
-      // Show success feedback
+      addToast('Configuration updated successfully!', 'success')
     } catch (error) {
       console.error('Failed to update config:', error)
+      addToast('Failed to update configuration', 'error')
     } finally {
       setSaving(false)
     }
@@ -139,7 +140,18 @@ export default function SettingsPage() {
                   type="number"
                   step="0.1"
                   value={formData.uploadRatioTarget}
-                  onChange={(e) => handleChange('uploadRatioTarget', parseFloat(e.target.value))}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '' || value === '-') {
+                      // Allow empty or just minus sign while typing
+                      handleChange('uploadRatioTarget', value === '' ? -1 : value)
+                    } else {
+                      const parsed = parseFloat(value)
+                      if (!isNaN(parsed)) {
+                        handleChange('uploadRatioTarget', parsed)
+                      }
+                    }
+                  }}
                   className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="-1 = unlimited"
                 />
@@ -161,7 +173,18 @@ export default function SettingsPage() {
                 type="number"
                 step="1"
                 value={formData.seedingDurationLimit}
-                onChange={(e) => handleChange('seedingDurationLimit', parseFloat(e.target.value))}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (value === '' || value === '-') {
+                    // Allow empty or just minus sign while typing
+                    handleChange('seedingDurationLimit', value === '' ? -1 : value)
+                  } else {
+                    const parsed = parseFloat(value)
+                    if (!isNaN(parsed)) {
+                      handleChange('seedingDurationLimit', parsed)
+                    }
+                  }
+                }}
                 className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="-1 = unlimited"
               />

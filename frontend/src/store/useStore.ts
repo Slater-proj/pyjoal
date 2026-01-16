@@ -106,7 +106,9 @@ export const useStore = create<Store>((set, get) => ({
   updateConfig: async (config) => {
     try {
       await api.updateConfig(config);
-      set({ config });
+      // Refetch config from server to ensure UI is in sync
+      const updatedConfig = await api.getConfig();
+      set({ config: updatedConfig });
     } catch (error) {
       console.error("Failed to update config:", error);
       throw error;

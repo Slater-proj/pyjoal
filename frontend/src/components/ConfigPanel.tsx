@@ -3,8 +3,9 @@ import { Settings, Save } from 'lucide-react'
 import { useStore } from '../store/useStore'
 
 export default function ConfigPanel() {
-  const { config, clients, fetchClients, updateConfig } = useStore()
+  const { config, clients, fetchClients, updateConfig, addToast } = useStore()
   const [isOpen, setIsOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [formData, setFormData] = useState({
     minUploadRate: 30,
     maxUploadRate: 160,
@@ -27,11 +28,15 @@ export default function ConfigPanel() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setSaving(true)
     try {
       await updateConfig(formData)
-      alert('Configuration updated successfully!')
+      addToast('Configuration updated successfully!', 'success')
     } catch (error) {
-      alert('Failed to update configuration')
+      console.error('Configuration update error:', error)
+      addToast('Failed to update configuration', 'error')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -110,8 +115,46 @@ export default function ConfigPanel() {
                 type="number"
                 step="0.1"
                 value={formData.uploadRatioTarget}
-                onChange={(e) => handleChange('uploadRatioTarget', parseFloat(e.target.value))}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (value === '' || value === '-') {
+                    // Allow empty or just minus sign while typing
+                    handleChange('uploadRatioTarget', value === '' ? -1 : value)
+                  } else {
+                    const parsed = parseFloat(value)
+                    if (!isNaN(parsed)) {
+                      handleChange('uploadRatioTarget', parsed)
+                    }
+                  }
+                }}
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="-1 = unlimited"
+              />
+            </div>
+
+            {/* Seeding Duration Limit */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Seeding Duration Limit (hours, -1 = unlimited)
+              </label>
+              <input
+                type="number"
+                step="1"
+                value={formData.seedingDurationLimit}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (value === '' || value === '-') {
+                    // Allow empty or just minus sign while typing
+                    handleChange('seedingDurationLimit', value === '' ? -1 : value)
+                  } else {
+                    const parsed = parseFloat(value)
+                    if (!isNaN(parsed)) {
+                      handleChange('seedingDurationLimit', parsed)
+                    }
+                  }
+                }}
+                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="-1 = unlimited"
               />
             </div>
 
@@ -153,10 +196,11 @@ export default function ConfigPanel() {
           <div className="flex justify-end">
             <button
               type="submit"
-              className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+              disabled={saving}
+              className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50"
             >
               <Save className="w-5 h-5" />
-              <span>Save Configuration</span>
+              <span>{saving ? 'Saving...' : 'Save Configuration'}</span>
             </button>
           </div>
         </form>

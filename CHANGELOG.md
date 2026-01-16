@@ -1,5 +1,25 @@
 # Changelog - PyJOAL
 
+## [1.3.5] - 2026-01-16
+
+### Fixed
+- 🔧 **Configuration Sync Bug** - Config changes now properly update across all UI components after save
+- 🔢 **Negative Values Input** - Fixed ratio (-1) and seeding duration (-1) fields to accept negative values
+- 💾 **Config Persistence** - Configuration updates now refetch from server ensuring UI stays in sync
+- 📝 **Input Validation** - Improved handling of empty and partially typed numeric values
+- 🎯 **Missing Field** - Added seeding duration limit field to ConfigPanel for consistency
+
+### Enhanced
+- 🎉 **User Feedback** - Replaced alert() with elegant toast notifications for config operations
+- 🔄 **Loading States** - Added saving indicators and disabled states for better UX
+- ⚡ **Real-time Updates** - Configuration changes are immediately reflected in dashboard and info panels
+
+### Technical Improvements
+- Store.updateConfig now refetches from server after successful update
+- Enhanced input handlers for numeric fields with negative value support
+- Consistent error handling with toast notifications across all config forms
+- Added missing seedingDurationLimit field to ConfigPanel component
+
 ## [1.3.1] - 2026-01-16
 
 ### Added
