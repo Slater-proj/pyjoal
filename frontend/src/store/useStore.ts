@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { api, Config, Torrent, Stats } from "../services/api";
+import { api, Config, Torrent, Stats, getToken } from "../services/api";
 
 export interface ToastNotification {
   id: string;
@@ -33,6 +33,7 @@ interface Store {
   updateConfig: (config: Config) => Promise<void>;
   addTorrent: (file: File) => Promise<void>;
   removeTorrent: (infoHash: string) => Promise<void>;
+  reloadTorrents: () => Promise<void>;
   startSeeding: () => Promise<void>;
   stopSeeding: () => Promise<void>;
 
@@ -199,6 +200,32 @@ export const useStore = create<Store>((set, get) => ({
       await get().fetchTorrents();
     } catch (error) {
       console.error("Failed to remove torrent:", error);
+      throw error;
+    }
+  },
+
+  reloadTorrents: async () => {
+    try {
+      const response = await fetch("/api/torrents/reload", {
+        method: "POST",
+        headers: {
+          "X-API-Token": getToken() || "",
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to reload torrents");
+      }
+      
+      const result = await response.json();
+      get().addToast(result.message || "Torrents rechargés", "success");
+      
+      // Rafraîchir les données
+      await get().fetchTorrents();
+      await get().fetchStats();
+    } catch (error) {
+      console.error("Failed to reload torrents:", error);
+      get().addToast("Erreur lors du rechargement", "error");
       throw error;
     }
   },

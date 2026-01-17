@@ -12,6 +12,7 @@ import json
 from app.core.config import settings
 from app.core.bittorrent_client import BitTorrentClient, get_default_client
 from app.core.torrent_parser import Torrent, load_torrents_from_directory
+from app.core.torrent_validator import validate_torrent_file
 from app.core.tracker_announcer import TrackerAnnouncer
 from app.services.websocket_manager import websocket_manager
 from app.services.history_service import history_service, EventType
@@ -19,6 +20,15 @@ from app.core.cache_manager import cache_manager
 from app.services.resource_optimizer import resource_optimizer
 
 logger = logging.getLogger(__name__)
+
+# Import file watcher (lazy import to avoid circular dependencies)
+try:
+    from app.services.file_watcher import FileWatcherService
+    FILE_WATCHER_AVAILABLE = True
+except ImportError:
+    FileWatcherService = None
+    FILE_WATCHER_AVAILABLE = False
+    logger.warning("File watcher not available - torrents won't auto-reload")
 
 
 class SeederService:
@@ -35,6 +45,9 @@ class SeederService:
         
         # Failed torrents tracking
         self.failed_torrents: Dict[str, Dict] = {}  # filename -> error info
+        
+        # File watcher for auto-reload
+        self.file_watcher: Optional[FileWatcherService] = None
     
     async def initialize(self):
         """Initialize service"""
@@ -86,6 +99,9 @@ class SeederService:
         
         # Load existing torrents
         await self.load_torrents()
+        
+        # Initialize file watcher for auto-reload
+        await self._init_file_watcher()
         
         logger.info("✅ Seeder Service initialized successfully")
     
@@ -187,8 +203,10 @@ class SeederService:
         available_clients.sort(reverse=True)
         return available_clients[0]
 
+
+    
     async def load_torrents(self):
-        """Load torrents from directory"""
+        """Load torrents from directory with validation"""
         logger.debug(f"📂 Loading torrents from: {settings.TORRENTS_DIR}")
         
         # Custom loading to capture failures
@@ -196,6 +214,20 @@ class SeederService:
         torrent_files = list(settings.TORRENTS_DIR.glob("*.torrent"))
         
         for torrent_file in torrent_files:
+            # Pre-validate file before attempting to load
+            is_valid, validation_msg = validate_torrent_file(torrent_file)
+            
+            if not is_valid:
+                # Store validation failure
+                self.failed_torrents[torrent_file.name] = {
+                    "filename": torrent_file.name,
+                    "error": f"Validation failed: {validation_msg}",
+                    "timestamp": datetime.utcnow(),
+                    "size": torrent_file.stat().st_size if torrent_file.exists() else 0
+                }
+                logger.error(f"❌ Invalid torrent file {torrent_file.name}: {validation_msg}")
+                continue
+            
             try:
                 torrent = Torrent(torrent_file)
                 torrents.append(torrent)
@@ -206,8 +238,8 @@ class SeederService:
                     logger.info(f"✅ Previously failed torrent now works: {torrent_file.name}")
                     
             except Exception as e:
-                # Store failed torrent info temporarily
-                error_msg = str(e)
+                # Store loading failure (post-validation)
+                error_msg = f"Loading failed: {str(e)}"
                 self.failed_torrents[torrent_file.name] = {
                     "filename": torrent_file.name,
                     "error": error_msg,
@@ -252,7 +284,14 @@ class SeederService:
         
         total_files = len(torrent_files)
         failed_count = len(self.failed_torrents)
-        logger.info(f"📂 Loaded {len(torrents)}/{total_files} torrent(s) ({new_count} new, {failed_count} failed)")
+        
+        if failed_count > 0:
+            logger.warning(f"📂 Loaded {len(torrents)}/{total_files} torrent(s) ({new_count} new, {failed_count} failed)")
+            # List failed torrents for debugging
+            for filename, error_info in self.failed_torrents.items():
+                logger.debug(f"   ❌ {filename}: {error_info['error']}")
+        else:
+            logger.info(f"📂 Loaded {len(torrents)}/{total_files} torrent(s) ({new_count} new, {failed_count} failed)")
     
     def has_torrents(self) -> bool:
         """Check if any torrents are available"""
@@ -440,6 +479,11 @@ class SeederService:
                 await self._resource_optimizer_task
             except asyncio.CancelledError:
                 pass
+        
+        # Stop file watcher
+        if self.file_watcher:
+            logger.debug("   Stopping file watcher...")
+            await self.file_watcher.stop()
         
         # Stop all announcers
         active_count = sum(1 for a in self.announcers.values() if a.is_running)
@@ -793,6 +837,71 @@ class SeederService:
         logger.debug("💾 Torrents list computed and cached")
         
         return torrents
+
+    async def _init_file_watcher(self):
+        """Initialize file watcher for automatic torrent reload"""
+        if not FILE_WATCHER_AVAILABLE:
+            logger.info("🔍 File watcher disabled - watchdog not available")
+            return
+        
+        try:
+            # Create file watcher with reload callback
+            self.file_watcher = FileWatcherService(
+                settings.TORRENTS_DIR,
+                self._auto_reload_torrents
+            )
+            
+            # Start watching
+            await self.file_watcher.start()
+            logger.info("🔍 File watcher initialized - new torrents will auto-load")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to initialize file watcher: {e}")
+            self.file_watcher = None
+    
+    async def _auto_reload_torrents(self):
+        """Callback for file watcher - reload torrents automatically"""
+        try:
+            logger.info("🔄 Auto-reloading torrents due to file system change...")
+            
+            # Store current state
+            old_count = len(self.announcers)
+            was_running = self.is_running
+            
+            # Reload torrents (this preserves running state)
+            await self.load_torrents()
+            new_count = len(self.announcers)
+            
+            # Broadcast update to frontend
+            await websocket_manager.broadcast({
+                "type": "torrents_update", 
+                "data": {
+                    "torrents": self.get_torrents()
+                }
+            })
+            
+            # Send notification
+            message = f"Auto-reload: {old_count} → {new_count} torrents"
+            logger.info(f"✅ {message}")
+            
+            # Send toast notification to frontend
+            await websocket_manager.broadcast({
+                "type": "toast",
+                "data": {
+                    "message": message,
+                    "type": "info"
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"❌ Auto-reload failed: {e}")
+            await websocket_manager.broadcast({
+                "type": "toast", 
+                "data": {
+                    "message": f"Auto-reload failed: {e}",
+                    "type": "error"
+                }
+            })
 
 
 # Global service instance

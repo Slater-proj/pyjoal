@@ -7,7 +7,9 @@ from pathlib import Path
 
 from app.models.schemas import TorrentInfo, SuccessResponse
 from app.services.seeder_service import seeder_service
+from app.services.websocket_manager import websocket_manager
 from app.core.torrent_parser import Torrent
+from app.core.torrent_validator import validate_torrent_file
 from app.core.config import settings
 from app.core.auth import verify_token
 
@@ -23,7 +25,7 @@ async def get_torrents():
 
 @router.post("/torrents")
 async def add_torrent(file: UploadFile = File(...)):
-    """Add a new torrent"""
+    """Add a new torrent with comprehensive validation"""
     if not file.filename.endswith('.torrent'):
         raise HTTPException(status_code=400, detail="File must be a .torrent file")
     
@@ -33,21 +35,28 @@ async def add_torrent(file: UploadFile = File(...)):
         # Read file content in memory first
         content = await file.read()
         
-        # Try to parse BEFORE saving to disk
-        # Write to temporary location first
+        # Comprehensive validation BEFORE saving to disk
+        is_valid, validation_error = validate_torrent_file(torrent_path, content)
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid torrent file: {validation_error}"
+            )
+        
+        # Write to temporary location for final parsing
         temp_path = settings.TORRENTS_DIR / f"temp_{file.filename}"
         with open(temp_path, 'wb') as buffer:
             buffer.write(content)
         
-        # Parse and validate
+        # Parse validated file
         try:
             torrent = Torrent(temp_path)
         except Exception as parse_error:
-            # Parsing failed, remove temp file and raise error
+            # This should rarely happen after validation, but just in case
             temp_path.unlink(missing_ok=True)
             raise HTTPException(
-                status_code=400, 
-                detail=f"Invalid torrent file: {str(parse_error)}"
+                status_code=500, 
+                detail=f"Parsing failed after validation: {str(parse_error)}"
             )
         
         # Parsing succeeded, move to final location
@@ -88,3 +97,56 @@ async def get_torrent(info_hash: str):
         raise HTTPException(status_code=404, detail="Torrent not found")
     
     return torrent_info
+
+
+@router.get("/torrents/failed")
+async def get_failed_torrents():
+    """Get list of failed torrents for debugging"""
+    failed_torrents = seeder_service.failed_torrents
+    return {
+        "failed_count": len(failed_torrents),
+        "failed_torrents": [
+            {
+                "filename": info["filename"],
+                "error": info["error"],
+                "timestamp": info["timestamp"].isoformat(),
+                "size": info["size"]
+            }
+            for info in failed_torrents.values()
+        ]
+    }
+
+
+@router.post("/torrents/reload")
+async def reload_torrents():
+    """Recharger les torrents depuis le dossier"""
+    try:
+        # Sauvegarder l'état actuel
+        was_running = seeder_service.running
+        old_count = len(seeder_service.announcers)
+        
+        # Arrêter le seeding temporairement
+        if was_running:
+            await seeder_service.stop_seeding()
+        
+        # Recharger les torrents
+        await seeder_service.load_torrents()
+        new_count = len(seeder_service.announcers)
+        
+        # Redémarrer si c'était en cours
+        if was_running and new_count > 0:
+            await seeder_service.start_seeding()
+        
+        # Notifier les WebSocket clients
+        await websocket_manager.broadcast({
+            "type": "torrents_update", 
+            "data": {
+                "torrents": seeder_service.get_torrents()
+            }
+        })
+        
+        return SuccessResponse(
+            message=f"Torrents rechargés: {old_count} → {new_count}"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors du rechargement: {str(e)}")

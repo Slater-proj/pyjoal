@@ -1,4 +1,4 @@
-import { Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Trash2, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { useEffect, useState, useCallback, useRef } from 'react'
 
@@ -27,9 +27,10 @@ const MIN_COLUMN_WIDTHS = {
 }
 
 export default function TorrentsTable() {
-  const { torrents, stats, removeTorrent, config, startAutoRefresh, stopAutoRefresh } = useStore()
+  const { torrents, stats, removeTorrent, config, startAutoRefresh, stopAutoRefresh, reloadTorrents } = useStore()
   const isRunning = stats?.isRunning || false
   const [currentPage, setCurrentPage] = useState(1)
+  const [isReloading, setIsReloading] = useState(false)
   const torrentsPerPage = 20
   
   // Column resize state
@@ -183,6 +184,19 @@ export default function TorrentsTable() {
     return `${hours}h`
   }
 
+  const handleReload = async () => {
+    if (isReloading) return
+    
+    setIsReloading(true)
+    try {
+      await reloadTorrents()
+    } catch (error) {
+      console.error('Failed to reload torrents:', error)
+    } finally {
+      setIsReloading(false)
+    }
+  }
+
   const handleRemove = async (e: React.MouseEvent, infoHash: string) => {
     e.stopPropagation()
     if (confirm('Are you sure you want to remove this torrent?')) {
@@ -229,12 +243,22 @@ export default function TorrentsTable() {
   return (
     <div className="bg-slate-800 rounded-lg border-2 border-slate-600 overflow-hidden shadow-lg">
       {/* Header */}
-      <div className="px-6 py-4 bg-gradient-to-r from-slate-700 to-slate-600 border-b-2 border-slate-500">
+      <div className="px-6 py-4 bg-gradient-to-r from-slate-700 to-slate-600 border-b-2 border-slate-500 flex items-center justify-between">
         <h2 className="text-xl font-bold text-white flex items-center gap-3">
           <span className={`w-3 h-3 rounded-full ${isRunning ? 'bg-green-400 animate-pulse' : 'bg-gray-400'}`}></span>
           {isRunning ? 'Seeding' : 'Paused'} • {torrents.length} Torrent{torrents.length !== 1 ? 's' : ''}
           {totalPages > 1 && <span className="text-slate-300 text-base font-normal">• Page {currentPage}/{totalPages}</span>}
         </h2>
+        <button
+          onClick={handleReload}
+          disabled={isReloading}
+          className="flex items-center gap-2 px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:bg-slate-700 
+                     text-white text-sm rounded-md transition-all duration-200 disabled:cursor-not-allowed"
+          title="Reload torrents from directory"
+        >
+          <RotateCcw className={`w-4 h-4 ${isReloading ? 'animate-spin' : ''}`} />
+          {isReloading ? 'Reloading...' : 'Reload'}
+        </button>
       </div>
       
       {/* Table with visible borders - full width */}
