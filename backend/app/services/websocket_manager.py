@@ -17,23 +17,25 @@ logger = logging.getLogger(__name__)
 
 
 class WebSocketManager:
-    """Manages WebSocket connections"""
+    """Manages WebSocket connections with memory leak prevention"""
     
     def __init__(self):
         """Initialize manager with batching support"""
         self.active_connections: List[WebSocket] = []
         self._log_broadcast_task: asyncio.Task | None = None
         self._running = False
+        self._lock = asyncio.Lock()  # Add thread safety for connection management
         
-        # Batching and throttling
+        # Batching and throttling - OPTIMISÉ pour réactivité temps réel
         self._message_buffer: Dict[str, Dict[str, Any]] = {}
         self._last_batch_send = defaultdict(float)
-        self._batch_interval = 0.1  # Ultra-rapide: 100ms batching pour réactivité maximale
+        self._batch_interval = 0.05  # 50ms batching pour réactivité maximale
         self._throttle_intervals = {
-            'stats_update': 1.0,      # Ultra-réactif: 1/seconde pour stats 
-            'torrents_update': 1.5,   # Très réactif: 1/1.5s pour liste torrents
-            'logs': 0.5               # Rapide: 2/seconde pour logs
+            'stats_update': 0.5,      # 2/seconde pour stats dynamiques
+            'torrents_update': 0.5,   # 2/seconde pour liste torrents (vitesse, ratio, etc.)
+            'logs': 1.0               # 1/seconde pour logs (moins critique)
         }
+        self._batch_task: Optional[asyncio.Task] = None  # Prevent task leaks
     
     async def start_log_broadcasting(self):
         """Start broadcasting logs to WebSocket clients"""
@@ -45,14 +47,26 @@ class WebSocketManager:
         logger.info("📡 Started log broadcasting")
     
     async def stop_log_broadcasting(self):
-        """Stop broadcasting logs"""
+        """Stop broadcasting logs with proper task cleanup"""
         self._running = False
+        
+        # Cancel and cleanup tasks properly
         if self._log_broadcast_task:
             self._log_broadcast_task.cancel()
             try:
                 await self._log_broadcast_task
             except asyncio.CancelledError:
                 pass
+            self._log_broadcast_task = None
+        
+        if self._batch_task and not self._batch_task.done():
+            self._batch_task.cancel()
+            try:
+                await self._batch_task
+            except asyncio.CancelledError:
+                pass
+            self._batch_task = None
+        
         logger.info("📡 Stopped log broadcasting")
     
     async def _log_broadcast_loop(self):
@@ -80,15 +94,27 @@ class WebSocketManager:
             logger.error(f"Error in log broadcast loop: {e}", exc_info=True)
     
     async def connect(self, websocket: WebSocket):
-        """Accept new connection"""
+        """Accept new connection with memory leak prevention"""
         await websocket.accept()
-        self.active_connections.append(websocket)
+        
+        async with self._lock:
+            self.active_connections.append(websocket)
+        
         logger.info(f"🔌 WebSocket connected (total: {len(self.active_connections)})")
     
     async def disconnect(self, websocket: WebSocket):
-        """Remove connection"""
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
+        """Remove connection with proper cleanup"""
+        async with self._lock:
+            if websocket in self.active_connections:
+                self.active_connections.remove(websocket)
+        
+        # Ensure websocket is properly closed to prevent memory leaks
+        try:
+            if not websocket.client_state.CLOSED:
+                await websocket.close()
+        except Exception as e:
+            logger.debug(f"WebSocket already closed: {e}")
+        
         logger.info(f"🔌 WebSocket disconnected (total: {len(self.active_connections)})")
     
     async def broadcast(self, message: Dict):
@@ -130,12 +156,12 @@ class WebSocketManager:
         return message_type in batchable_types
     
     def _add_to_batch(self, message_type: str, message: Dict):
-        """Add message to batch buffer"""
+        """Add message to batch buffer with task leak prevention"""
         # Override previous message of same type (latest wins)
         self._message_buffer[message_type] = message
         
         # Schedule batch send if not already scheduled
-        if not hasattr(self, '_batch_task') or self._batch_task.done():
+        if self._batch_task is None or self._batch_task.done():
             self._batch_task = asyncio.create_task(self._send_batched_delayed())
     
     async def _send_batched_delayed(self):

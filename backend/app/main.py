@@ -1,7 +1,6 @@
 """
 PyJOAL - Main Application Entry Point
 FastAPI application with WebSocket support for BitTorrent ratio client
-Python reimplementation of JOAL (https://github.com/anthonyraymond/joal)
 """
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
@@ -115,7 +114,6 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("=" * 80)
     logger.info("🚀 Starting PyJOAL - Python BitTorrent Ratio Client")
-    logger.info("   Based on JOAL by Anthony Raymon")
     logger.info("=" * 80)
     
     # Update clients from GitHub
@@ -159,7 +157,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="PyJOAL API",
-    description="BitTorrent Ratio Client - Python reimplementation of JOAL",
+    description="BitTorrent Ratio Client - Émulation multi-clients avec interface web moderne",
     version=APP_VERSION,
     lifespan=lifespan
 )

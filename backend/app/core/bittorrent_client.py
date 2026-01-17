@@ -107,11 +107,20 @@ class BitTorrentClient:
         """Generate random key for tracker"""
         return ''.join(random.choices('0123456789ABCDEF', k=8))
     
-    def get_upload_rate_range(self) -> tuple[int, int]:
-        """Get upload rate range for this client"""
+    def get_upload_rate_range(self, dynamic_config: dict = None) -> tuple[int, int]:
+        """Get upload rate range for this client with dynamic config support"""
+        if dynamic_config:
+            # Use dynamic configuration if provided (from seeder_service)
+            min_rate = dynamic_config.get("minUploadRate", settings.MIN_UPLOAD_RATE)
+            max_rate = dynamic_config.get("maxUploadRate", settings.MAX_UPLOAD_RATE)
+        else:
+            # Fallback to static settings
+            min_rate = settings.MIN_UPLOAD_RATE
+            max_rate = settings.MAX_UPLOAD_RATE
+            
         return (
-            settings.MIN_UPLOAD_RATE * 1024,  # Convert to bytes
-            settings.MAX_UPLOAD_RATE * 1024
+            min_rate * 1024,  # Convert KB/s to bytes/s
+            max_rate * 1024
         )
     
     def get_session_port(self) -> int:

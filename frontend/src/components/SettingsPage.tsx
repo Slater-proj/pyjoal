@@ -118,7 +118,7 @@ export default function SettingsPage() {
         <div className="px-6 py-4 border-b border-slate-700">
           <h2 className="text-xl font-bold text-white">Configuration</h2>
           <p className="text-slate-400 text-sm mt-1">
-            Manage your JOAL settings
+            Manage your PyJOAL settings
           </p>
         </div>
 

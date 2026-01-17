@@ -33,7 +33,7 @@ except ImportError:
 
 
 class SeederService:
-    """Service to manage torrent seeding"""
+    """Service to manage torrent seeding with thread safety"""
     
     def __init__(self):
         """Initialize seeder service"""
@@ -43,6 +43,7 @@ class SeederService:
         self.started_at: Optional[datetime] = None
         self._config: Dict = {}
         self._monitor_task: Optional[asyncio.Task] = None
+        self._lock = asyncio.Lock()  # Thread safety for shared state
         
         # Failed torrents tracking
         self.failed_torrents: Dict[str, Dict] = {}  # filename -> error info
@@ -409,14 +410,15 @@ class SeederService:
         logger.info(f"✅ Torrent removed: {info_hash[:8]}...")
     
     async def start(self):
-        """Start seeding"""
-        if self.is_running:
-            logger.warning("Seeding already running")
-            return
-        
-        logger.info("▶️  Starting seeding service...")
-        self.is_running = True
-        self.started_at = datetime.utcnow()
+        """Start seeding with race condition protection"""
+        async with self._lock:
+            if self.is_running:
+                logger.warning("Seeding already running")
+                return
+            
+            logger.info("▶️  Starting seeding service...")
+            self.is_running = True
+            self.started_at = datetime.utcnow()
         
         # Log system start
         history_service.add_entry(
@@ -438,11 +440,12 @@ class SeederService:
         
         # Start monitor task
         self._monitor_task = asyncio.create_task(self._monitor_loop())
-        logger.debug("   Monitor task started")
+        logger.info("   📊 Monitor task started (updates every 3s)")
         
         # Start resource optimization background task
-        self._resource_optimizer_task = asyncio.create_task(resource_optimizer.periodic_optimization())
-        logger.debug("   Resource optimizer started")
+        if not hasattr(self, '_resource_optimizer_task'):
+            self._resource_optimizer_task = asyncio.create_task(resource_optimizer.periodic_optimization())
+            logger.info("   🔧 Resource optimizer started")
         
         # Notify via WebSocket
         await websocket_manager.broadcast({
@@ -524,50 +527,74 @@ class SeederService:
             await announcer.start()
     
     async def _monitor_loop(self):
-        """Monitor torrents and send updates"""
+        """Monitor torrents and send updates - TEMPS RÉEL
+        
+        Cette boucle est critique pour l'affichage temps réel des stats.
+        Elle met à jour les vitesses, uploaded, ratio, duration toutes les 3 secondes.
+        """
+        logger.info("🔄 Monitor loop started!")
         try:
+            update_count = 0
             while self.is_running:
-                await asyncio.sleep(10)  # Optimized: Update every 10 seconds instead of 5
+                # ⚡ IMPORTANT: 3 secondes pour une réactivité temps réel visible
+                await asyncio.sleep(3)
+                update_count += 1
                 
-                # Get current data with caching optimization
-                stats = self.get_stats_cached()
-                torrents = self.get_torrents_cached()
-                
-                # DO NOT force synchronous stats update - let each announcer update independently
-                # This was causing all torrents to update speeds at the same time (security issue)
-                
-                logger.debug(f"🔄 Monitor update: {stats['activeTorrents']} active, {len(torrents)} total torrents, total speed: {stats['uploadSpeed']/1024:.1f} KB/s")
-                
-                # Send global stats update (with intelligent batching)
-                await websocket_manager.broadcast({
-                    "type": "stats_update",
-                    "data": stats
-                })
-                
-                # Send individual torrent updates (with intelligent batching)
-                await websocket_manager.broadcast({
-                    "type": "torrents_update",
-                    "data": {
-                        "torrents": torrents
-                    }
-                })
-                
-                # Log torrent statuses for debugging
-                for torrent in torrents:
-                    if torrent.get("isRunning"):
-                        logger.debug(f"   📈 {torrent['name'][:30]}: {torrent['uploadSpeed']/1024:.1f} KB/s, {torrent['seeders']}S/{torrent['leechers']}L")
-                
-                # Check ratio targets
-                await self._check_ratio_targets()
-                
-                # Periodic cache cleanup
-                cache_manager.periodic_cleanup()
-                
-                # Check for new torrents
-                await self.load_torrents()
+                try:
+                    # 🔄 Forcer la mise à jour des stats de chaque announcer AVANT de lire
+                    # C'est crucial pour que les vitesses changent réellement
+                    for announcer in self.announcers.values():
+                        if announcer.is_running:
+                            try:
+                                announcer._update_stats_for_display()
+                            except Exception as e:
+                                logger.error(f"❌ Error updating stats for {announcer.torrent.name}: {e}")
+                    
+                    # 📊 Récupérer les données FRAÎCHES (pas en cache pour les stats dynamiques)
+                    stats = self.get_stats()  # Pas de cache pour avoir les vraies valeurs
+                    torrents = self.get_torrents()  # Pas de cache non plus
+                    
+                    logger.info(f"🔄 Monitor #{update_count}: {stats['activeTorrents']} active, speed={stats['uploadSpeed']/1024:.1f} KB/s, uploaded={stats['totalUploaded']/(1024*1024):.2f} MB")
+                    
+                    # Send global stats update (with intelligent batching)
+                    await websocket_manager.broadcast({
+                        "type": "stats_update",
+                        "data": stats
+                    })
+                    
+                    # Send individual torrent updates (with intelligent batching)
+                    await websocket_manager.broadcast({
+                        "type": "torrents_update",
+                        "data": {
+                            "torrents": torrents
+                        }
+                    })
+                    
+                    # Log torrent statuses for debugging - every 5 iterations for visibility
+                    if update_count % 5 == 0:
+                        for torrent in torrents:
+                            if torrent.get("isRunning"):
+                                logger.info(f"   📈 {torrent['name'][:30]}: speed={torrent['uploadSpeed']/1024:.1f}KB/s, uploaded={torrent['uploaded']/(1024*1024):.2f}MB, ratio={torrent['ratio']:.3f}, time={torrent['seedingTime']}s")
+                    
+                    # Check ratio targets (seulement si targets configurés)
+                    ratio_target = self._config.get("uploadRatioTarget", -1.0)
+                    duration_limit = self._config.get("seedingDurationLimit", -1.0)
+                    if ratio_target > 0 or duration_limit > 0:
+                        await self._check_ratio_targets()
+                    
+                    # Periodic cache cleanup
+                    cache_manager.periodic_cleanup()
+                    
+                    # Check for new torrents
+                    await self.load_torrents()
+                    
+                except Exception as e:
+                    logger.error(f"❌ Monitor loop iteration error: {e}", exc_info=True)
                 
         except asyncio.CancelledError:
-            pass
+            logger.info("🔄 Monitor loop cancelled")
+        except Exception as e:
+            logger.error(f"❌ Monitor loop fatal error: {e}", exc_info=True)
     
     async def _check_ratio_targets(self):
         """Check if any torrents reached ratio target or duration limit"""
@@ -576,6 +603,10 @@ class SeederService:
         keep_zero_leechers = self._config.get("keepTorrentWithZeroLeechers", True)
         
         to_remove = []
+        
+        # Log checking configuration when targets are set
+        if ratio_target > 0 or duration_limit > 0:
+            logger.debug(f"🎯 Checking targets: ratio={ratio_target}, duration={duration_limit}h, keep_zero_leechers={keep_zero_leechers}")
         
         for info_hash, announcer in self.announcers.items():
             stats = announcer.get_stats()
@@ -623,10 +654,28 @@ class SeederService:
         
         # Remove torrents (archive them)
         for info_hash in to_remove:
+            announcer = self.announcers[info_hash]
+            stats = announcer.get_stats()
+            torrent = announcer.torrent
+            
+            # Send notification toast BEFORE archiving
+            await websocket_manager.broadcast({
+                "type": "toast",
+                "data": {
+                    "message": f"🗃️ Archiving: {torrent.name[:40]}... (ratio: {stats.get('ratio', 0):.2f})",
+                    "type": "info"
+                }
+            })
+            
+            logger.warning(f"🗃️ AUTO-ARCHIVING: {torrent.name} - ratio: {stats.get('ratio', 0):.2f}, duration: {stats.get('seedingTime', 0)/3600:.1f}h")
+            
             await self._archive_torrent(info_hash)
     
     async def _archive_torrent(self, info_hash: str):
-        """Archive a torrent (move to archived folder instead of deleting)"""
+        """Archive a torrent (move to archived folder instead of deleting)
+        
+        ⚠️ IMPORTANT: Utilise le singleton history_service global, pas une nouvelle instance.
+        """
         if info_hash not in self.announcers:
             return
         
@@ -636,9 +685,7 @@ class SeederService:
         
         logger.info(f"📦 Archiving torrent: {torrent.name}")
         
-        # Add archive entry to history before removing
-        from .history_service import HistoryService, EventType
-        history_service = HistoryService()
+        # ✅ Utiliser le singleton history_service importé en haut du fichier (pas une nouvelle instance!)
         history_service.add_entry(
             EventType.TORRENT_ARCHIVED,
             f"📦 Torrent archived: {torrent.name}",

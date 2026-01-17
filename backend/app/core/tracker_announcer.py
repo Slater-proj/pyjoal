@@ -204,16 +204,26 @@ class TrackerAnnouncer:
             self._record_error(f"Announce loop error: {str(e)}")
     
     def _update_stats(self):
-        """Update upload stats with realistic behavior based on mode"""
+        """Update upload stats with realistic behavior based on mode
+        
+        ⚠️ IMPORTANT: Cette méthode est appelée régulièrement pour simuler le seeding.
+        Elle calcule: vitesse upload, bytes uploadés, ratio, etc.
+        """
         if not self.is_running:
             return
         
-        # Check if enough time has passed for realistic update (avoid too frequent updates)
         current_time = time.time()
-        if hasattr(self, '_last_stats_update'):
-            time_since_last = current_time - self._last_stats_update
-            if time_since_last < self.min_stats_update_interval:
-                return
+        
+        # Initialiser _last_stats_update si pas encore fait
+        if not hasattr(self, '_last_stats_update') or self._last_stats_update is None:
+            self._last_stats_update = current_time
+            self._last_upload_time = current_time
+            logger.debug(f"📊 Stats tracking initialized for {self.torrent.name[:30]}")
+        
+        # Vérifier l'intervalle minimum entre mises à jour
+        time_since_last = current_time - self._last_stats_update
+        if time_since_last < self.min_stats_update_interval:
+            return
         
         self._last_stats_update = current_time
         
@@ -222,10 +232,11 @@ class TrackerAnnouncer:
             self._update_download_stats()
             return
             
-        # 🌱 Seeding behavior (both modes eventually reach here)
+        # 🌱 SEEDING: Calculer la vitesse et les bytes uploadés
+        # Récupérer la vitesse basée sur l'activité et la config
         current_speed = self._get_activity_based_upload_speed()
         
-        # Apply speed variation if enabled (natural fluctuations)
+        # Appliquer variation si activée (fluctuations naturelles)
         if self.enable_speed_variation and current_speed > 0:
             variation_factor = 1.0 + random.uniform(
                 -self.speed_variation_percent / 100.0,
@@ -233,35 +244,95 @@ class TrackerAnnouncer:
             )
             current_speed = int(current_speed * variation_factor)
         
-        # Calculate realistic upload progress
+        # Calculer le temps écoulé depuis la dernière mise à jour
+        if hasattr(self, '_last_upload_time') and self._last_upload_time is not None:
+            time_interval = current_time - self._last_upload_time
+        else:
+            time_interval = 3  # Défaut pour le premier appel (3 secondes = intervalle du monitor)
+        
+        self._last_upload_time = current_time
+        
+        # 📈 CALCUL DES BYTES UPLOADÉS
+        # C'est ici que le "fake seeding" se passe réellement
         if current_speed > 0:
-            if hasattr(self, '_last_upload_time'):
-                time_interval = current_time - self._last_upload_time
-            else:
-                time_interval = 5  # Default for first call
+            # Limiter l'intervalle à 10s max pour éviter des sauts énormes
+            capped_interval = min(time_interval, 10)
+            upload_delta = int(current_speed * capped_interval)
             
-            self._last_upload_time = current_time
-            
-            # Calculate bytes uploaded in this interval
-            upload_delta = current_speed * min(time_interval, 10)  # Cap at 10s intervals
+            # Ajouter au total uploadé
+            old_uploaded = self.uploaded
             self.uploaded += upload_delta
             
-            # Track upload progress for natural seeding patterns
-            self._total_seeding_time = (datetime.utcnow() - self._seeding_session_start).total_seconds()
+            logger.info(f"📈 UPLOAD: {self.torrent.name[:25]} +{upload_delta/1024:.1f}KB ({current_speed/1024:.1f}KB/s × {capped_interval:.1f}s) = Total: {self.uploaded/(1024*1024):.2f}MB")
             
-        # Set upload speed
+            # Track upload progress for natural seeding patterns
+            if hasattr(self, '_seeding_session_start') and self._seeding_session_start:
+                self._total_seeding_time = (datetime.utcnow() - self._seeding_session_start).total_seconds()
+        else:
+            logger.debug(f"⚠️ Speed=0 for {self.torrent.name[:30]} - no upload this interval")
+            
+        # 🎯 METTRE À JOUR LA VITESSE D'UPLOAD
         self.upload_speed = float(current_speed)
         
-        # Ensure downloaded/left stay correct (seeding mode)
+        # S'assurer que downloaded/left sont corrects (mode seeding)
         self.downloaded = self.torrent.size
         self.left = 0
+    
+    def _update_stats_for_display(self):
+        """Mise à jour des stats pour l'affichage UI - appelée par le monitor loop
+        
+        Cette méthode est appelée toutes les 3 secondes par le monitor pour
+        garantir que l'UI affiche des valeurs qui changent.
+        """
+        if not self.is_running:
+            self.upload_speed = 0
+            return
+        
+        current_time = time.time()
+        
+        # Initialiser si nécessaire
+        if not hasattr(self, '_display_update_time') or self._display_update_time is None:
+            self._display_update_time = current_time
+            self._last_upload_time = current_time
+            self._last_stats_update = current_time
+        
+        # Calculer le temps écoulé
+        time_interval = current_time - self._display_update_time
+        self._display_update_time = current_time
+        
+        # Obtenir une nouvelle vitesse (qui va varier à chaque appel)
+        current_speed = self._get_activity_based_upload_speed()
+        
+        # Appliquer variation
+        if self.enable_speed_variation and current_speed > 0:
+            variation = random.uniform(-self.speed_variation_percent/100, self.speed_variation_percent/100)
+            current_speed = int(current_speed * (1 + variation))
+        
+        # Calculer les bytes uploadés
+        upload_delta = 0  # Initialiser avant utilisation
+        if current_speed > 0 and time_interval > 0:
+            capped_interval = min(time_interval, 10)
+            upload_delta = int(current_speed * capped_interval)
+            self.uploaded += upload_delta
+            
+            logger.debug(f"📊 Display update: {self.torrent.name[:20]} speed={current_speed/1024:.0f}KB/s, +{upload_delta/1024:.1f}KB, total={self.uploaded/(1024*1024):.2f}MB")
+        
+        # Mettre à jour la vitesse affichée
+        self.upload_speed = float(current_speed)
+        
+        # Mettre à jour les timestamps
+        self._last_upload_time = current_time
+        self._last_stats_update = current_time
         
         logger.debug(f"🌱 Seeding stats for {self.torrent.name[:30]}:")
-        logger.debug(f"   Speed: {current_speed / 1024:.2f} KB/s (activity-based)")
+        logger.debug(f"   Speed: {current_speed / 1024:.2f} KB/s (activity-based) - Time delta: {time_interval:.1f}s")
         if current_speed > 0:
             logger.debug(f"   Session time: {self._total_seeding_time / 3600:.1f}h")
+            logger.debug(f"   Upload delta this interval: {upload_delta / 1024:.2f} KB")
             logger.debug(f"   Total uploaded: {self.uploaded / (1024**2):.2f} MB")
             logger.debug(f"   Ratio: {self.uploaded / self.torrent.size if self.torrent.size > 0 else 0:.3f}")
+        else:
+            logger.debug(f"   Speed is 0 - no upload progress made")
     
     def _update_download_stats(self):
         """Update download stats during download simulation phase"""
@@ -611,13 +682,13 @@ class TrackerAnnouncer:
                 raise Exception(f"HTTP {response.status_code}: {response.text}")
             
             # Parse and handle response
-            await self._parse_announce_response(response.content)
+            self._parse_announce_response(response.content)
             
             logger.debug(f"✅ Stealth announce successful ({response_time:.0f}ms)")
             
-            # Record success in history
-            await history_service.log_event(
-                EventType.ANNOUNCE,
+            # Record success in history (synchronous call)
+            history_service.add_entry(
+                EventType.ANNOUNCE_SUCCESS,
                 f"Stealth announce successful for {self.torrent.name}",
                 {"tracker": self.torrent.primary_tracker, "response_time_ms": int(response_time)}
             )
@@ -669,11 +740,23 @@ class TrackerAnnouncer:
         logger.debug(f"Silent error recorded for {self.torrent.name}: {error_message}")
     
     def get_stats(self) -> Dict:
-        """Get current stats with stealth information"""
-        # Calculate current seeding time including ongoing session
-        current_seeding_time = self.seeding_time
-        if self._seeding_started_at:
-            current_seeding_time += int((datetime.utcnow() - self._seeding_started_at).total_seconds())
+        """Get current stats with stealth information
+        
+        ⚠️ IMPORTANT: Cette méthode retourne les stats pour l'affichage UI.
+        Le seeding_time doit être calculé de manière fiable.
+        """
+        # 📊 CALCUL DU SEEDING TIME
+        # seeding_time = temps accumulé des sessions précédentes + session courante
+        current_seeding_time = max(0, self.seeding_time)  # Base: sessions précédentes
+        
+        if self.is_running and self._seeding_started_at:
+            # Session en cours - ajouter le temps depuis le début
+            session_duration = (datetime.utcnow() - self._seeding_started_at).total_seconds()
+            session_duration = max(0, int(session_duration))  # Assurer positif et int
+            current_seeding_time += session_duration
+        
+        # Log pour debug
+        logger.debug(f"⏱️ Seeding time: {self.torrent.name[:25]} = {current_seeding_time}s ({current_seeding_time//60}m{current_seeding_time%60}s)")
         
         # Get stealth session information
         stealth_stats = stealth_service.get_session_stats(self.torrent.info_hash)
@@ -898,66 +981,41 @@ class TrackerAnnouncer:
         return is_active
     
     def _get_activity_based_upload_speed(self) -> int:
-        """Get upload speed based on user activity patterns"""
-        min_rate, max_rate = self.client.get_upload_rate_range()
+        """Get upload speed based on user activity patterns with dynamic config
         
-        # Base speed
+        ⚠️ IMPORTANT: Cette méthode retourne la vitesse en bytes/sec.
+        La vitesse doit TOUJOURS être entre min_rate et max_rate configurés.
+        """
+        # Récupérer la config dynamique depuis seeder_service
+        from app.services.seeder_service import seeder_service
+        dynamic_config = seeder_service._config if seeder_service else None
+        min_rate, max_rate = self.client.get_upload_rate_range(dynamic_config)
+        
+        # 🎲 Générer une nouvelle vitesse aléatoire entre min et max
+        # Plus de logique de "stable speed" qui causait des vitesses figées
+        
+        # Déterminer le range basé sur l'activité utilisateur
         if self._is_user_active_hour():
-            # User is active - higher speeds
-            speed_range = (int(max_rate * 0.6), max_rate)
+            # Heures actives: vitesse plus haute (60-100% du max)
+            effective_min = int(max_rate * 0.6)
+            effective_max = max_rate
         else:
-            # User is away/sleeping - lower speeds but NOT completely paused
-            # Reduced pause chance from 30% to 5% to ensure seeding continues
-            if random.random() < 0.05:  # Only 5% chance of being paused when inactive
+            # Heures creuses: vitesse plus basse (min-40% du max)
+            # Petite chance (5%) de pause simulée
+            if random.random() < 0.05:
+                logger.debug(f"💤 Simulated pause for {self.torrent.name[:20]}")
                 return 0
-            speed_range = (int(min_rate), int(max_rate * 0.4))
+            effective_min = min_rate
+            effective_max = int(max_rate * 0.4)
         
-        # Apply activity pattern consistency with longer periods
-        consistency = self._user_activity_pattern['speed_consistency']
+        # S'assurer que les limites sont valides
+        effective_min = max(min_rate, effective_min)
+        effective_max = max(effective_min, min(max_rate, effective_max))
         
-        # Initialize speed persistence tracking
-        if not hasattr(self, '_speed_change_timer'):
-            self._speed_change_timer = 0
-            self._stable_speed = None
-            self._speed_duration = 1  # Change every 1 call (≈ 3 seconds with current refresh rate)
+        # 🎲 Générer la vitesse aléatoire
+        speed = random.randint(effective_min, effective_max)
         
-        # Keep same speed for longer periods (realistic user behavior)
-        self._speed_change_timer += 1
+        logger.debug(f"🎯 Speed for {self.torrent.name[:20]}: {speed/1024:.0f} KB/s (range: {effective_min/1024:.0f}-{effective_max/1024:.0f}, config: {min_rate/1024:.0f}-{max_rate/1024:.0f})")
         
-        if self._stable_speed is not None and self._speed_change_timer < self._speed_duration:
-            # Continue with stable speed but ensure it's within current limits
-            speed = max(speed_range[0], min(speed_range[1], self._stable_speed))
-        else:
-            # Time to change speed
-            if hasattr(self, '_last_speed') and consistency > 0.6:
-                # Keep speed similar to last speed (consistent user) - lowered threshold
-                variation = int(self._last_speed * 0.15) if self._last_speed > 0 else speed_range[0]
-                proposed_speed = self._last_speed + random.randint(-variation, variation)
-                # Ensure the proposed speed stays within configured limits
-                speed = max(speed_range[0], min(speed_range[1], proposed_speed))
-            else:
-                # More variable speed - already within range
-                speed = random.randint(*speed_range)
-            
-            # Reset timer and set new stable period
-            self._speed_change_timer = 0
-            self._speed_duration = 1  # Change every call (≈ 3 seconds with refresh rate)
-            self._stable_speed = speed
-        
-        # Ensure minimum speed for active seeding (never completely 0 for extended periods)
-        if speed == 0 and hasattr(self, '_zero_speed_count'):
-            self._zero_speed_count += 1
-            if self._zero_speed_count > 2:  # Reduced threshold - force speed sooner
-                speed = min_rate
-                self._zero_speed_count = 0
-                self._stable_speed = speed  # Update stable speed
-        elif speed > 0:
-            self._zero_speed_count = 0
-        else:
-            self._zero_speed_count = 1
-
-        # Final check: ensure speed is always within configured limits
-        speed = max(min_rate, min(max_rate, speed))
-        
-        self._last_speed = speed
         return speed
+

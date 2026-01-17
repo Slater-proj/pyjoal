@@ -1,301 +1,220 @@
 # PyJOAL - BitTorrent Ratio Client 🚀
 
-**PyJOAL** est une réécriture Python moderne de [JOAL](https://github.com/anthonyraymond/joal) (Jack Of All Leechers) - Un client qui émule différents clients BitTorrent pour maintenir un ratio de seed sans consommer de bande passante réelle.
+**PyJOAL** est un client BitTorrent intelligent qui émule différents clients pour maintenir un ratio de seed sans consommer de bande passante réelle. Écrit entièrement en Python avec une interface web moderne React.
 
 ## ✨ Fonctionnalités
 
-- 🎭 **Émulation multi-clients** - qBittorrent, Deluge, Transmission, µTorrent
-- 🎨 **Interface Web moderne** - React 18 + TailwindCSS avec design responsive
-- ⚡ **Temps réel** - WebSocket pour mises à jour instantanées
-- 📤 **Drag & Drop** - Glissez vos fichiers .torrent directement
-- 🎯 **Configuration flexible** - Ratio upload, limite de temps, proxy
-- 🔄 **Auto-update clients** - Téléchargement automatique des dernières versions
-- 📊 **Tableau de bord** - Stats détaillées et historique des annonces
-- 🐳 **Docker Ready** - Image optimisée multi-stage
-- 🔐 **Sécurisé** - Token API et path obfuscation
+### 🎭 Émulation Avancée
+- **Multi-clients** - qBittorrent, Deluge, Transmission avec mise à jour automatique
+- **Anti-détection** - Patterns d'activité naturels et timing désynchronisé
+- **Variations réalistes** - Fluctuations de vitesse simulant un vrai client
 
-## 📋 Améliorations Récentes (v1.7.7)
+### 🎨 Interface Moderne
+- **React 18 + TailwindCSS** - Design responsive et élégant
+- **Temps réel** - WebSocket pour mises à jour instantanées
+- **Drag & Drop** - Glissez vos fichiers .torrent directement
+- **Dashboard complet** - Stats, historique, logs en temps réel
 
-- 🚀 **Performance optimisée** - Consommation CPU réduite de 50% et mémoire de 30%
-- 🔧 **Monitoring de ressources** - Suivi en temps réel CPU/RAM avec alertes intelligentes
-- ⚡ **Cache intelligent** - Système de mise en cache TTL pour réduire la charge
-- 🧹 **Gestion automatique mémoire** - Nettoyage automatique toutes les 5 minutes
-- 📊 **Santé système** - Monitoring avancé avec tooltip informatif dans l'interface
-- 🐳 **Container optimisé** - Image Docker plus efficace et démarrage plus rapide
+### 🔧 Configuration Flexible
+- **Ratio upload** - Cible configurable avec archivage automatique
+- **Limite de temps** - Durée de seed maximale par torrent
+- **Proxy support** - HTTP proxy intégré
+- **Discrétion avancée** - Jitter, intervalles, variations configurables
 
-### Fonctionnalités de Discrétion (v1.7.7-1.7.7)
-- 🎭 **Modes de comportement** - Choix entre seeding pur ou simulation complète de téléchargement
-- ⏱️ **Patterns d'activité naturels** - Simulation d'heures d'activité utilisateur réaliste
-- 📊 **Variations de vitesse avancées** - Fluctuations intelligentes basées sur l'activité simulée
-- 🛡️ **Anti-détection per-torrent** - Timing individuel pour chaque torrent
-- 🔧 **Configuration avancée** - Paramètres de discrétion et timing dans l'interface
-
-### Corrections précédentes (v1.7.7-1.7.7)
-- ✅ **Onglet Historique** - Filtre "Load Failed" pour voir les torrents échoués
-- ✅ **Colonne Duration** - Renommée de "Dur" vers "Duration" pour plus de clarté
-- ✅ **Vitesses authentiques** - Les vitesses affichées correspondent exactement aux données tracker
-- ✅ **Protocole BitTorrent** - Calcul des vitesses basé sur les announces réussis (plus de fausses vitesses)
-- ✅ **Versioning unifié** - Système de version centralisé pour cohérence Docker Hub/GitHub
-- ✅ **Archivage avancé** - Raisons d'archivage (ratio/temps/erreur) dans l'historique
+### 🐳 Production Ready
+- **Docker optimisé** - Image multi-stage (~150MB)
+- **Sécurité** - Token API + path obfuscation
+- **Auto-update** - Clients BitTorrent mis à jour automatiquement
 
 ## 🚀 Démarrage Rapide
 
-### Avec Docker (Recommandé)
+### Avec Docker Compose (Recommandé)
 
 ```bash
 # Cloner le dépôt
-git clone https://github.com/adminclem/pyjoal.git
+git clone https://github.com/Slater-proj/pyjoal.git
 cd pyjoal
 
 # Créer le fichier .env
-cat > .env << EOF
-SECRET_TOKEN=votre_token_secret_complexe
-UI_PATH_PREFIX=chemin_secret
-MIN_UPLOAD_RATE=30
-MAX_UPLOAD_RATE=160
-EOF
+cp .env.example .env
+# Éditez .env avec vos valeurs
 
-# Lancer avec Docker Compose
+# Lancer
 docker-compose up -d
 
-# L'interface est disponible sur http://localhost:8080/chemin_secret/ui/
+# L'interface est disponible sur http://localhost:8080/{UI_PATH_PREFIX}/ui/
 ```
 
-### Installation Rapide avec Script
+### Docker Run
 
 ```bash
-./setup.sh  # Linux/Mac
-setup.bat   # Windows
+docker run -d \
+  --name pyjoal \
+  -p 8080:8080 \
+  -e SECRET_TOKEN=votre_token_secret_complexe \
+  -e UI_PATH_PREFIX=chemin_secret \
+  -v $(pwd)/torrents:/app/torrents \
+  -v $(pwd)/config:/app/config \
+  --restart unless-stopped \
+  adminclem/pyjoal:latest
 ```
-
-## 📋 Prérequis
-
-- **Docker** & Docker Compose (recommandé)
-- OU **Python 3.11+** et **Node.js 20+** pour installation manuelle
 
 ## ⚙️ Configuration
 
-### Variables d'Environnement (.env)
+### Variables d'Environnement Requises
 
-| Variable | Requis | Défaut | Description |
-|----------|--------|--------|-------------|
-| `SECRET_TOKEN` | ✅ | - | Token d'authentification API |
-| `UI_PATH_PREFIX` | ✅ | - | Chemin d'obfuscation UI (ex: `secret-path`) |
-| `MIN_UPLOAD_RATE` | ❌ | 30 | Vitesse upload min (KB/s) |
-| `MAX_UPLOAD_RATE` | ❌ | 160 | Vitesse upload max (KB/s) |
-| `SIMULTANEOUS_SEED` | ❌ | 20 | Nombre de torrents simultanés |
-| `HTTP_PROXY_HOST` | ❌ | - | Hôte du proxy HTTP |
-| `HTTP_PROXY_PORT` | ❌ | - | Port du proxy HTTP |
-| `DEFAULT_CLIENT` | ❌ | qbittorrent-1.7.7.client | Client par défaut |
+| Variable | Description |
+|----------|-------------|
+| `SECRET_TOKEN` | Token d'authentification API (obligatoire) |
+| `UI_PATH_PREFIX` | Chemin secret pour l'interface (obligatoire) |
+
+### Variables Optionnelles
+
+| Variable | Défaut | Description |
+|----------|--------|-------------|
+| `PORT` | 8080 | Port du serveur |
+| `MIN_UPLOAD_RATE` | 30 | Vitesse upload min (KB/s) |
+| `MAX_UPLOAD_RATE` | 160 | Vitesse upload max (KB/s) |
+| `SIMULTANEOUS_SEED` | 20 | Torrents simultanés max |
+| `HTTP_PROXY_HOST` | - | Hôte du proxy HTTP |
+| `HTTP_PROXY_PORT` | - | Port du proxy HTTP |
+
+### Fichier .env
+
+```bash
+# Requis
+SECRET_TOKEN=votre_token_secret_tres_complexe
+UI_PATH_PREFIX=chemin_secret_unique
+
+# Optionnel
+PORT=8080
+MIN_UPLOAD_RATE=30
+MAX_UPLOAD_RATE=160
+SIMULTANEOUS_SEED=20
+```
 
 ### Configuration JSON (config/config.json)
 
-Le fichier de configuration est créé automatiquement au premier lancement :
+Créé automatiquement au premier lancement, modifiable via l'interface :
 
 ```json
 {
   "minUploadRate": 30,
   "maxUploadRate": 160,
   "simultaneousSeed": 20,
-  "client": "qbittorrent-1.7.7.client",
+  "client": "qbittorrent-5.1.4.client",
   "keepTorrentWithZeroLeechers": true,
   "uploadRatioTarget": -1.0,
-  "seedingDurationLimit": -1.0
+  "seedingDurationLimit": -1.0,
+  "announceInterval": 15,
+  "announceJitter": 15,
+  "enableSpeedVariation": true,
+  "speedVariationPercent": 15
 }
 ```
 
 ## 🎭 Discrétion & Anti-détection
 
-PyJOAL v1.7.7+ intègre des mécanismes avancés pour éviter la détection par les trackers :
+PyJOAL intègre des mécanismes avancés pour éviter la détection :
 
-### 🛡️ Fonctionnalités de discrétion
-- **Désynchronisation temporelle** - Chaque torrent a son propre cycle d'announce avec jitter aléatoire
-- **Variations de vitesse réalistes** - Fluctuations naturelles simulant un vrai client BitTorrent  
+### Fonctionnalités
+- **Désynchronisation temporelle** - Chaque torrent a son propre cycle avec jitter aléatoire
+- **Variations de vitesse** - Fluctuations naturelles simulant un vrai client
+- **Patterns d'activité** - Simulation d'heures d'activité utilisateur
 - **Anti-fingerprinting** - Suppression des patterns synchrones détectables
-- **Timing authentique** - Intervalles variables basés sur la configuration du tracker
 
-### ⚙️ Configuration avancée
-
-Dans l'onglet "Configuration" → "Discretion & Timing Settings" :
+### Paramètres de Discrétion
 
 | Paramètre | Défaut | Description |
 |-----------|--------|-------------|
-| `Announce Interval` | 30s | Intervalle de base entre les annonces |
-| `Announce Jitter` | ±30s | Variation aléatoire pour désynchroniser |
-| `Min Stats Update` | 3s | Délai minimum entre les mises à jour |
-| `Speed Variation` | ±20% | Pourcentage de fluctuation des vitesses |
-| `Enable Variation` | ✅ | Activer les variations réalistes |
+| Announce Interval | 15s | Intervalle de base entre annonces |
+| Announce Jitter | ±15s | Variation aléatoire |
+| Speed Variation | ±15% | Fluctuation des vitesses |
+| Min Stats Update | 2s | Délai minimum entre MAJ |
 
-### 🔍 Recommandations de sécurité
-- Utilisez des ratios de vitesse réalistes (30-160 KB/s par défaut)
-- Évitez de faire tourner trop de torrents simultanément
+### Recommandations
+- Utilisez des vitesses réalistes (30-160 KB/s)
 - Activez toujours les variations de vitesse
-- Configurez un jitter approprié (15-60s recommandé)
+- Configurez un jitter approprié (15-30s)
+- Limitez le nombre de torrents simultanés
 
 ## 🔒 Sécurité
 
-L'interface web est protégée par:
+L'interface est protégée par :
 
-1. **Path obfuscation** (`UI_PATH_PREFIX`) - Masque l'URL de l'UI
-2. **Secret token** - Authentification par token
+1. **Path obfuscation** - URL masquée via `UI_PATH_PREFIX`
+2. **Token API** - Authentification requise sur toutes les requêtes
 3. **Referrer Policy** - Protection contre les fuites d'URL
 
-Accédez à l'UI via: `http://localhost:8080/{UI_PATH_PREFIX}/ui/`
-
-## 📡 API
-
-Documentation API interactive disponible à: `http://localhost:8080/docs`
-
-### Endpoints principaux
-
-- `GET /api/config` - Configuration actuelle
-- `PUT /api/config` - Mettre à jour la config
-- `GET /api/torrents` - Liste des torrents
-- `POST /api/torrents` - Ajouter un torrent
-- `DELETE /api/torrents/{id}` - Supprimer un torrent
-- `POST /api/start` - Démarrer le seeding
-- `POST /api/stop` - Arrêter le seeding
-- `WS /ws` - WebSocket pour updates temps réel
-
-## 🎯 Utilisation
-
-1. **Configurez** votre fichier `config/config.json`
-2. **Ajoutez** des fichiers `.client` dans `clients/` (ou utilisez le script d'auto-update)
-3. **Déposez** vos fichiers `.torrent` dans `torrents/` ou via l'UI
-4. **Démarrez** le seeding depuis l'interface web
-5. **Surveillez** vos stats en temps réel
-
-### 🔄 Mise à jour automatique des clients
-
-Les définitions de clients BitTorrent peuvent être mises à jour automatiquement :
-
-```bash
-# Depuis le dossier du projet
-python scripts/update_clients.py
-
-# Ou dans un container Docker en cours d'exécution
-docker exec pyjoal python scripts/update_clients.py
-```
-
-Le script récupère automatiquement les dernières versions depuis GitHub pour :
-- **qBittorrent** (dernière stable : 1.7.7)
-- **Deluge** (dernière stable : 1.7.7)
-- **Transmission** (dernière stable : 1.7.7)
-
-📖 Plus d'infos : [CLIENT_UPDATER.md](CLIENT_UPDATER.md)
-
-**Automatisation GitHub Actions :** Un workflow hebdomadaire vérifie les nouvelles versions et crée automatiquement une Pull Request.
-
-## 🐳 Build Docker
-
-## 🔒 Sécurité
-
-- **Path Obfuscation** : L'UI est accessible via un chemin secret (`UI_PATH_PREFIX`)
-- **Token API** : Toutes les requêtes API nécessitent `X-API-Token`
-- **Referrer Policy** : Protection contre les fuites d'URL
-- **Accès UI** : `http://localhost:8080/{UI_PATH_PREFIX}/ui/`
+**Accès UI :** `http://localhost:8080/{UI_PATH_PREFIX}/ui/`
 
 ## 📡 API REST
 
-Documentation interactive (Swagger) : `http://localhost:8080/docs`
+Documentation Swagger interactive : `http://localhost:8080/docs`
 
-**Endpoints principaux :**
-- `GET/PUT /api/config` - Configuration
-- `GET/POST/DELETE /api/torrents` - Gestion torrents
-- `POST /api/start|stop` - Contrôle seeding
-- `GET /api/stats` - Statistiques
-- `GET /api/history` - Historique
-- `WS /ws` - WebSocket temps réel
+### Endpoints
+
+| Méthode | Endpoint | Description |
+|---------|----------|-------------|
+| GET/PUT | `/api/config` | Configuration |
+| GET/POST/DELETE | `/api/torrents` | Gestion torrents |
+| POST | `/api/start` | Démarrer seeding |
+| POST | `/api/stop` | Arrêter seeding |
+| GET | `/api/stats` | Statistiques |
+| GET | `/api/history` | Historique |
+| WS | `/ws` | WebSocket temps réel |
 
 ## 🎯 Utilisation
 
 1. **Lancez** le container Docker
-2. **Accédez** à l'interface : `http://localhost:8080/{votre-path-secret}/ui/`
+2. **Accédez** à l'interface : `http://localhost:8080/{UI_PATH_PREFIX}/ui/`
 3. **Glissez** vos fichiers `.torrent` dans l'interface
-4. **Cliquez** sur "START SEEDING"
-5. **Suivez** vos stats en temps réel
+4. **Configurez** vos paramètres (optionnel)
+5. **Cliquez** sur "START SEEDING"
+6. **Suivez** vos stats en temps réel
 
-## 🔄 Mise à jour des Clients BitTorrent
+## 🔄 Mise à jour des Clients
 
-Les définitions de clients sont **mises à jour automatiquement** au démarrage du container.
+Les définitions de clients BitTorrent sont **mises à jour automatiquement** au démarrage.
+
+**Clients supportés :**
+- qBittorrent (dernière stable)
+- Deluge (dernière stable)  
+- Transmission (dernière stable)
 
 **Mise à jour manuelle :**
-
 ```bash
 python scripts/update_clients.py
 ```
 
-**Clients supportés (auto-update) :**
-- qBittorrent (dernière stable)
-- Deluge (dernière stable)
-- Transmission (dernière stable)
+## 📁 Structure des Volumes
 
-## 🐳 Docker
+| Volume | Description |
+|--------|-------------|
+| `/app/torrents` | Fichiers .torrent à seeder |
+| `/app/config` | Configuration (config.json) |
+| `/app/clients` | Définitions clients (.client) |
 
-### Quick Start avec Images Pré-compilées
+## 🏗️ Architecture
 
-#### Option 1: GitHub Container Registry (Recommandé)
+- **Backend** : FastAPI (Python 3.11+) • WebSocket • asyncio • Pydantic
+- **Frontend** : React 18 • Vite • TailwindCSS • Zustand
+- **Container** : Docker multi-stage • Alpine Linux
 
-```bash
-# Télécharger l'image officielle
-docker pull ghcr.io/adminclem/pyjoal:latest
-
-# Lancer avec configuration de base
-docker run -d --name pyjoal \
-  -p 8080:8080 \
-  -v $(pwd)/config:/app/config \
-  -v $(pwd)/torrents:/app/torrents \
-  -e SECRET_TOKEN=votre_token_secret \
-  -e UI_PATH_PREFIX=chemin_secret \
-  ghcr.io/adminclem/pyjoal:latest
-```
-
-#### Option 2: Docker Hub
+## 🐳 Build Local
 
 ```bash
-# Télécharger depuis Docker Hub
-docker pull adminclem/pyjoal:latest
+# Build l'image
+docker build -t pyjoal:local .
 
-# Lancer avec configuration de base
-docker run -d --name pyjoal \
-  -p 8080:8080 \
-  -v $(pwd)/config:/app/config \
-  -v $(pwd)/torrents:/app/torrents \
-  -e SECRET_TOKEN=votre_token_secret \
-  -e UI_PATH_PREFIX=chemin_secret \
-  adminclem/pyjoal:latest
+# Ou avec docker-compose
+docker-compose build
 ```
-
-### Build Local
-
-```bash
-docker build -t pyjoal:latest .
-```
-
-Image optimisée multi-stage (~150MB) avec frontend pré-compilé.
-
-## 📊 PyJOAL vs JOAL Original
-
-| Aspect | JOAL (Original) | PyJOAL |
-|--------|-----------------|--------|
-| Langage | Java + Spring Boot | Python + FastAPI |
-| Frontend | JS vanilla | React 18 + TailwindCSS |
-| Image Docker | ~300MB | ~150MB |
-| API Docs | ❌ | ✅ Swagger/OpenAPI |
-| Hot Reload | ❌ | ✅ |
-| Type Safety | Partiel | Complet (Pydantic + TS) |
-| WebSocket | ❌ | ✅ Real-time updates |
-
-## 🏗️ Architecture Technique
-
-**Backend :** FastAPI (Python 3.11+) • WebSocket • asyncio • Pydantic
-**Frontend :** React 18 • Vite • TailwindCSS • Zustand
-**Container :** Docker multi-stage • Alpine Linux
 
 ## 🤝 Contribution
 
 1. Fork le projet
-2. Créez une branche feature (`git checkout -b feature/nom`)
+2. Créez une branche (`git checkout -b feature/nom`)
 3. Committez (`git commit -m 'Ajout fonctionnalité'`)
 4. Push (`git push origin feature/nom`)
 5. Ouvrez une Pull Request
@@ -306,17 +225,12 @@ Apache License 2.0 - Voir [LICENSE](LICENSE)
 
 ## ⚠️ Avertissement
 
-PyJOAL est conçu pour un usage **éducatif et légitime uniquement**. 
+PyJOAL est conçu pour un usage **éducatif et légitime uniquement**.
 
-L'utilisation pour télécharger du contenu protégé par des droits d'auteur est **illégale** dans de nombreux pays. Vous êtes seul responsable de l'utilisation que vous faites de ce logiciel et devez respecter les lois de votre juridiction.
-
-L'auteur décline toute responsabilité quant aux activités illégales réalisées avec cet outil.
-
-## 🙏 Crédits
-
-- Projet original : [anthonyraymond/joal](https://github.com/anthonyraymond/joal)
-- Merci à la communauté BitTorrent et aux contributeurs
+L'utilisation pour maintenir un ratio sur du contenu protégé par des droits d'auteur peut être **illégale** dans certains pays. Vous êtes seul responsable de l'utilisation de ce logiciel.
 
 ---
 
-**Made with ❤️ by PyJOAL Contributors**Pour les questions ou suggestions, ouvrez une issue sur GitHub.
+**Made with ❤️ by PyJOAL Contributors**
+
+Pour les questions ou suggestions, ouvrez une issue sur GitHub.

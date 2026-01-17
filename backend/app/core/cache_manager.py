@@ -153,10 +153,11 @@ class CacheManager:
     
     def __init__(self):
         # Different caches for different data types with optimized TTLs
-        self.torrent_metadata = SmartCache(max_size=500, default_ttl=1800)  # 30 min
-        self.tracker_responses = SmartCache(max_size=200, default_ttl=60)   # 1 min  
-        self.stats_aggregated = SmartCache(max_size=100, default_ttl=30)    # 30 sec
-        self.websocket_batches = SmartCache(max_size=50, default_ttl=5)     # 5 sec
+        # ⚠️ IMPORTANT: TTLs courts pour réactivité temps réel
+        self.torrent_metadata = SmartCache(max_size=500, default_ttl=1800)  # 30 min (métadonnées statiques)
+        self.tracker_responses = SmartCache(max_size=200, default_ttl=60)   # 1 min (réponses tracker)
+        self.stats_aggregated = SmartCache(max_size=100, default_ttl=2)     # 2 sec (stats dynamiques - RÉDUIT pour réactivité)
+        self.websocket_batches = SmartCache(max_size=50, default_ttl=1)     # 1 sec (batching WebSocket - RÉDUIT)
         
         self._cleanup_interval = 300  # 5 minutes
         self._last_cleanup = time.time()

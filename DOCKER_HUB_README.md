@@ -1,18 +1,18 @@
 # PyJOAL - BitTorrent Ratio Client 🚀
 
-**PyJOAL** est une réécriture Python moderne de [JOAL](https://github.com/anthonyraymond/joal) (Jack Of All Leechers) - Un client qui émule différents clients BitTorrent pour maintenir un ratio de seed sans consommer de bande passante réelle.
+**PyJOAL** est un client BitTorrent intelligent qui émule différents clients pour maintenir un ratio de seed sans consommer de bande passante réelle.
 
 ## ✨ Fonctionnalités
 
-- 🎭 **Émulation multi-clients** - qBittorrent, Deluge, Transmission, µTorrent
-- 🎨 **Interface Web moderne** - React 18 + TailwindCSS avec design responsive  
+- 🎭 **Émulation multi-clients** - qBittorrent, Deluge, Transmission
+- 🎨 **Interface Web moderne** - React 18 + TailwindCSS responsive
 - ⚡ **Temps réel** - WebSocket pour mises à jour instantanées
-- 📤 **Drag & Drop** - Glissez vos fichiers .torrent directement
-- 🎯 **Configuration flexible** - Ratio upload, limite de temps, proxy
-- 🔄 **Auto-update clients** - Téléchargement automatique des dernières versions
-- 📊 **Tableau de bord** - Stats détaillées et historique des annonces
-- 🐳 **Docker Ready** - Image optimisée multi-stage
-- 🔐 **Sécurisé** - Token API et path obfuscation
+- 📤 **Drag & Drop** - Glissez vos fichiers .torrent
+- 🎯 **Configuration flexible** - Ratio, durée, proxy
+- 🔄 **Auto-update clients** - Mise à jour automatique des clients
+- 🛡️ **Anti-détection** - Patterns d'activité naturels
+- 🐳 **Docker Ready** - Image optimisée (~150MB)
+- 🔐 **Sécurisé** - Token API + path obfuscation
 
 ## 🚀 Utilisation Docker
 
@@ -32,6 +32,7 @@ services:
       - MAX_UPLOAD_RATE=160
     volumes:
       - ./torrents:/app/torrents
+      - ./config:/app/config
       - ./clients:/app/clients
     restart: unless-stopped
 ```
@@ -47,42 +48,65 @@ docker run -d \
   -e MIN_UPLOAD_RATE=30 \
   -e MAX_UPLOAD_RATE=160 \
   -v $(pwd)/torrents:/app/torrents \
-  -v $(pwd)/clients:/app/clients \
+  -v $(pwd)/config:/app/config \
   --restart unless-stopped \
   adminclem/pyjoal:latest
 ```
 
-## 📁 Structure des volumes
+## 📁 Structure des Volumes
 
-- `/app/torrents` - Dossier pour vos fichiers .torrent
-- `/app/clients` - Clients BitTorrent (.client files) 
+| Volume | Description |
+|--------|-------------|
+| `/app/torrents` | Fichiers .torrent à seeder |
+| `/app/config` | Configuration (config.json) |
+| `/app/clients` | Définitions clients BitTorrent |
 
-## 🔧 Variables d'environnement
+## 🔧 Variables d'Environnement
 
-| Variable | Description | Défaut | Requis |
-|----------|-------------|--------|--------|
-| `SECRET_TOKEN` | Token d'authentification API | - | ✅ |
-| `UI_PATH_PREFIX` | Préfixe secret pour l'interface | `ui` | ❌ |
-| `MIN_UPLOAD_RATE` | Vitesse upload min (KB/s) | `30` | ❌ |
-| `MAX_UPLOAD_RATE` | Vitesse upload max (KB/s) | `160` | ❌ |
-| `PROXY_HOST` | Hôte proxy | - | ❌ |
-| `PROXY_PORT` | Port proxy | - | ❌ |
-| `ANNOUNCE_INTERVAL` | Intervalle annonces (min) | `15` | ❌ |
+### Requises
 
-## 🎯 Accès à l'interface
+| Variable | Description |
+|----------|-------------|
+| `SECRET_TOKEN` | Token d'authentification API |
+| `UI_PATH_PREFIX` | Préfixe secret pour l'interface |
+
+### Optionnelles
+
+| Variable | Défaut | Description |
+|----------|--------|-------------|
+| `PORT` | 8080 | Port du serveur |
+| `MIN_UPLOAD_RATE` | 30 | Vitesse upload min (KB/s) |
+| `MAX_UPLOAD_RATE` | 160 | Vitesse upload max (KB/s) |
+| `SIMULTANEOUS_SEED` | 20 | Torrents simultanés |
+| `HTTP_PROXY_HOST` | - | Hôte proxy |
+| `HTTP_PROXY_PORT` | - | Port proxy |
+
+## 🎯 Accès à l'Interface
 
 Une fois démarré, l'interface est accessible sur :
-`http://localhost:8080/{UI_PATH_PREFIX}/ui/`
 
-## 📊 Fonctionnalités principales
+```
+http://localhost:8080/{UI_PATH_PREFIX}/ui/
+```
+
+## 📊 Fonctionnalités Principales
 
 - **Dashboard** - Vue d'ensemble avec statistiques temps réel
-- **Torrents** - Gestion des torrents actifs avec drag & drop
-- **Historique** - Historique complet des annonces avec filtrage
+- **Torrents** - Gestion des torrents avec drag & drop
+- **Historique** - Historique complet des annonces
 - **Configuration** - Paramètres clients, vitesses, proxy
 - **Logs** - Console de logs en temps réel
 
-## 🔗 Liens utiles
+## 🛡️ Anti-détection
+
+PyJOAL intègre des mécanismes avancés :
+
+- Désynchronisation temporelle par torrent
+- Variations de vitesse réalistes
+- Patterns d'activité naturels
+- Jitter configurable sur les annonces
+
+## 🔗 Liens
 
 - **GitHub** : https://github.com/adminclem/pyjoal
 - **Documentation** : https://github.com/adminclem/pyjoal/blob/master/README.md
@@ -90,4 +114,8 @@ Une fois démarré, l'interface est accessible sur :
 
 ## 📄 Licence
 
-MIT License - voir [LICENSE](https://github.com/adminclem/pyjoal/blob/master/LICENSE)
+Apache License 2.0 - voir [LICENSE](https://github.com/adminclem/pyjoal/blob/master/LICENSE)
+
+---
+
+**Made with ❤️ by PyJOAL Contributors**
