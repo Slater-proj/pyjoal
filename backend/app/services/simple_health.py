@@ -127,13 +127,13 @@ class SimpleHealthCheck:
                 return {
                     'status': 'error',
                     'value': f"{cpu_percent:.1f}%",
-                    'message': f"CPU critique: {cpu_percent:.1f}%"
+                    'message': f"Critical CPU: {cpu_percent:.1f}%"
                 }
             elif cpu_percent > 50:
                 return {
                     'status': 'warning',
                     'value': f"{cpu_percent:.1f}%", 
-                    'message': f"CPU élevé: {cpu_percent:.1f}%"
+                    'message': f"High CPU: {cpu_percent:.1f}%"
                 }
             else:
                 return {
@@ -147,7 +147,7 @@ class SimpleHealthCheck:
             return {
                 'status': 'error',
                 'value': 'Unknown',
-                'message': 'Impossible de vérifier le CPU'
+                'message': 'Unable to check CPU'
             }
     
     def _check_tracker_health(self) -> Dict:
@@ -162,7 +162,7 @@ class SimpleHealthCheck:
                 return {
                     'status': 'healthy',
                     'value': 'No torrents',
-                    'message': 'Aucun torrent actif'
+                    'message': 'No active torrents'
                 }
             
             # Count announcers with recent errors
@@ -176,22 +176,31 @@ class SimpleHealthCheck:
             error_rate = (error_count / total_announcers) * 100 if total_announcers > 0 else 0
             
             if error_rate > 50:
+                # Get actual tracker errors for details
+                error_details = []
+                for announcer in seeder_service.announcers.values():
+                    if announcer.last_error and announcer.last_error_time:
+                        error_age = (datetime.utcnow() - announcer.last_error_time).total_seconds()
+                        if error_age < 300:
+                            error_details.append(f"{announcer.torrent.name[:20]}: {announcer.last_error[:50]}")
+                
+                detail_msg = error_details[0] if error_details else "Multiple tracker errors"
                 return {
                     'status': 'error',
                     'value': f"{error_count}/{total_announcers} errors",
-                    'message': f"{error_count} trackers en erreur"
+                    'message': f"{error_count} trackers with errors - {detail_msg}"
                 }
             elif error_rate > 20:
                 return {
                     'status': 'warning',
                     'value': f"{error_count}/{total_announcers} errors", 
-                    'message': f"{error_count} tracker(s) instable(s)"
+                    'message': f"{error_count} tracker(s) unstable - check network connection"
                 }
             else:
                 return {
                     'status': 'healthy',
                     'value': f"{total_announcers} torrents",
-                    'message': 'Trackers fonctionnels'
+                    'message': 'Trackers working'
                 }
                 
         except Exception as e:
@@ -269,17 +278,17 @@ class SimpleHealthCheck:
         
         memory_check = checks.get('memory', {})
         if memory_check.get('status') in ['warning', 'error']:
-            suggestions.append("💡 Redémarrez PyJOAL pour libérer la mémoire")
+            suggestions.append("💡 Restart PyJOAL to free memory")
         
         tracker_check = checks.get('tracker_health', {})
         if tracker_check.get('status') == 'error':
-            suggestions.append("🔄 Vérifiez votre connexion internet") 
-            suggestions.append("⚙️  Essayez de redémarrer les torrents en erreur")
+            suggestions.append("🔄 Check your internet connection") 
+            suggestions.append("⚙️  Try restarting torrents with errors")
         
         torrent_check = checks.get('torrent_health', {})
         if torrent_check.get('status') in ['warning', 'error']:
-            suggestions.append("📋 Consultez l'historique pour les détails des erreurs")
-            suggestions.append("📁 Vérifiez que les fichiers .torrent sont valides")
+            suggestions.append("📋 Check history for error details")
+            suggestions.append("📁 Verify .torrent files are valid")
         
         return suggestions
 

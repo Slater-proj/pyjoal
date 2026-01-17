@@ -76,8 +76,6 @@ class Torrent:
     
     def _parse_from_file(self):
         """Parse torrent file from disk (original logic)"""
-    def _parse_from_file(self):
-        """Parse torrent file from disk (original logic)"""
         try:
             with open(self.path, 'rb') as f:
                 self.data = bencodepy.decode(f.read())

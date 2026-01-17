@@ -20,6 +20,7 @@ services:
       # Server
       - PORT=8080
       - DEBUG=false
+      - TZ=${TZ:-Europe/Paris}
 
       # BitTorrent Configuration
       - MIN_UPLOAD_RATE=${MIN_UPLOAD_RATE:-30}

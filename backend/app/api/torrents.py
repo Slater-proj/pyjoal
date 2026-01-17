@@ -119,33 +119,38 @@ async def get_failed_torrents():
 
 @router.post("/torrents/reload")
 async def reload_torrents():
-    """Recharger les torrents depuis le dossier"""
+    """Reload torrents from folder - detects added/removed torrent files"""
     try:
-        # Vérifier que le service est prêt
+        # Verify service is ready
         if seeder_service is None:
-            raise HTTPException(status_code=500, detail="Seeder service non initialisé")
+            raise HTTPException(status_code=500, detail="Seeder service not initialized")
         
-        # Sauvegarder l'état actuel
-        was_running = seeder_service.running
+        # Save current state
+        was_running = seeder_service.is_running
         old_count = len(seeder_service.announcers)
+        old_hashes = set(seeder_service.announcers.keys())
         
-        # Arrêter le seeding temporairement
+        # Optimization: Only stop if running (required for file reload)
         if was_running:
-            await seeder_service.stop_seeding()
+            await seeder_service.stop()
         
         # Clear existing torrents to detect removed files
-        old_announcers = dict(seeder_service.announcers)
         seeder_service.announcers.clear()
         
-        # Recharger les torrents
+        # Reload torrents from disk
         await seeder_service.load_torrents()
         new_count = len(seeder_service.announcers)
+        new_hashes = set(seeder_service.announcers.keys())
         
-        # Redémarrer si c'était en cours
+        # Calculate changes
+        added = len(new_hashes - old_hashes)
+        removed = len(old_hashes - new_hashes)
+        
+        # Restart only if was running AND there are torrents to seed
         if was_running and new_count > 0:
-            await seeder_service.start_seeding()
+            await seeder_service.start()
         
-        # Notifier les WebSocket clients
+        # Notify WebSocket clients
         await websocket_manager.broadcast({
             "type": "torrents_update", 
             "data": {
@@ -153,8 +158,16 @@ async def reload_torrents():
             }
         })
         
+        # Build detailed message
+        change_info = []
+        if added > 0:
+            change_info.append(f"+{added} added")
+        if removed > 0:
+            change_info.append(f"-{removed} removed")
+        changes = f" ({', '.join(change_info)})" if change_info else ""
+        
         return SuccessResponse(
-            message=f"Torrents rechargés: {old_count} → {new_count}"
+            message=f"Torrents reloaded: {old_count} → {new_count}{changes}"
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur lors du rechargement: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Reload error: {str(e)}")

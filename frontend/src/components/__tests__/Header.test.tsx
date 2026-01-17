@@ -33,7 +33,8 @@ describe('Header', () => {
     render(<Header appVersion="1.7.4" />)
     
     expect(screen.getByText('Live')).toBeInTheDocument()
-    expect(screen.getByText('Live')).toHaveClass('text-green-400')
+    // The text-green-400 class is on the parent div, not the span
+    expect(screen.getByText('Live').closest('div')).toHaveClass('text-green-400')
   })
 
   it('should show Health badge', () => {

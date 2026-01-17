@@ -251,16 +251,26 @@ export default function TorrentsTable() {
           {isRunning ? 'Seeding' : 'Paused'} • {torrents.length} Torrent{torrents.length !== 1 ? 's' : ''}
           {totalPages > 1 && <span className="text-slate-300 text-base font-normal">• Page {currentPage}/{totalPages}</span>}
         </h2>
-        <button
-          onClick={handleReload}
-          disabled={isReloading}
-          className="flex items-center gap-2 px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:bg-slate-700 
-                     text-white text-sm rounded-md transition-all duration-200 disabled:cursor-not-allowed"
-          title="Reload torrents from directory"
-        >
-          <RotateCcw className={`w-4 h-4 ${isReloading ? 'animate-spin' : ''}`} />
-          {isReloading ? 'Reloading...' : 'Reload'}
-        </button>
+        <div className="relative group">
+          <button
+            onClick={handleReload}
+            disabled={isReloading}
+            className="flex items-center gap-2 px-3 py-1.5 bg-slate-600 hover:bg-slate-500 disabled:bg-slate-700 
+                       text-white text-sm rounded-md transition-all duration-200 disabled:cursor-not-allowed"
+          >
+            <RotateCcw className={`w-4 h-4 ${isReloading ? 'animate-spin' : ''}`} />
+            {isReloading ? 'Reloading...' : 'Reload'}
+          </button>
+          <div className="invisible group-hover:visible absolute top-full right-0 mt-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg max-w-xs">
+            <p className="font-medium text-white mb-1">🔄 Reload Torrents</p>
+            <p>Re-scans the torrents folder to detect:</p>
+            <ul className="list-disc list-inside mt-1 space-y-0.5">
+              <li>New torrent files added</li>
+              <li>Files removed from folder</li>
+            </ul>
+            <p className="text-slate-400 mt-1 text-[10px]">Stops seeding briefly during reload</p>
+          </div>
+        </div>
       </div>
       
       {/* Table with visible borders - full width */}
@@ -349,9 +359,26 @@ export default function TorrentsTable() {
                 >
                   <td className="px-4 py-3 border-r border-slate-700 overflow-hidden" style={{ width: columnWidths.name }}>
                     <div className="flex items-center gap-2 overflow-hidden">
-                      <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                      <div 
+                        className="flex flex-col items-center gap-0.5 flex-shrink-0 p-1 -m-1 cursor-help"
+                        title={(() => {
+                          const status = torrent.status;
+                          if (!status || typeof status !== 'object') {
+                            return isActive ? 'Seeding' : 'Paused';
+                          }
+                          const statusText = status.status_text || (isActive ? 'Active seeding' : 'Paused');
+                          const speedFormatted = status.speed_formatted || `${Math.round(torrent.uploadSpeed / 1024)} kB/s`;
+                          const peakHours = status.peak_hours || '8h-23h';
+                          const parts = [
+                            `Status: ${statusText}`,
+                            `Speed: ${speedFormatted}`,
+                            `Active hours: ${peakHours}`
+                          ];
+                          return parts.join('\n');
+                        })()}
+                      >
                         <span 
-                          className={`w-2.5 h-2.5 rounded-full flex-shrink-0 transition-all cursor-help ${
+                          className={`w-3 h-3 rounded-full flex-shrink-0 transition-all ${
                             torrent.status?.status === 'pause_fake'
                               ? 'bg-yellow-400 animate-pulse'
                               : torrent.status?.status === 'seeding_active'
@@ -364,20 +391,6 @@ export default function TorrentsTable() {
                                 : 'bg-yellow-400'
                               : 'bg-slate-500'
                           }`}
-                          title={(() => {
-                            const status = torrent.status;
-                            if (!status) {
-                              return isActive ? 'Partage en cours' : 'En pause';
-                            }
-                            const parts = [
-                              `État: ${status.status_text}`,
-                              `Vitesse actuelle: ${status.speed_formatted}`,
-                              `Heures d'activité: ${status.peak_hours}`,
-                              status.time_until_change_formatted ? 
-                                `Prochain changement: ${status.time_until_change_formatted}` : ''
-                            ].filter(Boolean);
-                            return parts.join(' • ');
-                          })()}
                         />
                       </div>
                       <div className="min-w-0 flex-1 overflow-hidden">

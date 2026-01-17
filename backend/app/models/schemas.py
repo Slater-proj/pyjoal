@@ -45,6 +45,15 @@ class ConfigSchema(BaseModel):
     # Torrent Behavior Mode
     seedingOnlyMode: bool = Field(default=True, description="Pure seeding mode (true) vs download simulation mode (false)")
     
+    # 🎭 Realistic Behavior Timing Settings
+    pauseDurationMin: int = Field(default=30, ge=1, le=480, description="Minimum pause duration (minutes)")
+    pauseDurationMax: int = Field(default=180, ge=1, le=720, description="Maximum pause duration (minutes)")
+    reducedSpeedDurationMin: int = Field(default=60, ge=1, le=480, description="Minimum reduced speed duration (minutes)")
+    reducedSpeedDurationMax: int = Field(default=240, ge=1, le=720, description="Maximum reduced speed duration (minutes)")
+    stateChangeIntervalMin: int = Field(default=2, ge=1, le=24, description="Minimum interval between state changes (hours)")
+    stateChangeIntervalMax: int = Field(default=8, ge=1, le=48, description="Maximum interval between state changes (hours)")
+    reducedSpeedKbps: int = Field(default=5, ge=1, le=100, description="Upload speed when in reduced mode (kB/s)")
+    
     @validator("minUploadRate")
     def validate_min_rate(cls, v):
         if v < 0:
@@ -86,6 +95,18 @@ class ConfigSchema(BaseModel):
         return v
 
 
+class TorrentStatusInfo(BaseModel):
+    """Detailed torrent status information for UI"""
+    status: Optional[str] = Field(default=None, description="Status code (seeding_active, seeding_low, pause_fake)")
+    status_text: Optional[str] = Field(default=None, description="Human readable status")
+    current_speed: Optional[int] = Field(default=0, description="Current speed in kB/s")
+    speed_formatted: Optional[str] = Field(default=None, description="Formatted speed string")
+    time_until_speed_change: Optional[int] = Field(default=0, description="Time until speed change")
+    time_until_change_formatted: Optional[str] = Field(default=None, description="Formatted time until change")
+    is_active_hour: Optional[bool] = Field(default=True, description="Is currently in active hours")
+    peak_hours: Optional[str] = Field(default=None, description="Peak hours range")
+
+
 class TorrentInfo(BaseModel):
     """Torrent information"""
     id: str = Field(description="Torrent info hash")
@@ -98,9 +119,18 @@ class TorrentInfo(BaseModel):
     leechers: int = Field(description="Number of leechers")
     state: TorrentState = Field(description="Current state")
     addedAt: datetime = Field(description="When torrent was added")
-    lastAnnounce: Optional[datetime] = Field(description="Last announce time")
-    nextAnnounce: Optional[datetime] = Field(description="Next announce time")
-    tracker: Optional[str] = Field(description="Tracker URL")
+    lastAnnounce: Optional[datetime] = Field(default=None, description="Last announce time")
+    nextAnnounce: Optional[datetime] = Field(default=None, description="Next announce time")
+    tracker: Optional[str] = Field(default=None, description="Tracker URL")
+    # Extended fields
+    seedingTime: Optional[int] = Field(default=0, description="Seeding time in seconds")
+    lastError: Optional[str] = Field(default=None, description="Last error message")
+    errorCount: Optional[int] = Field(default=0, description="Error count")
+    lastErrorTime: Optional[datetime] = Field(default=None, description="Last error time")
+    isHealthy: Optional[bool] = Field(default=True, description="Is torrent healthy")
+    status: Optional[TorrentStatusInfo] = Field(default=None, description="Detailed status info")
+    simpleStatus: Optional[str] = Field(default=None, description="Simple status string")
+    isRunning: Optional[bool] = Field(default=False, description="Is announcer running")
 
 
 class TorrentUpload(BaseModel):

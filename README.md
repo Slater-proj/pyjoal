@@ -102,7 +102,7 @@ Créé automatiquement au premier lancement, modifiable via l'interface :
   "minUploadRate": 30,
   "maxUploadRate": 160,
   "simultaneousSeed": 20,
-  "client": "qbittorrent-5.1.4.client",
+  "client": "qbittorrent-1.8.1.client",
   "keepTorrentWithZeroLeechers": true,
   "uploadRatioTarget": -1.0,
   "seedingDurationLimit": -1.0,

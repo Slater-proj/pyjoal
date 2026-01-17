@@ -40,7 +40,7 @@ class LogHandler(logging.Handler):
                 try:
                     self.log_queue.get_nowait()
                     self.log_queue.put_nowait(log_entry)
-                except:
+                except Exception:
                     pass
                     
         except Exception:
