@@ -1,6 +1,6 @@
 {
   "name": "pyjoal-frontend",
-  "version": "1.7.5",
+  "version": "1.7.7",
   "type": "module",
   "scripts": {
     "dev": "vite",
