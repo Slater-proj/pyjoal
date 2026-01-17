@@ -26,12 +26,12 @@ class Settings(BaseSettings):
     
     # BitTorrent Config
     MIN_UPLOAD_RATE: int = Field(default=30, description="Minimum upload rate (kB/s)")
-    MAX_UPLOAD_RATE: int = Field(default=160, description="Maximum upload rate (kB/s)")
+    MAX_UPLOAD_RATE: int = Field(default=300, description="Maximum upload rate (kB/s)")
     SIMULTANEOUS_SEED: int = Field(default=20, description="Simultaneous seeds")
     KEEP_TORRENT_WITH_ZERO_LEECHERS: bool = Field(default=True, description="Keep torrents with no peers")
     UPLOAD_RATIO_TARGET: float = Field(default=-1.0, description="Upload ratio target (-1 = never remove)")
     SEEDING_DURATION_LIMIT: float = Field(default=-1.0, description="Seeding duration limit in hours (-1 = no limit)")
-    DEFAULT_CLIENT: str = Field(default="qbittorrent-4.6.0.client", description="Default client file")
+    DEFAULT_CLIENT: str = Field(default="qbittorrent-5.1.4.client", description="Default client file")
     
     # Proxy
     HTTP_PROXY_HOST: Optional[str] = Field(default=None, description="HTTP proxy host")
