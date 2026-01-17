@@ -18,9 +18,6 @@ class SimpleHealthCheck:
         self.start_time = time.time()
         self._last_check = 0
         self._cached_status = None
-        # For CPU calculation
-        self._last_cpu_time = None
-        self._last_cpu_check = None
         
     def get_health_status(self, force_check: bool = False) -> Dict:
         """Get current health status with smart caching"""
@@ -75,9 +72,8 @@ class SimpleHealthCheck:
             memory_info = process.memory_info()
             memory_mb = memory_info.rss // (1024 * 1024)  # RSS = Resident Set Size
             
-            # Calculate percentage based on container limits or reasonable thresholds
-            # For containers, 200MB is a reasonable warning threshold
-            memory_percent = min((memory_mb / 200) * 100, 100)  # 200MB = 100%
+            # Show memory usage without confusing percentage
+            # Just display the actual usage with clear status thresholds
             
             if memory_mb > 300:  # 300MB is critical for PyJOAL
                 return {
@@ -88,13 +84,13 @@ class SimpleHealthCheck:
             elif memory_mb > 200:  # 200MB is warning
                 return {
                     'status': 'warning', 
-                    'value': f"{memory_mb}MB ({memory_percent:.1f}%)",
-                    'message': f"Mémoire élevée: {memory_percent:.1f}%"
+                    'value': f"{memory_mb}MB",
+                    'message': f"Mémoire élevée: {memory_mb}MB"
                 }
             else:
                 return {
                     'status': 'healthy',
-                    'value': f"{memory_mb}MB ({memory_percent:.1f}%)",
+                    'value': f"{memory_mb}MB",
                     'message': "Mémoire OK"
                 }
                 
@@ -110,17 +106,22 @@ class SimpleHealthCheck:
         """Check CPU usage of PyJOAL process"""
         try:
             process = psutil.Process()
-            current_time = time.time()
             
-            # Get CPU percent (this requires an interval for accurate measurement)
-            if self._last_cpu_time is None:
-                # First call - initialize and return 0
-                self._last_cpu_time = current_time
-                cpu_percent = 0.0
-            else:
-                # Calculate CPU usage since last check
-                cpu_percent = process.cpu_percent()
-                self._last_cpu_time = current_time
+            # Use a longer interval for more accurate CPU measurement
+            # This approach is better for containers
+            cpu_percent = process.cpu_percent(interval=1.0)
+            
+            # If still 0, try alternative approach
+            if cpu_percent == 0.0:
+                # Try system CPU as fallback
+                import time
+                cpu1 = process.cpu_times()
+                time.sleep(0.5)
+                cpu2 = process.cpu_times()
+                
+                # Calculate CPU percentage manually
+                cpu_delta = (cpu2.user + cpu2.system) - (cpu1.user + cpu1.system)
+                cpu_percent = (cpu_delta / 0.5) * 100
             
             if cpu_percent > 80:
                 return {

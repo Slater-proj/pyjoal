@@ -138,6 +138,12 @@ export default function Header({ appVersion }: HeaderProps) {
                           <span className="text-slate-300">{healthDetails.checks.memory.value || 'N/A'}</span>
                         </div>
                       )}
+                      {healthDetails.checks?.cpu && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">🔥 CPU Usage:</span>
+                          <span className="text-slate-300">{healthDetails.checks.cpu.value || 'N/A'}</span>
+                        </div>
+                      )}
                       {healthDetails.checks?.uptime && (
                         <div className="flex justify-between">
                           <span className="text-slate-400">⏱️ System Uptime:</span>
