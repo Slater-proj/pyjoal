@@ -672,8 +672,17 @@ class SeederService:
                     continue
             
             # Check zero peers - archive if option is disabled and no peers
+            # BUT only after a grace period (5 minutes) to allow tracker to respond
             if not keep_zero_leechers and stats["seeders"] == 0 and stats["leechers"] == 0:
-                logger.info(f"🚫 Torrent {torrent.name} has no peers and keepTorrentWithZeroLeechers=False, archiving...")
+                seeding_time_seconds = stats.get("seedingTime", 0)
+                grace_period_seconds = 300  # 5 minutes grace period
+                
+                if seeding_time_seconds < grace_period_seconds:
+                    # Still in grace period, don't archive yet
+                    logger.debug(f"⏳ Torrent {torrent.name[:30]} has 0 peers but still in grace period ({seeding_time_seconds}s < {grace_period_seconds}s)")
+                    continue
+                
+                logger.info(f"🚫 Torrent {torrent.name} has no peers after {seeding_time_seconds}s and keepTorrentWithZeroLeechers=False, archiving...")
                 history_service.add_entry(
                     EventType.TORRENT_ARCHIVED,
                     f"📦 Archived {torrent.name} - no peers available",
@@ -681,9 +690,10 @@ class SeederService:
                         "info_hash": info_hash,
                         "seeders": 0,
                         "leechers": 0,
+                        "seeding_time": seeding_time_seconds,
                         "reason": "no_peers",
                         "torrent_name": torrent.name,
-                        "reason_detail": "No seeders or leechers, keepTorrentWithZeroLeechers is disabled"
+                        "reason_detail": f"No seeders or leechers after {seeding_time_seconds//60} minutes, keepTorrentWithZeroLeechers is disabled"
                     }
                 )
                 to_remove.append(info_hash)

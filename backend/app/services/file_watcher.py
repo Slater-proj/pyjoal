@@ -4,13 +4,14 @@ Monitors the torrents directory for new files and automatically loads them
 """
 import asyncio
 import logging
+import time
 from pathlib import Path
 from typing import Optional, Callable, Set
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from concurrent.futures import ThreadPoolExecutor
 import threading
-from app.core.torrent_validator import quick_validate_torrent_file, validate_torrent_file
+from app.core.torrent_validator import validate_torrent_file
 from app.services.history_service import history_service, EventType
 from app.core.config import settings
 
@@ -25,6 +26,7 @@ class TorrentFileHandler(FileSystemEventHandler):
         self.callback = callback
         self.loop = loop
         self._pending_files: Set[str] = set()
+        self._processing_files: Set[str] = set()  # Files currently being validated
         self._lock = threading.Lock()
     
     def on_created(self, event):
@@ -34,52 +36,65 @@ class TorrentFileHandler(FileSystemEventHandler):
             if ':Zone.Identifier' in event.src_path:
                 logger.debug(f"Skipping Zone.Identifier file: {event.src_path}")
                 return
+            
+            # Skip if already being processed (avoid duplicates)
+            with self._lock:
+                if event.src_path in self._processing_files:
+                    logger.debug(f"Skipping duplicate event for: {event.src_path}")
+                    return
+                self._processing_files.add(event.src_path)
+            
+            try:
+                file_path = Path(event.src_path)
                 
-            file_path = Path(event.src_path)
-            
-            # Wait a bit for file to be fully written (especially on network shares/Docker volumes)
-            import time
-            time.sleep(0.5)
-            
-            # Quick validation first (header check)
-            if not quick_validate_torrent_file(file_path):
-                logger.error(f"❌ Invalid torrent file detected: {event.src_path}")
-                self._archive_invalid_torrent(file_path, "Invalid file format (not a valid torrent)")
-                return
-            
-            # Full validation to get detailed error
-            is_valid, error_message = validate_torrent_file(file_path)
-            if is_valid:
-                logger.info(f"📁 Valid torrent file detected: {event.src_path}")
-                self._schedule_reload(event.src_path)
-            else:
-                logger.error(f"❌ Invalid torrent file detected: {event.src_path} - {error_message}")
-                self._archive_invalid_torrent(file_path, error_message)
+                # Wait for file to be fully written (especially on NAS/network shares)
+                time.sleep(1.0)  # 1 second delay for slow NAS
+                
+                # Check file still exists (might have been moved/deleted)
+                if not file_path.exists():
+                    logger.debug(f"File no longer exists, skipping: {event.src_path}")
+                    return
+                
+                # Full validation with retries (includes header check)
+                is_valid, error_message = validate_torrent_file(file_path)
+                if is_valid:
+                    logger.info(f"📁 Valid torrent file detected: {event.src_path}")
+                    self._schedule_reload(event.src_path)
+                else:
+                    logger.error(f"❌ Invalid torrent: {file_path.name} - {error_message}")
+                    self._archive_invalid_torrent(file_path, error_message)
+            finally:
+                with self._lock:
+                    self._processing_files.discard(event.src_path)
     
     def on_moved(self, event):
         """Handle file move/rename events"""
         if not event.is_directory and event.dest_path.endswith('.torrent'):
-            file_path = Path(event.dest_path)
-            
-            # Quick validation first (header check)
-            if not quick_validate_torrent_file(file_path):
-                logger.error(f"❌ Invalid torrent file moved/renamed: {event.dest_path}")
-                self._add_error_to_history(file_path, "Invalid file format (not a valid torrent)")
+            # Skip if file was moved to archived folder
+            if '/archived/' in event.dest_path or '\\archived\\' in event.dest_path:
+                logger.debug(f"Skipping archived file: {event.dest_path}")
                 return
             
-            # Full validation to get detailed error
+            file_path = Path(event.dest_path)
+            
+            # Full validation with retries
             is_valid, error_message = validate_torrent_file(file_path)
             if is_valid:
                 logger.info(f"📁 Valid torrent file moved/renamed: {event.dest_path}")
                 self._schedule_reload(event.dest_path)
             else:
-                logger.error(f"❌ Invalid torrent file moved/renamed: {event.dest_path} - {error_message}")
+                logger.error(f"❌ Invalid torrent moved/renamed: {file_path.name} - {error_message}")
                 self._archive_invalid_torrent(file_path, error_message)
     
     def _archive_invalid_torrent(self, file_path: Path, error_message: str):
         """Archive invalid torrent and add to history"""
         try:
-            # Add to history
+            # Check if file still exists before archiving
+            if not file_path.exists():
+                logger.debug(f"File already gone, skipping archive: {file_path.name}")
+                return
+            
+            # Add to history with detailed error
             history_service.add_entry(
                 EventType.TORRENT_LOAD_FAILED,
                 f"❌ Invalid torrent archived: {file_path.name}",
@@ -87,7 +102,7 @@ class TorrentFileHandler(FileSystemEventHandler):
                     "filename": file_path.name,
                     "file_path": str(file_path),
                     "error": error_message,
-                    "reason_detail": f"File is not a valid .torrent: {error_message}",
+                    "reason_detail": error_message,
                     "action": "auto_archived"
                 }
             )
