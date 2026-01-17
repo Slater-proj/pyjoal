@@ -30,7 +30,16 @@ class TorrentFileHandler(FileSystemEventHandler):
     def on_created(self, event):
         """Handle file creation events"""
         if not event.is_directory and event.src_path.endswith('.torrent'):
+            # Skip Windows Zone.Identifier files
+            if ':Zone.Identifier' in event.src_path:
+                logger.debug(f"Skipping Zone.Identifier file: {event.src_path}")
+                return
+                
             file_path = Path(event.src_path)
+            
+            # Wait a bit for file to be fully written (especially on network shares/Docker volumes)
+            import time
+            time.sleep(0.5)
             
             # Quick validation first (header check)
             if not quick_validate_torrent_file(file_path):

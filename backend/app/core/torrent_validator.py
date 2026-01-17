@@ -81,13 +81,34 @@ def validate_torrent_file(file_path: Path, content: bytes = None) -> Tuple[bool,
 def quick_validate_torrent_file(file_path: Path) -> bool:
     """Quick validation for file watcher (basic checks only)"""
     try:
+        # Skip Windows Zone.Identifier files
+        if ':Zone.Identifier' in str(file_path) or file_path.name.endswith(':Zone.Identifier'):
+            logger.debug(f"Skipping Zone.Identifier file: {file_path}")
+            return False
+        
         # Basic checks
-        if not file_path.exists() or file_path.stat().st_size == 0:
+        if not file_path.exists():
+            logger.debug(f"File does not exist: {file_path}")
+            return False
+            
+        file_size = file_path.stat().st_size
+        if file_size == 0:
+            logger.debug(f"File is empty: {file_path}")
             return False
         
         # Check file header (should start with bencode 'd')
         with open(file_path, 'rb') as f:
-            header = f.read(1)
-            return header == b'd'
-    except Exception:
+            header = f.read(10)  # Read more for debugging
+            
+        if len(header) == 0:
+            logger.debug(f"Could not read header from: {file_path}")
+            return False
+            
+        if header[0:1] != b'd':
+            logger.warning(f"Invalid torrent header for {file_path.name}: first bytes = {header[:10].hex()} (expected 'd' = 0x64)")
+            return False
+            
+        return True
+    except Exception as e:
+        logger.debug(f"Quick validation exception for {file_path}: {e}")
         return False
