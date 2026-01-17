@@ -57,6 +57,22 @@ class Settings(BaseSettings):
     # Torrent Behavior Mode
     SEEDING_ONLY_MODE: bool = Field(default=True, description="Pure seeding mode (true) vs download simulation mode (false)")
     
+    # 🎭 Realistic Behavior Timing Settings (more human-like patterns)
+    # Pause duration: how long a torrent stays paused (in minutes)
+    PAUSE_DURATION_MIN: int = Field(default=30, description="Minimum pause duration (minutes)")
+    PAUSE_DURATION_MAX: int = Field(default=180, description="Maximum pause duration (minutes) - up to 3 hours")
+    
+    # Reduced speed duration: how long a torrent stays in reduced mode (in minutes)
+    REDUCED_SPEED_DURATION_MIN: int = Field(default=60, description="Minimum reduced speed duration (minutes)")
+    REDUCED_SPEED_DURATION_MAX: int = Field(default=240, description="Maximum reduced speed duration (minutes) - up to 4 hours")
+    
+    # State change interval: how often state (pause/normal/reduced) changes (in hours)
+    STATE_CHANGE_INTERVAL_MIN: int = Field(default=2, description="Minimum interval between state changes (hours)")
+    STATE_CHANGE_INTERVAL_MAX: int = Field(default=8, description="Maximum interval between state changes (hours)")
+    
+    # Reduced speed: the actual speed when in reduced mode (in kB/s)
+    REDUCED_SPEED_KBPS: int = Field(default=5, description="Upload speed when in reduced mode (kB/s) - realistic low activity")
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

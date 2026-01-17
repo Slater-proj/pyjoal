@@ -100,7 +100,7 @@ class VersionChecker:
             latest_parts += [0] * (max_length - len(latest_parts))
             
             return latest_parts > current_parts
-        except:
+        except Exception:
             return False
     
     def _is_dev_version(self, current: str, latest: str) -> bool:
@@ -118,7 +118,7 @@ class VersionChecker:
             latest_parts += [0] * (max_length - len(latest_parts))
             
             return current_parts > latest_parts  # Current is ahead of GitHub
-        except:
+        except Exception:
             return True  # Assume dev version on error
     
     def _read_cache(self) -> Optional[Dict]:
@@ -127,7 +127,7 @@ class VersionChecker:
             if self.cache_file.exists():
                 with open(self.cache_file, 'r') as f:
                     return json.load(f)
-        except:
+        except Exception:
             pass
         return None
     
@@ -140,7 +140,7 @@ class VersionChecker:
             }
             with open(self.cache_file, 'w') as f:
                 json.dump(cache_data, f)
-        except:
+        except Exception:
             pass
     
     def _is_cache_valid(self, cached_info: Dict) -> bool:
@@ -148,7 +148,7 @@ class VersionChecker:
         try:
             cache_time = datetime.fromisoformat(cached_info["timestamp"])
             return datetime.now() - cache_time < self.cache_duration
-        except:
+        except Exception:
             return False
     
     def _get_default_version_info(self) -> Dict:

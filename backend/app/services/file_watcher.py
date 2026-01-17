@@ -10,7 +10,9 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from concurrent.futures import ThreadPoolExecutor
 import threading
-from app.core.torrent_validator import quick_validate_torrent_file
+from app.core.torrent_validator import quick_validate_torrent_file, validate_torrent_file
+from app.services.history_service import history_service, EventType
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -30,24 +32,68 @@ class TorrentFileHandler(FileSystemEventHandler):
         if not event.is_directory and event.src_path.endswith('.torrent'):
             file_path = Path(event.src_path)
             
-            # Quick validation before triggering reload
-            if quick_validate_torrent_file(file_path):
+            # Quick validation first (header check)
+            if not quick_validate_torrent_file(file_path):
+                logger.error(f"❌ Invalid torrent file detected: {event.src_path}")
+                self._archive_invalid_torrent(file_path, "Invalid file format (not a valid torrent)")
+                return
+            
+            # Full validation to get detailed error
+            is_valid, error_message = validate_torrent_file(file_path)
+            if is_valid:
                 logger.info(f"📁 Valid torrent file detected: {event.src_path}")
                 self._schedule_reload(event.src_path)
             else:
-                logger.error(f"❌ Invalid torrent file detected: {event.src_path}")
+                logger.error(f"❌ Invalid torrent file detected: {event.src_path} - {error_message}")
+                self._archive_invalid_torrent(file_path, error_message)
     
     def on_moved(self, event):
         """Handle file move/rename events"""
         if not event.is_directory and event.dest_path.endswith('.torrent'):
             file_path = Path(event.dest_path)
             
-            # Quick validation before triggering reload
-            if quick_validate_torrent_file(file_path):
+            # Quick validation first (header check)
+            if not quick_validate_torrent_file(file_path):
+                logger.error(f"❌ Invalid torrent file moved/renamed: {event.dest_path}")
+                self._add_error_to_history(file_path, "Invalid file format (not a valid torrent)")
+                return
+            
+            # Full validation to get detailed error
+            is_valid, error_message = validate_torrent_file(file_path)
+            if is_valid:
                 logger.info(f"📁 Valid torrent file moved/renamed: {event.dest_path}")
                 self._schedule_reload(event.dest_path)
             else:
-                logger.error(f"❌ Invalid torrent file moved/renamed: {event.dest_path}")
+                logger.error(f"❌ Invalid torrent file moved/renamed: {event.dest_path} - {error_message}")
+                self._archive_invalid_torrent(file_path, error_message)
+    
+    def _archive_invalid_torrent(self, file_path: Path, error_message: str):
+        """Archive invalid torrent and add to history"""
+        try:
+            # Add to history
+            history_service.add_entry(
+                EventType.TORRENT_LOAD_FAILED,
+                f"❌ Invalid torrent archived: {file_path.name}",
+                {
+                    "filename": file_path.name,
+                    "file_path": str(file_path),
+                    "error": error_message,
+                    "reason_detail": f"File is not a valid .torrent: {error_message}",
+                    "action": "auto_archived"
+                }
+            )
+            
+            # Archive the invalid file
+            archived_dir = settings.TORRENTS_DIR / "archived"
+            archived_dir.mkdir(exist_ok=True)
+            archived_path = archived_dir / file_path.name
+            
+            if file_path.exists():
+                file_path.rename(archived_path)
+                logger.info(f"📦 Invalid torrent auto-archived: {file_path.name} -> archived/")
+            
+        except Exception as e:
+            logger.error(f"Failed to archive invalid torrent {file_path.name}: {e}")
     
     def _schedule_reload(self, file_path: str):
         """Schedule reload operation in the main event loop"""

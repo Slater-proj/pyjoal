@@ -580,6 +580,133 @@ full_deploy() {
     log_success "Complete deployment finished!"
 }
 
+# Version update helper
+update_version_interactive() {
+    log_info "📦 Version Update Helper"
+    echo ""
+    
+    # Show current version
+    if [[ -f "VERSION" ]]; then
+        CURRENT_VERSION=$(cat VERSION)
+        echo -e "Current version: ${CYAN}${CURRENT_VERSION}${NC}"
+    else
+        CURRENT_VERSION="0.0.0"
+        echo -e "No VERSION file found. Creating new one."
+    fi
+    
+    # Parse current version
+    IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+    
+    # Suggest next versions
+    NEXT_PATCH="$major.$minor.$((patch + 1))"
+    NEXT_MINOR="$major.$((minor + 1)).0"
+    NEXT_MAJOR="$((major + 1)).0.0"
+    
+    echo ""
+    echo "Suggested next versions:"
+    echo "  1) Patch: ${NEXT_PATCH} (bug fixes)"
+    echo "  2) Minor: ${NEXT_MINOR} (new features)"
+    echo "  3) Major: ${NEXT_MAJOR} (breaking changes)"
+    echo "  4) Custom version"
+    echo "  0) Cancel"
+    echo ""
+    echo -n -e "${YELLOW}Your choice [0-4]: ${NC}"
+    read -r version_choice
+    
+    case $version_choice in
+        1) NEW_VERSION="$NEXT_PATCH" ;;
+        2) NEW_VERSION="$NEXT_MINOR" ;;
+        3) NEW_VERSION="$NEXT_MAJOR" ;;
+        4)
+            echo -n -e "${YELLOW}Enter custom version (X.Y.Z): ${NC}"
+            read -r NEW_VERSION
+            ;;
+        0|*)
+            log_info "Version update cancelled"
+            return 0
+            ;;
+    esac
+    
+    # Validate version format
+    if [[ ! "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        log_error "Invalid version format. Use X.Y.Z format"
+        return 1
+    fi
+    
+    echo ""
+    if ask_confirmation "Update version from ${CURRENT_VERSION} to ${NEW_VERSION}?" "yes"; then
+        log_step "Updating version to $NEW_VERSION..."
+        
+        # 1. Update main VERSION file
+        echo "$NEW_VERSION" > VERSION
+        log_info "Updated VERSION file"
+        
+        # 2. Update package.json
+        if [[ -f "frontend/package.json" ]]; then
+            sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" frontend/package.json
+            log_info "Updated frontend/package.json"
+        fi
+        
+        # 3. Update BUILD_VERSION.txt for frontend
+        if [[ -d "frontend" ]]; then
+            echo "$NEW_VERSION" > frontend/BUILD_VERSION.txt
+            log_info "Updated frontend/BUILD_VERSION.txt"
+        fi
+        
+        # 4. Add changelog entry (if exists)
+        if [[ -f "CHANGELOG.md" ]]; then
+            CHANGELOG_ENTRY="## [$NEW_VERSION] - $(date +%Y-%m-%d)
+
+### Changed
+- Version bump to $NEW_VERSION
+
+"
+            # Insert after header
+            if grep -q "^# Changelog" CHANGELOG.md; then
+                {
+                    head -n 1 CHANGELOG.md
+                    echo ""
+                    echo "$CHANGELOG_ENTRY"
+                    tail -n +2 CHANGELOG.md
+                } > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+                log_info "Updated CHANGELOG.md"
+            fi
+        fi
+        
+        # 5. Git operations (optional)
+        echo ""
+        if ask_confirmation "Create Git commit and tag for this version?" "yes"; then
+            git add VERSION frontend/package.json frontend/BUILD_VERSION.txt CHANGELOG.md 2>/dev/null || true
+            git commit -m "chore: bump version to v$NEW_VERSION
+
+- Updated VERSION file to $NEW_VERSION
+- Synced frontend/package.json version
+- Added changelog entry"
+            log_info "Created Git commit"
+            
+            if ask_confirmation "Create Git tag v$NEW_VERSION?" "yes"; then
+                git tag "v$NEW_VERSION"
+                log_info "Created tag v$NEW_VERSION"
+                
+                if ask_confirmation "Push commit and tag to origin?" "no"; then
+                    git push origin main || git push origin master
+                    git push origin "v$NEW_VERSION"
+                    log_info "Pushed to origin"
+                fi
+            fi
+        fi
+        
+        log_success "Version updated to $NEW_VERSION!"
+        echo ""
+        echo "Next steps:"
+        echo "  1. 🐳 Rebuild Docker image: Option 2 in menu"
+        echo "  2. 🚀 Deploy: docker push your-registry/pyjoal:$NEW_VERSION"
+        echo "  3. 🏷️  Create GitHub release from tag v$NEW_VERSION"
+    else
+        log_info "Version update cancelled"
+    fi
+}
+
 # Main menu
 show_menu() {
     echo ""
@@ -597,9 +724,10 @@ show_menu() {
     echo "10) 🧹 Clean environment"
     echo "11) 🧪 Complete setup with tests (clients + build + test + start)"
     echo "12) 🚀 Quick deployment (clean Git + build + start)"
+    echo "13) 📦 Update version"
     echo "0)  ❌ Exit"
     echo ""
-    echo -n -e "${YELLOW}Your choice [0-12]: ${NC}"
+    echo -n -e "${YELLOW}Your choice [0-13]: ${NC}"
 }
 
 # Main function
@@ -702,6 +830,13 @@ main() {
                 echo -e "${GREEN}Press Enter to continue...${NC}"
                 read -r
                 ;;
+            13)
+                echo ""
+                update_version_interactive
+                echo ""
+                echo -e "${GREEN}Press Enter to continue...${NC}"
+                read -r
+                ;;
             0)
                 echo ""
                 log_info "Goodbye! 👋"
@@ -709,7 +844,7 @@ main() {
                 ;;
             *)
                 echo ""
-                log_error "Invalid option. Please choose between 0 and 12."
+                log_error "Invalid option. Please choose between 0 and 13."
                 sleep 2
                 ;;
         esac

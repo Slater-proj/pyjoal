@@ -208,19 +208,38 @@ export default function HistoryPage() {
                       
                       {/* Enhanced data display with archive reason */}
                       {entry.eventType === 'torrent_archived' && entry.data.reason && (
-                        <div className="mt-1 flex items-center gap-3">
-                          <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-slate-700 text-slate-300">
-                            📋 {formatArchiveReason(entry.data.reason)}
-                          </span>
-                          {entry.data.ratio && (
-                            <span className="text-xs text-slate-400">
-                              📊 Ratio: {entry.data.ratio} (Target: {entry.data.target})
+                        <div className="mt-2 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-slate-700 text-slate-300">
+                              📋 {formatArchiveReason(entry.data.reason)}
                             </span>
+                            {entry.data.ratio !== undefined && (
+                              <span className="text-xs text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded">
+                                📊 Ratio: {typeof entry.data.ratio === 'number' ? entry.data.ratio.toFixed(2) : entry.data.ratio}
+                                {entry.data.target && ` / ${entry.data.target}`}
+                              </span>
+                            )}
+                            {entry.data.seeding_hours !== undefined && (
+                              <span className="text-xs text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded">
+                                ⏱️ {typeof entry.data.seeding_hours === 'number' ? entry.data.seeding_hours.toFixed(1) : entry.data.seeding_hours}h
+                                {entry.data.limit && ` / ${entry.data.limit}h`}
+                              </span>
+                            )}
+                            {entry.data.seeders !== undefined && entry.data.leechers !== undefined && (
+                              <span className="text-xs text-red-300 bg-red-500/20 px-2 py-0.5 rounded">
+                                👥 {entry.data.seeders}S / {entry.data.leechers}L
+                              </span>
+                            )}
+                          </div>
+                          {entry.data.reason_detail && (
+                            <p className="text-xs text-slate-400 italic pl-1">
+                              💡 {entry.data.reason_detail}
+                            </p>
                           )}
-                          {entry.data.seeding_hours && (
-                            <span className="text-xs text-slate-400">
-                              ⏱️ Duration: {entry.data.seeding_hours}h (Limit: {entry.data.limit}h)
-                            </span>
+                          {entry.data.torrent_name && (
+                            <p className="text-xs text-slate-500 truncate pl-1">
+                              📁 {entry.data.torrent_name}
+                            </p>
                           )}
                         </div>
                       )}

@@ -32,7 +32,7 @@ async def update_config(config: ConfigSchema):
         logger.info(f"✅ API: Configuration updated successfully")
         
         return SuccessResponse(
-            message="Configuration mise à jour avec succès",
+            message="Configuration updated successfully",
             data=updated_config  # Return actual saved config
         )
     except ValueError as ve:
@@ -44,13 +44,13 @@ async def update_config(config: ConfigSchema):
         # System errors - simplified for user
         logger.error(f"❌ API: Config update failed: {e}")
         if "permission" in str(e).lower():
-            error_msg = "Erreur de sauvegarde : vérifiez les permissions du fichier de configuration"
+            error_msg = "Save error: check config file permissions"
         elif "disk" in str(e).lower() or "space" in str(e).lower():
-            error_msg = "Erreur de sauvegarde : espace disque insuffisant"
+            error_msg = "Save error: insufficient disk space"
         elif "network" in str(e).lower():
-            error_msg = "Erreur réseau lors de la mise à jour de la configuration"
+            error_msg = "Network error while updating configuration"
         else:
-            error_msg = "Erreur interne lors de la mise à jour de la configuration"
+            error_msg = "Internal error while updating configuration"
         
         raise HTTPException(status_code=500, detail=error_msg)
 

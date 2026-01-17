@@ -41,6 +41,15 @@ class TrackerAnnouncer:
         # 🎯 Torrent Behavior Mode
         self.seeding_only_mode = self.discretion_config.get("seedingOnlyMode", settings.SEEDING_ONLY_MODE)
         
+        # 🎭 Realistic Behavior Timing (in minutes/hours for human-like behavior)
+        self.pause_duration_min = self.discretion_config.get("pauseDurationMin", settings.PAUSE_DURATION_MIN)  # minutes
+        self.pause_duration_max = self.discretion_config.get("pauseDurationMax", settings.PAUSE_DURATION_MAX)  # minutes
+        self.reduced_speed_duration_min = self.discretion_config.get("reducedSpeedDurationMin", settings.REDUCED_SPEED_DURATION_MIN)  # minutes
+        self.reduced_speed_duration_max = self.discretion_config.get("reducedSpeedDurationMax", settings.REDUCED_SPEED_DURATION_MAX)  # minutes
+        self.state_change_interval_min = self.discretion_config.get("stateChangeIntervalMin", settings.STATE_CHANGE_INTERVAL_MIN)  # hours
+        self.state_change_interval_max = self.discretion_config.get("stateChangeIntervalMax", settings.STATE_CHANGE_INTERVAL_MAX)  # hours
+        self.reduced_speed_kbps = self.discretion_config.get("reducedSpeedKbps", settings.REDUCED_SPEED_KBPS)  # kB/s
+        
         logger.debug(f"Discretion config for {torrent.name[:30]}: interval={self.announce_interval}s, jitter=±{self.announce_jitter}s, min_update={self.min_stats_update_interval}s")
         
         # Enhanced realistic stats simulation
@@ -467,6 +476,12 @@ class TrackerAnnouncer:
                 logger.info(f"   Uploaded: {self.uploaded / (1024**2):.2f} MB (speed: {self.upload_speed / 1024:.2f} KB/s)")
                 logger.info(f"   Next announce in {self.announce_interval + jitter}s")
                 
+                # Clear any previous error on success
+                if self.last_error:
+                    logger.debug(f"Clearing previous error for {self.torrent.name}")
+                    self.last_error = None
+                    self.last_error_time = None
+                
                 # Record successful announce for real speed calculation
                 self._last_successful_announce = time.time()
                 self._last_successful_uploaded = self.uploaded
@@ -799,34 +814,129 @@ class TrackerAnnouncer:
     
     def get_status_info(self) -> Dict[str, Any]:
         """Get detailed status information for UI display"""
+        # Check individual torrent pause state
+        self._update_individual_state()
+        
         current_speed = self._get_activity_based_upload_speed()
         
-        # Calculate time until next speed change
+        # Calculate time until next state change
         time_until_change = 0
-        if hasattr(self, '_speed_change_timer') and hasattr(self, '_speed_duration'):
-            time_until_change = max(0, self._speed_duration - self._speed_change_timer)
+        change_source = "speed"
+        if hasattr(self, '_is_in_fake_pause') and self._is_in_fake_pause and self._pause_until:
+            time_until_change = max(0, int((self._pause_until - datetime.utcnow()).total_seconds()))
+            change_source = "pause_end"
+        elif hasattr(self, '_next_speed_change'):
+            time_until_change = max(0, int((self._next_speed_change - datetime.utcnow()).total_seconds()))
+            change_source = "tier_change"
         
-        # Determine status
-        if current_speed == 0:
+        # Determine status based on individual torrent state
+        if hasattr(self, '_is_in_fake_pause') and self._is_in_fake_pause:
             status = "pause_fake"
-            status_text = "Pause simulée"
+            status_text = "Paused"
+        elif current_speed == 0:
+            status = "pause_fake"
+            status_text = "Paused"
+        elif hasattr(self, '_current_speed_tier'):
+            if self._current_speed_tier == 'high':
+                status = "seeding_active"
+                status_text = "Active seeding"
+            elif self._current_speed_tier == 'medium':
+                status = "seeding_active"
+                status_text = "Normal seeding"
+            else:
+                status = "seeding_low"
+                status_text = "Reduced seeding"
         elif self._is_user_active_hour():
             status = "seeding_active"
-            status_text = "Partage actif"
+            status_text = "Active seeding"
         else:
             status = "seeding_low"
-            status_text = "Partage réduit"
+            status_text = "Reduced seeding"
+        
+        # Format time until change (show hours if > 60 min)
+        if time_until_change >= 3600:
+            hours = time_until_change // 3600
+            mins = (time_until_change % 3600) // 60
+            time_formatted = f"{hours}h {mins}m"
+        elif time_until_change >= 60:
+            time_formatted = f"{time_until_change // 60}m"
+        elif time_until_change > 0:
+            time_formatted = f"{time_until_change}s"
+        else:
+            time_formatted = "Soon"
         
         return {
             'status': status,
             'status_text': status_text,
             'current_speed': current_speed,
-            'speed_formatted': f"{current_speed} kB/s",
+            'speed_formatted': f"{current_speed // 1024} kB/s" if current_speed >= 1024 else f"{current_speed} B/s",
             'time_until_speed_change': time_until_change,
-            'time_until_change_formatted': f"{time_until_change // 60}m {time_until_change % 60}s" if time_until_change > 0 else "Bientôt",
+            'time_until_change_formatted': time_formatted,
+            'change_reason': change_source,
+            'speed_tier': getattr(self, '_current_speed_tier', 'medium'),
             'is_active_hour': self._is_user_active_hour(),
             'peak_hours': f"{self._peak_hours[0]}h-{self._peak_hours[1]}h"
         }
+    
+    def _update_individual_state(self):
+        """Update individual torrent state (pause/speed tier) independently
+        
+        🎭 Realistic human behavior:
+        - State changes happen every few HOURS, not minutes
+        - Pauses last 30min to 3 hours (configurable)
+        - Reduced speed periods last 1-4 hours (configurable)
+        """
+        now = datetime.utcnow()
+        
+        # Check if we need to enter/exit pause
+        if hasattr(self, '_is_in_fake_pause'):
+            if self._is_in_fake_pause:
+                # Check if pause should end
+                if self._pause_until and now >= self._pause_until:
+                    self._is_in_fake_pause = False
+                    self._pause_until = None
+                    # Schedule next state change (hours, not minutes!)
+                    hours_until_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
+                    self._next_pause_time = now + timedelta(hours=hours_until_change)
+                    logger.info(f"▶️ {self.torrent.name[:25]} resuming from pause, next state change in {hours_until_change}h")
+            else:
+                # Check if we should enter pause (based on scheduled time)
+                if hasattr(self, '_next_pause_time') and now >= self._next_pause_time:
+                    # Random choice: pause or switch to reduced speed
+                    # 20% chance to pause, 40% reduced, 40% normal
+                    roll = random.random()
+                    if roll < 0.2:
+                        # Enter pause for configurable duration (minutes)
+                        pause_minutes = random.randint(self.pause_duration_min, self.pause_duration_max)
+                        self._is_in_fake_pause = True
+                        self._pause_until = now + timedelta(minutes=pause_minutes)
+                        self._current_speed_tier = 'paused'
+                        logger.info(f"⏸️ {self.torrent.name[:25]} entering pause for {pause_minutes}min ({pause_minutes/60:.1f}h)")
+                    elif roll < 0.6:
+                        # Switch to reduced speed for configurable duration
+                        reduced_minutes = random.randint(self.reduced_speed_duration_min, self.reduced_speed_duration_max)
+                        self._current_speed_tier = 'low'
+                        self._next_speed_change = now + timedelta(minutes=reduced_minutes)
+                        logger.info(f"🔽 {self.torrent.name[:25]} switching to reduced speed for {reduced_minutes}min ({reduced_minutes/60:.1f}h)")
+                    else:
+                        # Stay at normal/high speed
+                        self._current_speed_tier = random.choice(['high', 'medium'])
+                        hours_until_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
+                        self._next_speed_change = now + timedelta(hours=hours_until_change)
+                        logger.info(f"🔼 {self.torrent.name[:25]} staying at {self._current_speed_tier} speed for {hours_until_change}h")
+                    
+                    # Schedule next state evaluation
+                    hours_until_next = random.randint(self.state_change_interval_min, self.state_change_interval_max)
+                    self._next_pause_time = now + timedelta(hours=hours_until_next)
+        
+        # Check if speed tier duration has ended (for reduced speed periods)
+        if hasattr(self, '_next_speed_change') and not self._is_in_fake_pause:
+            if now >= self._next_speed_change and self._current_speed_tier == 'low':
+                # Reduced period ended, return to normal
+                self._current_speed_tier = random.choice(['high', 'medium'])
+                hours_until_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
+                self._next_speed_change = now + timedelta(hours=hours_until_change)
+                logger.info(f"🔼 {self.torrent.name[:25]} reduced period ended, back to {self._current_speed_tier}")
     
     def _simulate_natural_download_start(self):
         """Simulate realistic download start behavior - full download cycle simulation"""
@@ -851,6 +961,18 @@ class TrackerAnnouncer:
         # Natural patterns (for later seeding phase)
         self._peak_hours = self._determine_user_peak_hours()
         self._user_activity_pattern = self._generate_user_activity_pattern()
+        
+        # 🎭 Individual torrent pause behavior (each torrent pauses independently)
+        # First state change after a few HOURS (realistic human behavior)
+        hours_until_first_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
+        self._next_pause_time = datetime.utcnow() + timedelta(hours=hours_until_first_change)
+        self._pause_duration = 0
+        self._pause_until = None
+        self._is_in_fake_pause = False
+        
+        # 🎯 Individual speed state - start at normal/high speed
+        self._next_speed_change = datetime.utcnow() + timedelta(hours=hours_until_first_change)
+        self._current_speed_tier = random.choice(['high', 'medium'])  # Start active, not reduced
         
         logger.debug(f"📥 Natural download start for {self.torrent.name[:30]}: {completion_percentage:.1%} completed, {self.left / (1024**2):.2f} MB remaining")
     
@@ -877,7 +999,19 @@ class TrackerAnnouncer:
         self._peak_hours = self._determine_user_peak_hours()
         self._user_activity_pattern = self._generate_user_activity_pattern()
         
-        logger.debug(f"🌱 Natural seeding start for {self.torrent.name[:30]}: download completed {completion_delay_minutes}min ago, ready to seed")
+        # 🎭 Individual torrent pause behavior - realistic timing (HOURS not seconds!)
+        # First state change after a configurable number of hours
+        hours_until_first_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
+        self._next_pause_time = datetime.utcnow() + timedelta(hours=hours_until_first_change)
+        self._pause_duration = 0
+        self._pause_until = None
+        self._is_in_fake_pause = False
+        
+        # 🎯 Individual speed state - start at normal/high speed (most realistic)
+        self._next_speed_change = datetime.utcnow() + timedelta(hours=hours_until_first_change)
+        self._current_speed_tier = random.choice(['high', 'medium'])  # Start active
+        
+        logger.info(f"🌱 {self.torrent.name[:30]}: seeding start, tier={self._current_speed_tier}, next state change in {hours_until_first_change}h")
     
     def _is_in_downloading_phase(self) -> bool:
         """Check if torrent is still in realistic downloading phase"""
@@ -983,39 +1117,54 @@ class TrackerAnnouncer:
     def _get_activity_based_upload_speed(self) -> int:
         """Get upload speed based on user activity patterns with dynamic config
         
-        ⚠️ IMPORTANT: Cette méthode retourne la vitesse en bytes/sec.
-        La vitesse doit TOUJOURS être entre min_rate et max_rate configurés.
+        ⚠️ IMPORTANT: Returns speed in bytes/sec.
+        
+        Speed tiers:
+        - 'paused' / _is_in_fake_pause: 0 bytes/sec
+        - 'low' (reduced): configured reduced_speed_kbps (default 5 KB/s)
+        - 'medium': 30-60% of max speed
+        - 'high': 60-100% of max speed
         """
-        # Récupérer la config dynamique depuis seeder_service
+        # Check if torrent is in fake pause state - return 0 speed
+        if hasattr(self, '_is_in_fake_pause') and self._is_in_fake_pause:
+            logger.debug(f"💤 {self.torrent.name[:20]} is in fake pause - speed = 0")
+            return 0
+        
+        # Get dynamic config from seeder_service
         from app.services.seeder_service import seeder_service
         dynamic_config = seeder_service._config if seeder_service else None
         min_rate, max_rate = self.client.get_upload_rate_range(dynamic_config)
         
-        # 🎲 Générer une nouvelle vitesse aléatoire entre min et max
-        # Plus de logique de "stable speed" qui causait des vitesses figées
+        # Check current speed tier
+        current_tier = getattr(self, '_current_speed_tier', 'medium')
         
-        # Déterminer le range basé sur l'activité utilisateur
-        if self._is_user_active_hour():
-            # Heures actives: vitesse plus haute (60-100% du max)
+        if current_tier == 'low':
+            # 🔽 Reduced speed: use configured low speed (default 5 KB/s)
+            # Add small variation (±2 KB/s) for realism
+            reduced_speed_bytes = self.reduced_speed_kbps * 1024  # Convert KB/s to bytes/s
+            variation = random.randint(-2048, 2048)  # ±2 KB/s variation
+            speed = max(1024, reduced_speed_bytes + variation)  # Minimum 1 KB/s
+            logger.debug(f"🔽 {self.torrent.name[:20]} reduced speed: {speed/1024:.1f} KB/s (tier: low)")
+            return int(speed)
+        
+        elif current_tier == 'medium':
+            # 🔸 Medium speed: 30-60% of max
+            effective_min = int(max_rate * 0.3)
+            effective_max = int(max_rate * 0.6)
+        
+        else:  # 'high' or default
+            # 🔼 High speed: 60-100% of max
             effective_min = int(max_rate * 0.6)
             effective_max = max_rate
-        else:
-            # Heures creuses: vitesse plus basse (min-40% du max)
-            # Petite chance (5%) de pause simulée
-            if random.random() < 0.05:
-                logger.debug(f"💤 Simulated pause for {self.torrent.name[:20]}")
-                return 0
-            effective_min = min_rate
-            effective_max = int(max_rate * 0.4)
         
-        # S'assurer que les limites sont valides
+        # Ensure limits are valid
         effective_min = max(min_rate, effective_min)
         effective_max = max(effective_min, min(max_rate, effective_max))
         
-        # 🎲 Générer la vitesse aléatoire
+        # Generate random speed within tier range
         speed = random.randint(effective_min, effective_max)
         
-        logger.debug(f"🎯 Speed for {self.torrent.name[:20]}: {speed/1024:.0f} KB/s (range: {effective_min/1024:.0f}-{effective_max/1024:.0f}, config: {min_rate/1024:.0f}-{max_rate/1024:.0f})")
+        logger.debug(f"🎯 {self.torrent.name[:20]}: {speed/1024:.0f} KB/s (tier: {current_tier}, range: {effective_min/1024:.0f}-{effective_max/1024:.0f})")
         
         return speed
 

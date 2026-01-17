@@ -10,8 +10,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 import os
 import sys
 import logging
-import html
-import subprocess
+import json
 from pathlib import Path
 
 # Read version from VERSION file
@@ -34,7 +33,7 @@ def get_version():
                                      capture_output=True, text=True, cwd=Path(__file__).parent.parent.parent)
                 if result.returncode == 0:
                     return result.stdout.strip().lstrip('v')
-            except:
+            except Exception:
                 pass
             return "dev"  # development fallback
     except Exception:
@@ -48,14 +47,34 @@ from app.services.websocket_manager import websocket_manager
 from app.services.seeder_service import seeder_service
 from app.services.history_service import history_service, EventType
 from app.services.log_stream_service import log_handler
+import time
 
-# Configure logging
+# Configure timezone-aware logging
+class TimezoneFormatter(logging.Formatter):
+    """Formatter that uses local timezone from TZ environment variable"""
+    converter = time.localtime  # Use local time instead of UTC
+    
+    def formatTime(self, record, datefmt=None):
+        ct = self.converter(record.created)
+        if datefmt:
+            s = time.strftime(datefmt, ct)
+        else:
+            s = time.strftime('%Y-%m-%d %H:%M:%S', ct)
+        return s
+
+# Configure logging with timezone support
+log_format = '%(asctime)s | %(levelname)-8s | %(name)-25s | %(message)s'
+log_datefmt = '%Y-%m-%d %H:%M:%S'
+
+# Create formatter and handlers
+formatter = TimezoneFormatter(log_format, datefmt=log_datefmt)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(formatter)
+
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
-    format='%(asctime)s | %(levelname)-8s | %(name)-25s | %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[
-        logging.StreamHandler(sys.stdout),
+        console_handler,
         log_handler  # Add our custom handler for log streaming
     ]
 )
@@ -140,7 +159,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"✅ PyJOAL v{APP_VERSION} started successfully on port {settings.PORT}")
     logger.info(f"🌐 UI available at: http://localhost:{settings.PORT}/{settings.UI_PATH_PREFIX}/ui/")
     logger.info(f"📚 API docs at: http://localhost:{settings.PORT}/docs")
-    logger.info(f"🔐 Secret token: {settings.SECRET_TOKEN}")
+    logger.info(f"🔐 Secret token: {settings.SECRET_TOKEN[:8]}...{settings.SECRET_TOKEN[-4:]} (masked)")
     logger.info("=" * 80)
     
     yield
@@ -310,8 +329,8 @@ if frontend_build_path.exists():
             with open(index_path, 'r', encoding='utf-8') as f:
                 html_content = f.read()
             
-            # Inject token into HTML (before closing </head>)
-            token_script = f'<script>window.__PYJOAL_TOKEN__ = "{html.escape(settings.SECRET_TOKEN)}";</script>'
+            # Inject token into HTML (before closing </head>) - use json.dumps for XSS-safe escaping
+            token_script = f'<script>window.__PYJOAL_TOKEN__ = {json.dumps(settings.SECRET_TOKEN)};</script>'
             html_content = html_content.replace('</head>', f'{token_script}</head>')
             
             return HTMLResponse(content=html_content)
@@ -326,9 +345,9 @@ if frontend_build_path.exists():
         with open(index_path, 'r', encoding='utf-8') as f:
             html_content = f.read()
         
-        token_script = f'<script>window.__PYJOAL_TOKEN__ = "{html.escape(settings.SECRET_TOKEN)}";</script>'
+        token_script = f'<script>window.__PYJOAL_TOKEN__ = {json.dumps(settings.SECRET_TOKEN)};</script>'
         html_content = html_content.replace('</head>', f'{token_script}</head>')
-        
+
         return HTMLResponse(content=html_content)
 else:
     logger.warning(f"⚠️  Frontend not found at {frontend_build_path}")

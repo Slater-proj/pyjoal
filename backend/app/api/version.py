@@ -6,13 +6,6 @@ from pathlib import Path
 
 router = APIRouter(prefix="/api/version", tags=["version"])
 
-"""
-Version API endpoint
-"""
-from fastapi import APIRouter
-from pathlib import Path
-
-router = APIRouter(prefix="/api/version", tags=["version"])
 
 def get_version():
     """Get application version from VERSION file"""
@@ -34,11 +27,12 @@ def get_version():
                                      capture_output=True, text=True, cwd=Path(__file__).parent.parent.parent.parent)
                 if result.returncode == 0:
                     return result.stdout.strip().lstrip('v')
-            except:
+            except Exception:
                 pass
             return "dev"  # development fallback
     except Exception:
         return "dev"  # development fallback
+
 
 @router.get("")
 async def get_app_version():

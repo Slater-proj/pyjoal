@@ -168,10 +168,25 @@ export default function Header({ appVersion }: HeaderProps) {
                         }`}>
                           {healthDetails.overall_status === 'healthy' && 'System OK'}
                           {healthDetails.overall_status === 'warning' && 'Monitoring'}
-                          {healthDetails.overall_status === 'error' && 'Issue Detected'}
+                          {healthDetails.overall_status === 'error' && 'Issues Detected'}
                         </span>
                       </div>
                     </div>
+                    
+                    {/* Explicit Issues List */}
+                    {healthDetails.issues && healthDetails.issues.length > 0 && (
+                      <div className="pt-2 border-t border-slate-600">
+                        <p className="text-xs text-red-400 font-medium mb-1">⚠️ Issues detected:</p>
+                        <ul className="text-xs space-y-1">
+                          {healthDetails.issues.map((issue: string, index: number) => (
+                            <li key={index} className="text-slate-300 pl-2">• {issue}</li>
+                          ))}
+                        </ul>
+                        <p className="text-xs text-slate-400 mt-2 italic">
+                          💡 These errors may be temporary (trackers unavailable) or require action (check .torrent files)
+                        </p>
+                      </div>
+                    )}
                     
                     {/* Performance suggestions only */}
                     {healthDetails.suggestions && healthDetails.suggestions.length > 0 && (

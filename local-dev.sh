@@ -573,6 +573,133 @@ full_deploy() {
     log_success "Déploiement complet terminé!"
 }
 
+# Mise à jour de version interactive
+update_version_interactive() {
+    log_info "📦 Assistant de mise à jour de version"
+    echo ""
+    
+    # Afficher la version actuelle
+    if [[ -f "VERSION" ]]; then
+        CURRENT_VERSION=$(cat VERSION)
+        echo -e "Version actuelle: ${CYAN}${CURRENT_VERSION}${NC}"
+    else
+        CURRENT_VERSION="0.0.0"
+        echo -e "Pas de fichier VERSION trouvé. Création d'un nouveau."
+    fi
+    
+    # Parser la version actuelle
+    IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+    
+    # Suggérer les prochaines versions
+    NEXT_PATCH="$major.$minor.$((patch + 1))"
+    NEXT_MINOR="$major.$((minor + 1)).0"
+    NEXT_MAJOR="$((major + 1)).0.0"
+    
+    echo ""
+    echo "Versions suggérées:"
+    echo "  1) Patch: ${NEXT_PATCH} (corrections de bugs)"
+    echo "  2) Minor: ${NEXT_MINOR} (nouvelles fonctionnalités)"
+    echo "  3) Major: ${NEXT_MAJOR} (changements majeurs)"
+    echo "  4) Version personnalisée"
+    echo "  0) Annuler"
+    echo ""
+    echo -n -e "${YELLOW}Votre choix [0-4]: ${NC}"
+    read -r version_choice
+    
+    case $version_choice in
+        1) NEW_VERSION="$NEXT_PATCH" ;;
+        2) NEW_VERSION="$NEXT_MINOR" ;;
+        3) NEW_VERSION="$NEXT_MAJOR" ;;
+        4)
+            echo -n -e "${YELLOW}Entrez la version personnalisée (X.Y.Z): ${NC}"
+            read -r NEW_VERSION
+            ;;
+        0|*)
+            log_info "Mise à jour de version annulée"
+            return 0
+            ;;
+    esac
+    
+    # Valider le format de version
+    if [[ ! "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        log_error "Format de version invalide. Utilisez le format X.Y.Z"
+        return 1
+    fi
+    
+    echo ""
+    if demander_confirmation "Mettre à jour la version de ${CURRENT_VERSION} vers ${NEW_VERSION}?" "oui"; then
+        log_step "Mise à jour vers la version $NEW_VERSION..."
+        
+        # 1. Mettre à jour le fichier VERSION principal
+        echo "$NEW_VERSION" > VERSION
+        log_info "Fichier VERSION mis à jour"
+        
+        # 2. Mettre à jour package.json
+        if [[ -f "frontend/package.json" ]]; then
+            sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" frontend/package.json
+            log_info "frontend/package.json mis à jour"
+        fi
+        
+        # 3. Mettre à jour BUILD_VERSION.txt pour le frontend
+        if [[ -d "frontend" ]]; then
+            echo "$NEW_VERSION" > frontend/BUILD_VERSION.txt
+            log_info "frontend/BUILD_VERSION.txt mis à jour"
+        fi
+        
+        # 4. Ajouter une entrée au changelog (si existe)
+        if [[ -f "CHANGELOG.md" ]]; then
+            CHANGELOG_ENTRY="## [$NEW_VERSION] - $(date +%Y-%m-%d)
+
+### Changed
+- Version bump to $NEW_VERSION
+
+"
+            # Insérer après l'en-tête
+            if grep -q "^# Changelog" CHANGELOG.md; then
+                {
+                    head -n 1 CHANGELOG.md
+                    echo ""
+                    echo "$CHANGELOG_ENTRY"
+                    tail -n +2 CHANGELOG.md
+                } > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+                log_info "CHANGELOG.md mis à jour"
+            fi
+        fi
+        
+        # 5. Opérations Git (optionnel)
+        echo ""
+        if demander_confirmation "Créer un commit Git et un tag pour cette version?" "oui"; then
+            git add VERSION frontend/package.json frontend/BUILD_VERSION.txt CHANGELOG.md 2>/dev/null || true
+            git commit -m "chore: bump version to v$NEW_VERSION
+
+- Updated VERSION file to $NEW_VERSION
+- Synced frontend/package.json version
+- Added changelog entry"
+            log_info "Commit Git créé"
+            
+            if demander_confirmation "Créer le tag Git v$NEW_VERSION?" "oui"; then
+                git tag "v$NEW_VERSION"
+                log_info "Tag v$NEW_VERSION créé"
+                
+                if demander_confirmation "Pousser le commit et le tag vers origin?" "non"; then
+                    git push origin main || git push origin master
+                    git push origin "v$NEW_VERSION"
+                    log_info "Poussé vers origin"
+                fi
+            fi
+        fi
+        
+        log_success "Version mise à jour vers $NEW_VERSION!"
+        echo ""
+        echo "Prochaines étapes:"
+        echo "  1. 🐳 Rebuild l'image Docker: Option 2 du menu"
+        echo "  2. 🚀 Déployer: docker push your-registry/pyjoal:$NEW_VERSION"
+        echo "  3. 🏷️  Créer une release GitHub depuis le tag v$NEW_VERSION"
+    else
+        log_info "Mise à jour de version annulée"
+    fi
+}
+
 # Menu principal
 show_menu() {
     echo ""
@@ -590,9 +717,10 @@ show_menu() {
     echo "10) 🧹 Nettoyer l'environnement"
     echo "11) 🧪 Setup complet avec tests (clients + build + test + start)"
     echo "12) 🚀 Déploiement rapide (clean Git + build + start)"
+    echo "13) 📦 Mise à jour de version"
     echo "0)  ❌ Quitter"
     echo ""
-    echo -n -e "${YELLOW}Votre choix [0-12]: ${NC}"
+    echo -n -e "${YELLOW}Votre choix [0-13]: ${NC}"
 }
 
 # Fonction principale
@@ -687,20 +815,29 @@ main() {
                 echo ""
                 echo -e "${GREEN}Appuyez sur Entrée pour continuer...${NC}"
                 read -r
-                ;;            12)
+                ;;
+            12)
                 echo ""
                 full_deploy
                 echo ""
                 echo -e "${GREEN}Appuyez sur Entrée pour continuer...${NC}"
                 read -r
-                ;;            0)
+                ;;
+            13)
+                echo ""
+                update_version_interactive
+                echo ""
+                echo -e "${GREEN}Appuyez sur Entrée pour continuer...${NC}"
+                read -r
+                ;;
+            0)
                 echo ""
                 log_info "Au revoir! 👋"
                 exit 0
                 ;;
             *)
                 echo ""
-                log_error "Option invalide. Veuillez choisir entre 0 et 11."
+                log_error "Option invalide. Veuillez choisir entre 0 et 13."
                 sleep 2
                 ;;
         esac

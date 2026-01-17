@@ -68,8 +68,8 @@ class SeederService:
         if not available_clients:
             logger.critical("❌ NO CLIENT FILES FOUND!")
             raise RuntimeError(
-                "❌ ERREUR CRITIQUE: Aucun fichier client (.client) trouvé dans le dossier 'clients/'\n"
-                "   Veuillez ajouter au moins un fichier .client pour démarrer l'application."
+                "❌ CRITICAL ERROR: No client files (.client) found in 'clients/' folder\n"
+                "   Please add at least one .client file to start the application."
             )
         
         # Get configured client
@@ -80,9 +80,9 @@ class SeederService:
         if configured_client not in available_clients:
             # Smart fallback: try to find similar client or use most recent version
             fallback_client = self._find_best_fallback_client(configured_client, available_clients)
-            logger.warning(f"⚠️  Client configuré '{configured_client}' introuvable")
-            logger.info(f"🔄 Fallback automatique vers: {fallback_client}")
-            logger.info(f"   💡 Autres clients disponibles: {', '.join(available_clients)}")
+            logger.warning(f"⚠️  Configured client '{configured_client}' not found")
+            logger.info(f"🔄 Automatic fallback to: {fallback_client}")
+            logger.info(f"   💡 Other available clients: {', '.join(available_clients)}")
             configured_client = fallback_client
             # Update config with valid client
             self._config["client"] = configured_client
@@ -167,7 +167,7 @@ class SeederService:
             try:
                 if 'temp_file_path' in locals():
                     Path(temp_file_path).unlink(missing_ok=True)
-            except:
+            except Exception:
                 pass
             raise e
     
@@ -220,14 +220,39 @@ class SeederService:
             is_valid, validation_msg = validate_torrent_file(torrent_file)
             
             if not is_valid:
-                # Store validation failure
-                self.failed_torrents[torrent_file.name] = {
-                    "filename": torrent_file.name,
-                    "error": f"Validation failed: {validation_msg}",
-                    "timestamp": datetime.utcnow(),
-                    "size": torrent_file.stat().st_size if torrent_file.exists() else 0
-                }
                 logger.error(f"❌ Invalid torrent file {torrent_file.name}: {validation_msg}")
+                
+                # Add to history with detailed error
+                from app.services.history_service import history_service, EventType
+                history_service.add_entry(
+                    EventType.TORRENT_LOAD_FAILED,
+                    f"❌ Invalid torrent archived: {torrent_file.name}",
+                    {
+                        "filename": torrent_file.name,
+                        "error": validation_msg,
+                        "reason_detail": f"File is not a valid .torrent: {validation_msg}",
+                        "action": "auto_archived"
+                    }
+                )
+                
+                # Auto-archive invalid torrent file
+                try:
+                    archived_dir = settings.TORRENTS_DIR / "archived"
+                    archived_dir.mkdir(exist_ok=True)
+                    archived_path = archived_dir / torrent_file.name
+                    torrent_file.rename(archived_path)
+                    logger.info(f"📦 Invalid torrent auto-archived: {torrent_file.name} -> archived/")
+                    # Don't add to failed_torrents since it's archived - keeps health status clean
+                except Exception as archive_error:
+                    logger.error(f"❌ Failed to archive invalid torrent {torrent_file.name}: {archive_error}")
+                    # Only track as failed if we couldn't archive it
+                    self.failed_torrents[torrent_file.name] = {
+                        "filename": torrent_file.name,
+                        "error": f"Validation failed: {validation_msg} (archive failed: {archive_error})",
+                        "timestamp": datetime.utcnow(),
+                        "size": torrent_file.stat().st_size if torrent_file.exists() else 0
+                    }
+                
                 continue
             
             try:
@@ -576,11 +601,9 @@ class SeederService:
                             if torrent.get("isRunning"):
                                 logger.info(f"   📈 {torrent['name'][:30]}: speed={torrent['uploadSpeed']/1024:.1f}KB/s, uploaded={torrent['uploaded']/(1024*1024):.2f}MB, ratio={torrent['ratio']:.3f}, time={torrent['seedingTime']}s")
                     
-                    # Check ratio targets (seulement si targets configurés)
-                    ratio_target = self._config.get("uploadRatioTarget", -1.0)
-                    duration_limit = self._config.get("seedingDurationLimit", -1.0)
-                    if ratio_target > 0 or duration_limit > 0:
-                        await self._check_ratio_targets()
+                    # Check ratio targets, duration limits, AND zero peers setting
+                    # Always check - the method handles each condition internally
+                    await self._check_ratio_targets()
                     
                     # Periodic cache cleanup
                     cache_manager.periodic_cleanup()
@@ -648,9 +671,23 @@ class SeederService:
                     to_remove.append(info_hash)
                     continue
             
-            # Check zero peers
+            # Check zero peers - archive if option is disabled and no peers
             if not keep_zero_leechers and stats["seeders"] == 0 and stats["leechers"] == 0:
+                logger.info(f"🚫 Torrent {torrent.name} has no peers and keepTorrentWithZeroLeechers=False, archiving...")
+                history_service.add_entry(
+                    EventType.TORRENT_ARCHIVED,
+                    f"📦 Archived {torrent.name} - no peers available",
+                    {
+                        "info_hash": info_hash,
+                        "seeders": 0,
+                        "leechers": 0,
+                        "reason": "no_peers",
+                        "torrent_name": torrent.name,
+                        "reason_detail": "No seeders or leechers, keepTorrentWithZeroLeechers is disabled"
+                    }
+                )
                 to_remove.append(info_hash)
+                continue
         
         # Remove torrents (archive them)
         for info_hash in to_remove:
@@ -669,12 +706,15 @@ class SeederService:
             
             logger.warning(f"🗃️ AUTO-ARCHIVING: {torrent.name} - ratio: {stats.get('ratio', 0):.2f}, duration: {stats.get('seedingTime', 0)/3600:.1f}h")
             
-            await self._archive_torrent(info_hash)
+            # skip_history=True because we already added history entry above with detailed reason
+            await self._archive_torrent(info_hash, skip_history=True)
     
-    async def _archive_torrent(self, info_hash: str):
+    async def _archive_torrent(self, info_hash: str, skip_history: bool = False):
         """Archive a torrent (move to archived folder instead of deleting)
         
-        ⚠️ IMPORTANT: Utilise le singleton history_service global, pas une nouvelle instance.
+        Args:
+            info_hash: The torrent info hash
+            skip_history: If True, don't add history entry (already added by caller)
         """
         if info_hash not in self.announcers:
             return
@@ -685,19 +725,20 @@ class SeederService:
         
         logger.info(f"📦 Archiving torrent: {torrent.name}")
         
-        # ✅ Utiliser le singleton history_service importé en haut du fichier (pas une nouvelle instance!)
-        history_service.add_entry(
-            EventType.TORRENT_ARCHIVED,
-            f"📦 Torrent archived: {torrent.name}",
-            {
-                "info_hash": info_hash,
-                "torrent_name": torrent.name,
-                "final_ratio": stats.get("ratio", 0),
-                "final_seeding_time": stats.get("seedingTime", 0),
-                "reason": "manual_archive",
-                "archived_at": time.time()
-            }
-        )
+        # Only add history entry if not already added by caller (e.g. manual archive)
+        if not skip_history:
+            history_service.add_entry(
+                EventType.TORRENT_ARCHIVED,
+                f"📦 Torrent archived: {torrent.name}",
+                {
+                    "info_hash": info_hash,
+                    "torrent_name": torrent.name,
+                    "final_ratio": stats.get("ratio", 0),
+                    "final_seeding_time": stats.get("seedingTime", 0),
+                    "reason": "manual_archive",
+                    "archived_at": time.time()
+                }
+            )
         
         # Stop announcer
         if announcer.is_running:
@@ -827,12 +868,15 @@ class SeederService:
         else:
             status = "IDLE"
         
+        # Get detailed status from announcer (includes speed_formatted, status_text, etc.)
+        detailed_status = stats.get("status", {})
+        
         return {
             "id": info_hash,
             "name": torrent.name,
             "size": torrent.size,
-            "uploaded": stats["uploaded"],
-            "uploadSpeed": stats["uploadSpeed"],
+            "uploaded": int(stats["uploaded"]),  # Ensure int for schema
+            "uploadSpeed": int(stats["uploadSpeed"]),  # Ensure int for schema
             "ratio": stats["ratio"],
             "seeders": stats["seeders"],
             "leechers": stats["leechers"],
@@ -841,12 +885,13 @@ class SeederService:
             "lastAnnounce": stats["lastAnnounce"].isoformat() if stats["lastAnnounce"] else None,
             "nextAnnounce": stats["nextAnnounce"].isoformat() if stats["nextAnnounce"] else None,
             "tracker": torrent.primary_tracker,
-            "seedingTime": stats["seedingTime"],
+            "seedingTime": int(stats["seedingTime"]),  # Ensure int for schema
             "lastError": stats.get("lastError"),
             "errorCount": stats.get("errorCount", 0),
             "lastErrorTime": stats["lastErrorTime"].isoformat() if stats.get("lastErrorTime") else None,
             "isHealthy": stats.get("isHealthy", True),
-            "status": status,
+            "status": detailed_status,  # Pass the detailed status object from announcer
+            "simpleStatus": status,  # Keep simple status for backward compatibility
             "isRunning": announcer.is_running
         }
     
