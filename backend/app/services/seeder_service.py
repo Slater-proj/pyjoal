@@ -4,6 +4,7 @@ Manages multiple torrent seeders and orchestrates announces with intelligent cac
 """
 import asyncio
 import logging
+import time
 from typing import Dict, List, Optional
 from pathlib import Path
 from datetime import datetime
@@ -265,15 +266,17 @@ class SeederService:
                 
                 # Send toast notification to frontend
                 from app.services.websocket_manager import websocket_manager
-                import asyncio
-                asyncio.create_task(websocket_manager.broadcast({
-                    "type": "torrent_load_error",
-                    "data": {
-                        "filename": torrent_file.name,
-                        "error": error_msg,
-                        "message": f"Failed to load {torrent_file.name}: {error_msg}"
-                    }
-                }))
+                try:
+                    await websocket_manager.broadcast({
+                        "type": "torrent_load_error",
+                        "data": {
+                            "filename": torrent_file.name,
+                            "error": error_msg,
+                            "message": f"Failed to load {torrent_file.name}: {error_msg}"
+                        }
+                    })
+                except Exception as ws_error:
+                    logger.debug(f"WebSocket broadcast failed: {ws_error}")
         
         # Add successful torrents
         new_count = 0
@@ -292,6 +295,8 @@ class SeederService:
                 logger.debug(f"   ❌ {filename}: {error_info['error']}")
         else:
             logger.info(f"📂 Loaded {len(torrents)}/{total_files} torrent(s) ({new_count} new, {failed_count} failed)")
+        
+        logger.debug("✅ load_torrents() completed successfully")
     
     def has_torrents(self) -> bool:
         """Check if any torrents are available"""
@@ -627,8 +632,25 @@ class SeederService:
         
         announcer = self.announcers[info_hash]
         torrent = announcer.torrent
+        stats = announcer.get_stats()
         
         logger.info(f"📦 Archiving torrent: {torrent.name}")
+        
+        # Add archive entry to history before removing
+        from .history_service import HistoryService, EventType
+        history_service = HistoryService()
+        history_service.add_entry(
+            EventType.TORRENT_ARCHIVED,
+            f"📦 Torrent archived: {torrent.name}",
+            {
+                "info_hash": info_hash,
+                "torrent_name": torrent.name,
+                "final_ratio": stats.get("ratio", 0),
+                "final_seeding_time": stats.get("seedingTime", 0),
+                "reason": "manual_archive",
+                "archived_at": time.time()
+            }
+        )
         
         # Stop announcer
         if announcer.is_running:

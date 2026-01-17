@@ -167,7 +167,9 @@ export default function TorrentsTable() {
     return formatBytes(bytesPerSec) + '/s'
   }
 
-  const formatSeedingTime = (seconds: number) => {
+  const formatSeedingTime = (seconds: number | null | undefined) => {
+    if (seconds == null || seconds < 0) return '0s'
+    
     const minutes = Math.floor(seconds / 60)
     const hours = Math.floor(minutes / 60)
     const days = Math.floor(hours / 24)
@@ -175,7 +177,7 @@ export default function TorrentsTable() {
     if (days > 0) return `${days}d ${hours % 24}h`
     if (hours > 0) return `${hours}h ${minutes % 60}m`
     if (minutes > 0) return `${minutes}m`
-    return `${seconds}s`
+    return `${Math.floor(seconds)}s`
   }
 
   const formatDurationTarget = (hours: number) => {
@@ -441,7 +443,7 @@ export default function TorrentsTable() {
                           ? 'bg-green-500/30 text-green-300'
                           : 'bg-slate-700/50 text-slate-300'
                       }`}>
-                        {formatSeedingTime(torrent.seedingTime)}
+                        {torrent.seedingTime != null ? formatSeedingTime(torrent.seedingTime) : '0s'}
                       </span>
                       <span className="text-slate-500 flex-shrink-0">/</span>
                       <span className="text-slate-400 text-xs flex-shrink-0">{formatDurationTarget(durationTarget)}</span>

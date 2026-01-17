@@ -14,7 +14,7 @@
 - 🐳 **Docker Ready** - Image optimisée multi-stage
 - 🔐 **Sécurisé** - Token API et path obfuscation
 
-## 📋 Améliorations Récentes (v1.7.5)
+## 📋 Améliorations Récentes (v1.7.7)
 
 - 🚀 **Performance optimisée** - Consommation CPU réduite de 50% et mémoire de 30%
 - 🔧 **Monitoring de ressources** - Suivi en temps réel CPU/RAM avec alertes intelligentes
@@ -23,14 +23,14 @@
 - 📊 **Santé système** - Monitoring avancé avec tooltip informatif dans l'interface
 - 🐳 **Container optimisé** - Image Docker plus efficace et démarrage plus rapide
 
-### Fonctionnalités de Discrétion (v1.7.5-1.7.5)
+### Fonctionnalités de Discrétion (v1.7.7-1.7.7)
 - 🎭 **Modes de comportement** - Choix entre seeding pur ou simulation complète de téléchargement
 - ⏱️ **Patterns d'activité naturels** - Simulation d'heures d'activité utilisateur réaliste
 - 📊 **Variations de vitesse avancées** - Fluctuations intelligentes basées sur l'activité simulée
 - 🛡️ **Anti-détection per-torrent** - Timing individuel pour chaque torrent
 - 🔧 **Configuration avancée** - Paramètres de discrétion et timing dans l'interface
 
-### Corrections précédentes (v1.7.5-1.7.5)
+### Corrections précédentes (v1.7.7-1.7.7)
 - ✅ **Onglet Historique** - Filtre "Load Failed" pour voir les torrents échoués
 - ✅ **Colonne Duration** - Renommée de "Dur" vers "Duration" pour plus de clarté
 - ✅ **Vitesses authentiques** - Les vitesses affichées correspondent exactement aux données tracker
@@ -86,7 +86,7 @@ setup.bat   # Windows
 | `SIMULTANEOUS_SEED` | ❌ | 20 | Nombre de torrents simultanés |
 | `HTTP_PROXY_HOST` | ❌ | - | Hôte du proxy HTTP |
 | `HTTP_PROXY_PORT` | ❌ | - | Port du proxy HTTP |
-| `DEFAULT_CLIENT` | ❌ | qbittorrent-1.7.5.client | Client par défaut |
+| `DEFAULT_CLIENT` | ❌ | qbittorrent-1.7.7.client | Client par défaut |
 
 ### Configuration JSON (config/config.json)
 
@@ -97,7 +97,7 @@ Le fichier de configuration est créé automatiquement au premier lancement :
   "minUploadRate": 30,
   "maxUploadRate": 160,
   "simultaneousSeed": 20,
-  "client": "qbittorrent-1.7.5.client",
+  "client": "qbittorrent-1.7.7.client",
   "keepTorrentWithZeroLeechers": true,
   "uploadRatioTarget": -1.0,
   "seedingDurationLimit": -1.0
@@ -106,7 +106,7 @@ Le fichier de configuration est créé automatiquement au premier lancement :
 
 ## 🎭 Discrétion & Anti-détection
 
-PyJOAL v1.7.5+ intègre des mécanismes avancés pour éviter la détection par les trackers :
+PyJOAL v1.7.7+ intègre des mécanismes avancés pour éviter la détection par les trackers :
 
 ### 🛡️ Fonctionnalités de discrétion
 - **Désynchronisation temporelle** - Chaque torrent a son propre cycle d'announce avec jitter aléatoire
@@ -178,9 +178,9 @@ docker exec pyjoal python scripts/update_clients.py
 ```
 
 Le script récupère automatiquement les dernières versions depuis GitHub pour :
-- **qBittorrent** (dernière stable : 1.7.5)
-- **Deluge** (dernière stable : 1.7.5)
-- **Transmission** (dernière stable : 1.7.5)
+- **qBittorrent** (dernière stable : 1.7.7)
+- **Deluge** (dernière stable : 1.7.7)
+- **Transmission** (dernière stable : 1.7.7)
 
 📖 Plus d'infos : [CLIENT_UPDATER.md](CLIENT_UPDATER.md)
 

@@ -919,28 +919,29 @@ class TrackerAnnouncer:
         if not hasattr(self, '_speed_change_timer'):
             self._speed_change_timer = 0
             self._stable_speed = None
-            self._speed_duration = random.randint(180, 420)  # 3-7 minutes stable periods
+            self._speed_duration = 1  # Change every 1 call (≈ 3 seconds with current refresh rate)
         
         # Keep same speed for longer periods (realistic user behavior)
         self._speed_change_timer += 1
         
         if self._stable_speed is not None and self._speed_change_timer < self._speed_duration:
-            # Continue with stable speed
-            speed = self._stable_speed
+            # Continue with stable speed but ensure it's within current limits
+            speed = max(speed_range[0], min(speed_range[1], self._stable_speed))
         else:
             # Time to change speed
             if hasattr(self, '_last_speed') and consistency > 0.6:
                 # Keep speed similar to last speed (consistent user) - lowered threshold
                 variation = int(self._last_speed * 0.15) if self._last_speed > 0 else speed_range[0]
-                speed = max(speed_range[0], min(speed_range[1], 
-                           self._last_speed + random.randint(-variation, variation)))
+                proposed_speed = self._last_speed + random.randint(-variation, variation)
+                # Ensure the proposed speed stays within configured limits
+                speed = max(speed_range[0], min(speed_range[1], proposed_speed))
             else:
-                # More variable speed
+                # More variable speed - already within range
                 speed = random.randint(*speed_range)
             
             # Reset timer and set new stable period
             self._speed_change_timer = 0
-            self._speed_duration = random.randint(180, 420)  # 3-7 minutes
+            self._speed_duration = 1  # Change every call (≈ 3 seconds with refresh rate)
             self._stable_speed = speed
         
         # Ensure minimum speed for active seeding (never completely 0 for extended periods)
@@ -955,5 +956,8 @@ class TrackerAnnouncer:
         else:
             self._zero_speed_count = 1
 
+        # Final check: ensure speed is always within configured limits
+        speed = max(min_rate, min(max_rate, speed))
+        
         self._last_speed = speed
         return speed

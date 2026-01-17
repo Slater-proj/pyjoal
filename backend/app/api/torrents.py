@@ -121,6 +121,10 @@ async def get_failed_torrents():
 async def reload_torrents():
     """Recharger les torrents depuis le dossier"""
     try:
+        # Vérifier que le service est prêt
+        if seeder_service is None:
+            raise HTTPException(status_code=500, detail="Seeder service non initialisé")
+        
         # Sauvegarder l'état actuel
         was_running = seeder_service.running
         old_count = len(seeder_service.announcers)
@@ -128,6 +132,10 @@ async def reload_torrents():
         # Arrêter le seeding temporairement
         if was_running:
             await seeder_service.stop_seeding()
+        
+        # Clear existing torrents to detect removed files
+        old_announcers = dict(seeder_service.announcers)
+        seeder_service.announcers.clear()
         
         # Recharger les torrents
         await seeder_service.load_torrents()
