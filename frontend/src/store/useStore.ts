@@ -39,6 +39,10 @@ interface Store {
   // WebSocket
   connectWebSocket: () => void;
   disconnectWebSocket: () => void;
+  
+  // Auto refresh pour réactivité
+  startAutoRefresh: () => void;
+  stopAutoRefresh: () => void;
 }
 
 export const useStore = create<Store>((set, get) => ({
@@ -299,6 +303,26 @@ export const useStore = create<Store>((set, get) => ({
     if (ws) {
       ws.close();
       set({ ws: null, connected: false });
+    }
+  },
+
+  // Auto-refresh pour une interface ultra-réactive
+  startAutoRefresh: () => {
+    // Refresh rapide des stats pour les indicateurs de statut
+    const statsInterval = setInterval(() => {
+      get().fetchStats();
+      get().fetchTorrents();
+    }, 3000); // Toutes les 3 secondes
+
+    // Stocker l'interval pour pouvoir l'arrêter
+    (get() as any)._refreshInterval = statsInterval;
+  },
+
+  stopAutoRefresh: () => {
+    const interval = (get() as any)._refreshInterval;
+    if (interval) {
+      clearInterval(interval);
+      (get() as any)._refreshInterval = null;
     }
   },
 }));

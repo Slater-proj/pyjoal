@@ -28,11 +28,11 @@ class WebSocketManager:
         # Batching and throttling
         self._message_buffer: Dict[str, Dict[str, Any]] = {}
         self._last_batch_send = defaultdict(float)
-        self._batch_interval = 0.2  # Optimized: 200ms batching (was 100ms)
+        self._batch_interval = 0.1  # Ultra-rapide: 100ms batching pour réactivité maximale
         self._throttle_intervals = {
-            'stats_update': 2.0,      # Optimized: Max 1/2seconds for stats (was 1s)
-            'torrents_update': 4.0,   # Optimized: Max 1/4seconds for torrent list (was 2s)
-            'logs': 0.5               # Keep 2/second for logs (responsive)
+            'stats_update': 1.0,      # Ultra-réactif: 1/seconde pour stats 
+            'torrents_update': 1.5,   # Très réactif: 1/1.5s pour liste torrents
+            'logs': 0.5               # Rapide: 2/seconde pour logs
         }
     
     async def start_log_broadcasting(self):

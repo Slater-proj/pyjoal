@@ -38,6 +38,17 @@ export interface Config {
   seedingOnlyMode: boolean;
 }
 
+export interface TorrentStatus {
+  status: string;
+  status_text: string;
+  current_speed: number;
+  speed_formatted: string;
+  time_until_speed_change: number;
+  time_until_change_formatted: string;
+  is_active_hour: boolean;
+  peak_hours: string;
+}
+
 export interface Torrent {
   id: string;
   name: string;
@@ -53,6 +64,7 @@ export interface Torrent {
   nextAnnounce: string | null;
   tracker: string | null;
   seedingTime: number;
+  status?: TorrentStatus;
 }
 
 export interface Stats {

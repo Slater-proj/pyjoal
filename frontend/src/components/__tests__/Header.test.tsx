@@ -23,27 +23,27 @@ describe('Header', () => {
   })
 
   it('should render header with app version', () => {
-    render(<Header appVersion="1.5.0" />)
+    render(<Header appVersion="1.7.4" />)
     
     expect(screen.getByText('PyJOAL')).toBeInTheDocument()
-    expect(screen.getByText('v1.5.0')).toBeInTheDocument()
+    expect(screen.getByText('v1.7.4')).toBeInTheDocument()
   })
 
   it('should show Live status when connected', () => {
-    render(<Header appVersion="1.5.0" />)
+    render(<Header appVersion="1.7.4" />)
     
     expect(screen.getByText('Live')).toBeInTheDocument()
     expect(screen.getByText('Live')).toHaveClass('text-green-400')
   })
 
   it('should show Health badge', () => {
-    render(<Header appVersion="1.5.0" />)
+    render(<Header appVersion="1.7.4" />)
     
     expect(screen.getByText('Health')).toBeInTheDocument()
   })
 
   it('should show Live tooltip on hover', async () => {
-    render(<Header appVersion="1.5.0" />)
+    render(<Header appVersion="1.7.4" />)
     
     const liveElement = screen.getByText('Live').closest('div')
     fireEvent.mouseEnter(liveElement!)
@@ -76,14 +76,14 @@ describe('Header', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
-          current_version: '1.5.0',
+          current_version: '1.7.4',
           latest_version: 'unknown',
           update_available: false,
           is_dev_version: true
         })
       })
 
-    render(<Header appVersion="1.5.0" />)
+    render(<Header appVersion="1.7.4" />)
     
     // Wait for health data to load
     await waitFor(() => {
@@ -118,14 +118,14 @@ describe('Header', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
-          current_version: '1.5.0',
+          current_version: '1.7.4',
           latest_version: 'unknown',
           update_available: false,
           is_dev_version: true
         })
       })
 
-    render(<Header appVersion="1.5.0" />)
+    render(<Header appVersion="1.7.4" />)
     
     // Wait for APIs to be called
     await waitFor(() => {
@@ -159,14 +159,14 @@ describe('Header', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
-          current_version: '1.5.0',
-          latest_version: '1.5.1',
+          current_version: '1.7.4',
+          latest_version: '1.7.5',
           update_available: true,
-          release_url: 'https://github.com/repo/releases/tag/v1.5.1'
+          release_url: 'https://github.com/repo/releases/tag/v1.7.5'
         })
       })
 
-    render(<Header appVersion="1.5.0" />)
+    render(<Header appVersion="1.7.4" />)
     
     // Wait for APIs
     await waitFor(() => {
@@ -177,7 +177,7 @@ describe('Header', () => {
     fireEvent.mouseEnter(healthElement!)
     
     await waitFor(() => {
-      expect(screen.getByText('Update available: 1.5.1')).toBeInTheDocument()
+      expect(screen.getByText('Update available: 1.7.5')).toBeInTheDocument()
       expect(screen.getByText('View release notes →')).toBeInTheDocument()
     })
   })
@@ -189,7 +189,7 @@ describe('Header', () => {
       .mockRejectedValueOnce(new Error('Network error'))
       .mockRejectedValueOnce(new Error('Network error'))
 
-    render(<Header appVersion="1.5.0" />)
+    render(<Header appVersion="1.7.4" />)
     
     // Should not crash and should show default health status
     await waitFor(() => {
@@ -198,7 +198,7 @@ describe('Header', () => {
   })
 
   it('should have proper responsive classes', () => {
-    render(<Header appVersion="1.5.0" />)
+    render(<Header appVersion="1.7.4" />)
     
     const header = screen.getByRole('banner')
     const headerContent = header.firstChild as HTMLElement

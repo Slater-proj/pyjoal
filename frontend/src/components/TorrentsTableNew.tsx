@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 
 // Default column widths in pixels
 const DEFAULT_COLUMN_WIDTHS = {
-  name: 400,
+  name: 420,
   size: 90,
   speed: 100,
   uploaded: 90,
@@ -27,7 +27,7 @@ const MIN_COLUMN_WIDTHS = {
 }
 
 export default function TorrentsTable() {
-  const { torrents, stats, removeTorrent, config } = useStore()
+  const { torrents, stats, removeTorrent, config, startAutoRefresh, stopAutoRefresh } = useStore()
   const isRunning = stats?.isRunning || false
   const [currentPage, setCurrentPage] = useState(1)
   const torrentsPerPage = 20
@@ -207,6 +207,12 @@ export default function TorrentsTable() {
     }
   }, [torrents.length, totalPages, currentPage])
 
+  // Auto-refresh pour réactivité temps réel
+  useEffect(() => {
+    startAutoRefresh()
+    return () => stopAutoRefresh()
+  }, [])
+
   // When no torrents
   if (torrents.length === 0) {
     return (
@@ -319,14 +325,33 @@ export default function TorrentsTable() {
                     <div className="flex items-center gap-2 overflow-hidden">
                       <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
                         <span 
-                          className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-                            isActive
+                          className={`w-2.5 h-2.5 rounded-full flex-shrink-0 transition-all cursor-help ${
+                            torrent.status?.status === 'pause_fake'
+                              ? 'bg-yellow-400 animate-pulse'
+                              : torrent.status?.status === 'seeding_active'
+                              ? 'bg-green-400 animate-pulse'
+                              : torrent.status?.status === 'seeding_low'
+                              ? 'bg-blue-400'
+                              : isActive
                               ? torrent.uploadSpeed > 0
                                 ? 'bg-green-400 animate-pulse'
                                 : 'bg-yellow-400'
                               : 'bg-slate-500'
                           }`}
-                          title={isActive ? 'Seeding' : 'Paused'}
+                          title={(() => {
+                            const status = torrent.status;
+                            if (!status) {
+                              return isActive ? 'Partage en cours' : 'En pause';
+                            }
+                            const parts = [
+                              `État: ${status.status_text}`,
+                              `Vitesse actuelle: ${status.speed_formatted}`,
+                              `Heures d'activité: ${status.peak_hours}`,
+                              status.time_until_change_formatted ? 
+                                `Prochain changement: ${status.time_until_change_formatted}` : ''
+                            ].filter(Boolean);
+                            return parts.join(' • ');
+                          })()}
                         />
                       </div>
                       <div className="min-w-0 flex-1 overflow-hidden">

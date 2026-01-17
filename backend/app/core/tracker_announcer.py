@@ -6,7 +6,7 @@ import asyncio
 import random
 import logging
 import time
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import httpx
 
@@ -709,7 +709,41 @@ class TrackerAnnouncer:
                 "inBackoff": self._in_backoff
             }
         
+        # Add detailed status information
+        base_stats["status"] = self.get_status_info()
+        
         return base_stats
+    
+    def get_status_info(self) -> Dict[str, Any]:
+        """Get detailed status information for UI display"""
+        current_speed = self._get_activity_based_upload_speed()
+        
+        # Calculate time until next speed change
+        time_until_change = 0
+        if hasattr(self, '_speed_change_timer') and hasattr(self, '_speed_duration'):
+            time_until_change = max(0, self._speed_duration - self._speed_change_timer)
+        
+        # Determine status
+        if current_speed == 0:
+            status = "pause_fake"
+            status_text = "Pause simulée"
+        elif self._is_user_active_hour():
+            status = "seeding_active"
+            status_text = "Partage actif"
+        else:
+            status = "seeding_low"
+            status_text = "Partage réduit"
+        
+        return {
+            'status': status,
+            'status_text': status_text,
+            'current_speed': current_speed,
+            'speed_formatted': f"{current_speed} kB/s",
+            'time_until_speed_change': time_until_change,
+            'time_until_change_formatted': f"{time_until_change // 60}m {time_until_change % 60}s" if time_until_change > 0 else "Bientôt",
+            'is_active_hour': self._is_user_active_hour(),
+            'peak_hours': f"{self._peak_hours[0]}h-{self._peak_hours[1]}h"
+        }
     
     def _simulate_natural_download_start(self):
         """Simulate realistic download start behavior - full download cycle simulation"""
@@ -850,10 +884,18 @@ class TrackerAnnouncer:
         current_hour = datetime.utcnow().hour
         start_hour, end_hour = self._peak_hours
         
+        is_active = False
         if start_hour < end_hour:
-            return start_hour <= current_hour <= end_hour
+            is_active = start_hour <= current_hour <= end_hour
         else:  # Crosses midnight
-            return current_hour >= start_hour or current_hour <= end_hour
+            is_active = current_hour >= start_hour or current_hour <= end_hour
+        
+        # Add some flexibility - user might be active outside defined hours too
+        # 20% chance of being "active" even outside defined hours to prevent zero uploads
+        if not is_active:
+            is_active = random.random() < 0.2
+        
+        return is_active
     
     def _get_activity_based_upload_speed(self) -> int:
         """Get upload speed based on user activity patterns"""
@@ -864,21 +906,54 @@ class TrackerAnnouncer:
             # User is active - higher speeds
             speed_range = (int(max_rate * 0.6), max_rate)
         else:
-            # User is away/sleeping - lower speeds or paused
-            if random.random() < 0.3:  # 30% chance of being paused when inactive
+            # User is away/sleeping - lower speeds but NOT completely paused
+            # Reduced pause chance from 30% to 5% to ensure seeding continues
+            if random.random() < 0.05:  # Only 5% chance of being paused when inactive
                 return 0
             speed_range = (int(min_rate), int(max_rate * 0.4))
         
-        # Apply activity pattern consistency
+        # Apply activity pattern consistency with longer periods
         consistency = self._user_activity_pattern['speed_consistency']
-        if hasattr(self, '_last_speed') and consistency > 0.7:
-            # Keep speed similar to last speed (consistent user)
-            variation = int(self._last_speed * 0.2)
-            speed = max(speed_range[0], min(speed_range[1], 
-                       self._last_speed + random.randint(-variation, variation)))
-        else:
-            # More variable speed
-            speed = random.randint(*speed_range)
         
+        # Initialize speed persistence tracking
+        if not hasattr(self, '_speed_change_timer'):
+            self._speed_change_timer = 0
+            self._stable_speed = None
+            self._speed_duration = random.randint(180, 420)  # 3-7 minutes stable periods
+        
+        # Keep same speed for longer periods (realistic user behavior)
+        self._speed_change_timer += 1
+        
+        if self._stable_speed is not None and self._speed_change_timer < self._speed_duration:
+            # Continue with stable speed
+            speed = self._stable_speed
+        else:
+            # Time to change speed
+            if hasattr(self, '_last_speed') and consistency > 0.6:
+                # Keep speed similar to last speed (consistent user) - lowered threshold
+                variation = int(self._last_speed * 0.15) if self._last_speed > 0 else speed_range[0]
+                speed = max(speed_range[0], min(speed_range[1], 
+                           self._last_speed + random.randint(-variation, variation)))
+            else:
+                # More variable speed
+                speed = random.randint(*speed_range)
+            
+            # Reset timer and set new stable period
+            self._speed_change_timer = 0
+            self._speed_duration = random.randint(180, 420)  # 3-7 minutes
+            self._stable_speed = speed
+        
+        # Ensure minimum speed for active seeding (never completely 0 for extended periods)
+        if speed == 0 and hasattr(self, '_zero_speed_count'):
+            self._zero_speed_count += 1
+            if self._zero_speed_count > 2:  # Reduced threshold - force speed sooner
+                speed = min_rate
+                self._zero_speed_count = 0
+                self._stable_speed = speed  # Update stable speed
+        elif speed > 0:
+            self._zero_speed_count = 0
+        else:
+            self._zero_speed_count = 1
+
         self._last_speed = speed
         return speed
