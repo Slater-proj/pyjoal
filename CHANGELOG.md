@@ -1,5 +1,56 @@
 # Changelog - PyJOAL
 
+## [1.7.2] - 2026-01-17
+
+### 🔥 Critical Configuration Hotfix
+
+#### ⚠️ **IMPORTANT**: Unrealistic Default Values Fixed
+- **Fixed maxUploadRate**: Corrected from dangerous 16000 kB/s (16 MB/s) to realistic 300 kB/s 
+  - **Previous value** was consuming excessive bandwidth and could trigger tracker suspicion
+  - **New value** provides safe, realistic torrenting speeds for home connections
+- **Improved Responsiveness**: Reduced announce intervals from 30s to 15s for better UI updates
+- **Optimized Updates**: Stats refresh improved from 3s to 2s intervals
+- **Updated Default Client**: qBittorrent 5.1.4 (latest stable version)
+- **Enhanced Variation**: Speed fluctuation reduced from 20% to 15% (more natural)
+
+#### 📊 New Recommended Defaults
+```json
+{
+  "minUploadRate": 30,      // 30 kB/s minimum 
+  "maxUploadRate": 300,     // 300 kB/s maximum (was 16000!)
+  "announceInterval": 15,   // 15s updates (was 30s)
+  "minStatsUpdateInterval": 2, // 2s refresh (was 3s)
+  "speedVariationPercent": 15  // 15% variation (was 20%)
+}
+```
+
+**⚡ Upgrade Impact**: Existing installations will automatically benefit from improved performance and realistic bandwidth usage.
+
+## [1.7.2] - 2026-01-17
+
+### ✨ Nouvelles fonctionnalités
+- **Pastille de statut intelligente** : Indicateur visuel dynamique pour chaque torrent
+  - 🟡 Jaune pulsant : Pause simulée (phase d'inactivité)
+  - 🟢 Vert pulsant : Partage actif (heures d'activité)
+  - 🔵 Bleu : Partage réduit (heures d'inactivité)
+  - 📖 Tooltip détaillé : État • Vitesse • Heures d'activité • Prochain changement
+
+### 🚀 Améliorations
+- **Périodes de seeding optimisées** : Cycles de 3-7 minutes au lieu de changements fréquents
+- **Réduction des pauses** : 5% de pause au lieu de 30% en période d'inactivité
+- **Flexibilité des heures d'activité** : 20% de chance d'être actif en dehors des heures définies
+- **Mécanisme anti-blocage** : Force un upload minimum après 2 cycles consécutifs à zéro
+
+### 🔧 Corrections
+- **Import des types TypeScript** : Ajout du type `Any` manquant
+- **Calculs d'upload** : Amélioration de la persistance des vitesses de seeding
+- **API enrichie** : Status détaillé disponible dans les statistiques des torrents
+
+### 🎯 Optimisations techniques
+- **Backend** : Suivi intelligent des timers de changement de vitesse
+- **Frontend** : Interface plus informative avec indicateurs en temps réel
+- **Performance** : Réduction des changements de vitesse inutiles
+
 ## [1.7.1] - 2026-01-17
 
 ### 🚀 Performance Optimization & Resource Management
@@ -667,12 +718,63 @@
 - ✅ Proxy configuration
 - ✅ Web UI with drag & drop
 
-## [1.7.2] - 2026-01-17
+## [1.7.3] - 2026-01-17
 
 ### Changed
-- Version bump to 1.7.2
+- Version bump to 1.7.3
 
 
+
+## [1.7.2] - 2026-01-17
+
+### 🔥 Critical Configuration Hotfix
+
+#### ⚠️ **IMPORTANT**: Unrealistic Default Values Fixed
+- **Fixed maxUploadRate**: Corrected from dangerous 16000 kB/s (16 MB/s) to realistic 300 kB/s 
+  - **Previous value** was consuming excessive bandwidth and could trigger tracker suspicion
+  - **New value** provides safe, realistic torrenting speeds for home connections
+- **Improved Responsiveness**: Reduced announce intervals from 30s to 15s for better UI updates
+- **Optimized Updates**: Stats refresh improved from 3s to 2s intervals
+- **Updated Default Client**: qBittorrent 5.1.4 (latest stable version)
+- **Enhanced Variation**: Speed fluctuation reduced from 20% to 15% (more natural)
+
+#### 📊 New Recommended Defaults
+```json
+{
+  "minUploadRate": 30,      // 30 kB/s minimum 
+  "maxUploadRate": 300,     // 300 kB/s maximum (was 16000!)
+  "announceInterval": 15,   // 15s updates (was 30s)
+  "minStatsUpdateInterval": 2, // 2s refresh (was 3s)
+  "speedVariationPercent": 15  // 15% variation (was 20%)
+}
+```
+
+**⚡ Upgrade Impact**: Existing installations will automatically benefit from improved performance and realistic bandwidth usage.
+
+## [1.7.2] - 2026-01-17
+
+### ✨ Nouvelles fonctionnalités
+- **Pastille de statut intelligente** : Indicateur visuel dynamique pour chaque torrent
+  - 🟡 Jaune pulsant : Pause simulée (phase d'inactivité)
+  - 🟢 Vert pulsant : Partage actif (heures d'activité)
+  - 🔵 Bleu : Partage réduit (heures d'inactivité)
+  - 📖 Tooltip détaillé : État • Vitesse • Heures d'activité • Prochain changement
+
+### 🚀 Améliorations
+- **Périodes de seeding optimisées** : Cycles de 3-7 minutes au lieu de changements fréquents
+- **Réduction des pauses** : 5% de pause au lieu de 30% en période d'inactivité
+- **Flexibilité des heures d'activité** : 20% de chance d'être actif en dehors des heures définies
+- **Mécanisme anti-blocage** : Force un upload minimum après 2 cycles consécutifs à zéro
+
+### 🔧 Corrections
+- **Import des types TypeScript** : Ajout du type `Any` manquant
+- **Calculs d'upload** : Amélioration de la persistance des vitesses de seeding
+- **API enrichie** : Status détaillé disponible dans les statistiques des torrents
+
+### 🎯 Optimisations techniques
+- **Backend** : Suivi intelligent des timers de changement de vitesse
+- **Frontend** : Interface plus informative avec indicateurs en temps réel
+- **Performance** : Réduction des changements de vitesse inutiles
 
 ## [1.7.1] - 2026-01-17
 
