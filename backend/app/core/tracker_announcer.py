@@ -13,7 +13,6 @@ import httpx
 from app.core.bittorrent_client import BitTorrentClient
 from app.core.torrent_parser import Torrent
 from app.core.udp_tracker import UDPTracker, is_udp_tracker, UDPTrackerError
-from app.models.schemas import AnnounceResponse
 from app.core.config import settings
 from app.services.history_service import history_service, EventType
 from app.services.stealth_service import stealth_service
@@ -348,7 +347,6 @@ class TrackerAnnouncer:
             upload_delta = int(current_speed * capped_interval)
             
             # Ajouter au total uploadé
-            _old_uploaded = self.uploaded
             self.uploaded += upload_delta
             
             logger.info(f"📈 UPLOAD: {self.torrent.name[:25]} +{upload_delta/1024:.1f}KB ({current_speed/1024:.1f}KB/s × {capped_interval:.1f}s) = Total: {self.uploaded/(1024*1024):.2f}MB")

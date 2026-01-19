@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Optional, Callable, Set
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-from concurrent.futures import ThreadPoolExecutor
 import threading
 from app.core.torrent_validator import validate_torrent_file
 from app.services.history_service import history_service, EventType

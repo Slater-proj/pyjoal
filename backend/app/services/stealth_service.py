@@ -3,11 +3,9 @@ Stealth Service - Advanced Anti-Detection
 Provides intelligent randomization and natural behavior patterns for maximum discretion
 """
 import random
-import time
 import hashlib
-import asyncio
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime, timedelta
+from typing import Dict, List
+from datetime import datetime
 from dataclasses import dataclass
 
 
@@ -266,8 +264,6 @@ class StealthService:
         Returns:
             Interval with gaussian distribution, clamped to reasonable bounds
         """
-        import math
-        
         # Calculate standard deviation
         std_dev = base_interval * std_dev_percent
         
@@ -290,8 +286,6 @@ class StealthService:
         - Some bytes are often "corrupt" and re-downloaded
         - Upload starts before download completes (superseeding)
         """
-        _profile = self.get_session_profile(torrent_hash)  # Keep for potential future use
-        
         # Use torrent hash as seed for consistency
         seed = int(hashlib.md5(torrent_hash.encode()).hexdigest()[:8], 16)
         rng = random.Random(seed)

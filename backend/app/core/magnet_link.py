@@ -2,11 +2,9 @@
 Magnet Link Support (Phase 5.3)
 Parses magnet links and retrieves torrent metadata from DHT/trackers.
 """
-import re
-import hashlib
 import logging
-from typing import Optional, Dict, List, Tuple
-from urllib.parse import urlparse, parse_qs, unquote
+from typing import Optional, List
+from urllib.parse import parse_qs, unquote
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)

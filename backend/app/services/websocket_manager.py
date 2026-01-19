@@ -11,8 +11,6 @@ from datetime import datetime
 import time
 from collections import defaultdict
 
-from app.core.cache_manager import cache_manager
-
 logger = logging.getLogger(__name__)
 
 

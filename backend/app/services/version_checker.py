@@ -3,11 +3,9 @@ Version checker service for PyJOAL
 Checks for updates from GitHub releases with daily caching
 """
 import httpx
-import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 import json
-import os
 import tempfile
 from pathlib import Path
 

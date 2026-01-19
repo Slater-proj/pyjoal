@@ -11,7 +11,7 @@ from datetime import datetime
 import json
 
 from app.core.config import settings
-from app.core.bittorrent_client import BitTorrentClient, get_default_client
+from app.core.bittorrent_client import BitTorrentClient
 from app.core.torrent_parser import Torrent, load_torrents_from_directory
 from app.core.torrent_validator import validate_torrent_file
 from app.core.tracker_announcer import TrackerAnnouncer
@@ -990,7 +990,6 @@ class SeederService:
             
             # Store current state
             old_count = len(self.announcers)
-            _was_running = self.is_running  # Keep for potential future use
             
             # Reload torrents (this preserves running state)
             await self.load_torrents()

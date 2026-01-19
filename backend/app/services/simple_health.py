@@ -4,8 +4,8 @@ Provides essential health information without complexity
 """
 import psutil
 import time
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from typing import Dict, List
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)

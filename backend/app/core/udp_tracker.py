@@ -9,7 +9,7 @@ import struct
 import random
 import socket
 import logging
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Dict
 from urllib.parse import urlparse
 from dataclasses import dataclass
 from enum import IntEnum

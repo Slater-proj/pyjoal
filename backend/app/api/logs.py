@@ -2,7 +2,7 @@
 Logs API Endpoints
 """
 from fastapi import APIRouter
-from typing import List, Dict
+from typing import Dict
 from app.services.log_stream_service import log_handler
 
 router = APIRouter()

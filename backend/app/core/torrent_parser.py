@@ -3,7 +3,6 @@ Torrent File Parser
 Handles .torrent file parsing and metadata extraction with intelligent caching
 """
 import hashlib
-import os
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime

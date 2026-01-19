@@ -86,7 +86,7 @@ jobs:
     
     - name: Flake8 (MUST PASS - syntax errors)
       working-directory: backend
-      run: flake8 app/ --max-line-length=120 --extend-ignore=E203,W503,E501,W291,W292,W293,W391,F401,E128,E302,E303,E305,E402,F841
+      run: flake8 app/ --max-line-length=120 --extend-ignore=E203,W503,E501,W291,W292,W293,W391,E128,E302,E303,E305,E402
     
     - name: Black (formatting) - Warning only
       working-directory: backend

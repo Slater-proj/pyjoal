@@ -4,10 +4,9 @@ Optimizes performance by reducing I/O operations and redundant computations
 """
 import time
 import threading
-from typing import Dict, Any, Optional, Callable, TypeVar
-from datetime import datetime, timedelta
+from typing import Dict, Any, Optional, TypeVar
+from datetime import datetime
 import logging
-import weakref
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,7 @@ PyJOAL - Main Application Entry Point
 FastAPI application with WebSocket support for BitTorrent ratio client
 """
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, status
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -45,7 +45,6 @@ from app.core.config import settings
 from app.api import config, torrents, client, history, logs, errors, version, cache, system
 from app.services.websocket_manager import websocket_manager
 from app.services.seeder_service import seeder_service
-from app.services.history_service import history_service, EventType
 from app.services.log_stream_service import log_handler
 import time
 
