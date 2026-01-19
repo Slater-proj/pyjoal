@@ -88,7 +88,7 @@ Created automatically on first launch, editable via the interface:
   "minUploadRate": 30,
   "maxUploadRate": 160,
   "simultaneousSeed": 20,
-  "client": "qbittorrent-1.9.2.client",
+  "client": "qbittorrent-1.9.3.client",
   "keepTorrentWithZeroLeechers": true,
   "uploadRatioTarget": -1.0,
   "seedingDurationLimit": -1.0
