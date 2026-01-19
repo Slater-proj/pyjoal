@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     
     # Security
     SECRET_TOKEN: str = Field(..., description="Secret token for authentication")
-    UI_PATH_PREFIX: str = Field(..., description="UI path prefix for obfuscation")
+    UI_PATH_PREFIX: str = Field(default="/", description="UI path prefix for obfuscation")
     
     # Paths (absolute paths for Docker compatibility)
     CONFIG_DIR: Path = Field(default=Path("/app/config"), description="Configuration directory")

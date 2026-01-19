@@ -217,7 +217,7 @@ jobs:
     - name: Load and run container
       run: |
         gunzip -c /tmp/pyjoal-image.tar.gz | docker load
-        docker run -d --name pyjoal-test -p 8080:8080 -e SECRET_TOKEN=smoke-test-token pyjoal:latest
+        docker run -d --name pyjoal-test -p 8080:8080 -e SECRET_TOKEN=smoke-test-token -e UI_PATH_PREFIX=/ pyjoal:latest
     
     - name: Wait for startup (MUST PASS)
       run: |
