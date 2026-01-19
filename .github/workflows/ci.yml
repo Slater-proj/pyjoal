@@ -57,13 +57,20 @@ jobs:
         name: coverage-report
         path: backend/htmlcov/
         retention-days: 7
+    - name: Debug: list backend files (coverage)
+      if: always()
+      run: |
+        echo "Listing backend dir contents for debug"
+        ls -la backend || true
+        echo "Checking for coverage.xml"
+        if [ -f backend/coverage.xml ]; then echo "FOUND backend/coverage.xml"; else echo "MISSING backend/coverage.xml"; fi
 
     - name: Upload coverage to Codecov
       if: github.ref == 'refs/heads/master'
       uses: codecov/codecov-action@v4
       with:
-        directory: backend
-        files: ./coverage.xml
+        # Use explicit path to coverage file to avoid issues with working directory
+        files: backend/coverage.xml
         fail_ci_if_error: false
         verbose: true
       env:
