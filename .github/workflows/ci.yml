@@ -243,7 +243,6 @@ jobs:
     - name: Test API endpoints
       run: |
         curl -sf http://localhost:8080/health && echo " /health OK"
-        curl -sf http://localhost:8080/ > /dev/null && echo " / OK"
     
     - name: Cleanup
       if: always()

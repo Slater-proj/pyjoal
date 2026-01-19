@@ -301,13 +301,6 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket_manager.disconnect(websocket)
 
 
-# Root endpoint (simple status) to satisfy smoke tests that curl '/'
-@app.get("/")
-async def root_status():
-    """Basic root endpoint returning application status"""
-    return {"status": "ok", "app": "PyJOAL", "version": APP_VERSION}
-
-
 # Serve static files for frontend (in production)
 # In Docker: /app/frontend/dist, in dev: ../frontend/dist
 frontend_build_path = Path("/app/frontend/dist") if Path("/app/frontend/dist").exists() else Path(__file__).parent.parent.parent / "frontend" / "dist"
