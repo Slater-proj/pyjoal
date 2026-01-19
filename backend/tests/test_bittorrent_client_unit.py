@@ -9,30 +9,54 @@ from pathlib import Path
 from app.core.bittorrent_client import BitTorrentClient
 
 
+def get_minimal_client_config(**overrides):
+    """Helper function to create a minimal valid JOAL client config"""
+    config = {
+        "name": "TestClient",
+        "version": "1.0",
+        "peerIdGenerator": {
+            "refreshOn": "NEVER",
+            "algorithm": {
+                "type": "REGEX",
+                "pattern": "-TC1000-[A-Za-z0-9]{12}"
+            }
+        },
+        "keyGenerator": {
+            "refreshOn": "NEVER",
+            "algorithm": {
+                "type": "HASH",
+                "length": 8
+            }
+        },
+        "query": "info_hash={infohash}&peer_id={peerid}&port={port}&uploaded={uploaded}&downloaded={downloaded}&left={left}",
+        "numwant": 200,
+        "numwantOnStop": 0,
+        "requestHeaders": [
+            {"name": "User-Agent", "value": "TestClient/1.0"},
+            {"name": "Accept-Encoding", "value": "gzip"},
+            {"name": "Connection", "value": "close"}
+        ]
+    }
+    config.update(overrides)
+    return config
+
+
 class TestBitTorrentClientInit:
     """Test BitTorrentClient initialization"""
     
     def test_load_valid_client_file(self, tmp_path):
         """Test loading a valid client configuration file"""
-        client_config = {
-            "name": "qBittorrent",
-            "version": "4.6.0",
-            "peerIdGenerator": {
+        client_config = get_minimal_client_config(
+            name="qBittorrent",
+            version="4.6.0",
+            peerIdGenerator={
                 "refreshOn": "NEVER",
                 "algorithm": {
                     "type": "REGEX",
                     "pattern": "-qB4060-[A-Za-z0-9]{12}"
                 }
-            },
-            "keyGenerator": {
-                "refreshOn": "NEVER",
-                "algorithm": {
-                    "type": "HASH",
-                    "length": 8
-                }
-            },
-            "query": "info_hash={infohash}&peer_id={peerid}&port={port}"
-        }
+            }
+        )
         
         client_file = tmp_path / "test.client"
         client_file.write_text(json.dumps(client_config))
@@ -58,19 +82,7 @@ class TestPeerIdGeneration:
     
     def test_peer_id_is_20_bytes(self, tmp_path):
         """Test that generated peer ID is exactly 20 bytes"""
-        client_config = {
-            "name": "TestClient",
-            "version": "1.0",
-            "peerIdGenerator": {
-                "refreshOn": "NEVER",
-                "algorithm": {
-                    "type": "REGEX",
-                    "pattern": "-TC1000-[A-Za-z0-9]{12}"
-                }
-            },
-            "keyGenerator": {"refreshOn": "NEVER", "algorithm": {"type": "HASH", "length": 8}},
-            "query": ""
-        }
+        client_config = get_minimal_client_config()
         
         client_file = tmp_path / "test.client"
         client_file.write_text(json.dumps(client_config))
@@ -84,19 +96,7 @@ class TestPeerIdGeneration:
     
     def test_peer_id_caching_never(self, tmp_path):
         """Test peer ID is cached with refreshOn=NEVER"""
-        client_config = {
-            "name": "TestClient",
-            "version": "1.0",
-            "peerIdGenerator": {
-                "refreshOn": "NEVER",
-                "algorithm": {
-                    "type": "REGEX",
-                    "pattern": "-TC1000-[A-Za-z0-9]{12}"
-                }
-            },
-            "keyGenerator": {"refreshOn": "NEVER", "algorithm": {"type": "HASH", "length": 8}},
-            "query": ""
-        }
+        client_config = get_minimal_client_config()
         
         client_file = tmp_path / "test.client"
         client_file.write_text(json.dumps(client_config))
@@ -112,19 +112,15 @@ class TestPeerIdGeneration:
     
     def test_peer_id_caching_torrent_persistent(self, tmp_path):
         """Test peer ID is cached per torrent with refreshOn=TORRENT_PERSISTENT"""
-        client_config = {
-            "name": "TestClient",
-            "version": "1.0",
-            "peerIdGenerator": {
+        client_config = get_minimal_client_config(
+            peerIdGenerator={
                 "refreshOn": "TORRENT_PERSISTENT",
                 "algorithm": {
                     "type": "REGEX",
                     "pattern": "-TC1000-[A-Za-z0-9]{12}"
                 }
-            },
-            "keyGenerator": {"refreshOn": "NEVER", "algorithm": {"type": "HASH", "length": 8}},
-            "query": ""
-        }
+            }
+        )
         
         client_file = tmp_path / "test.client"
         client_file.write_text(json.dumps(client_config))
@@ -149,22 +145,7 @@ class TestKeyGeneration:
     
     def test_key_generation_hash(self, tmp_path):
         """Test HASH key generation"""
-        client_config = {
-            "name": "TestClient",
-            "version": "1.0",
-            "peerIdGenerator": {
-                "refreshOn": "NEVER",
-                "algorithm": {"type": "REGEX", "pattern": "-TC1000-[A-Za-z0-9]{12}"}
-            },
-            "keyGenerator": {
-                "refreshOn": "NEVER",
-                "algorithm": {
-                    "type": "HASH",
-                    "length": 8
-                }
-            },
-            "query": ""
-        }
+        client_config = get_minimal_client_config()
         
         client_file = tmp_path / "test.client"
         client_file.write_text(json.dumps(client_config))
@@ -183,21 +164,17 @@ class TestAnnounceUrlBuilding:
     
     def test_build_announce_url(self, tmp_path):
         """Test building announce URL with parameters"""
-        client_config = {
-            "name": "qBittorrent",
-            "version": "4.6.0",
-            "peerIdGenerator": {
+        client_config = get_minimal_client_config(
+            name="qBittorrent",
+            version="4.6.0",
+            peerIdGenerator={
                 "refreshOn": "NEVER",
                 "algorithm": {"type": "REGEX", "pattern": "-qB4060-[A-Za-z0-9]{12}"}
             },
-            "keyGenerator": {
-                "refreshOn": "NEVER",
-                "algorithm": {"type": "HASH", "length": 8}
-            },
-            "query": "info_hash={infohash}&peer_id={peerid}&port={port}&uploaded={uploaded}&downloaded={downloaded}&left={left}&corrupt=0&key={key}&event={event}&numwant={numwant}&compact=1&no_peer_id=1&supportcrypto=1&redundant=0",
-            "numwant": 200,
-            "numwantOnStop": 0
-        }
+            query="info_hash={infohash}&peer_id={peerid}&port={port}&uploaded={uploaded}&downloaded={downloaded}&left={left}&corrupt=0&key={key}&event={event}&numwant={numwant}&compact=1&no_peer_id=1&supportcrypto=1&redundant=0",
+            numwant=200,
+            numwantOnStop=0
+        )
         
         client_file = tmp_path / "test.client"
         client_file.write_text(json.dumps(client_config))
@@ -233,13 +210,11 @@ class TestClientProperties:
     
     def test_name_property(self, tmp_path):
         """Test name property returns client name"""
-        client_config = {
-            "name": "Transmission",
-            "version": "4.0.5",
-            "peerIdGenerator": {"refreshOn": "NEVER", "algorithm": {"type": "REGEX", "pattern": "-TR4050-[A-Za-z0-9]{12}"}},
-            "keyGenerator": {"refreshOn": "NEVER", "algorithm": {"type": "HASH", "length": 8}},
-            "query": ""
-        }
+        client_config = get_minimal_client_config(
+            name="Transmission",
+            version="4.0.5",
+            peerIdGenerator={"refreshOn": "NEVER", "algorithm": {"type": "REGEX", "pattern": "-TR4050-[A-Za-z0-9]{12}"}}
+        )
         
         client_file = tmp_path / "test.client"
         client_file.write_text(json.dumps(client_config))
@@ -252,13 +227,11 @@ class TestClientProperties:
     
     def test_version_property(self, tmp_path):
         """Test version property returns client version"""
-        client_config = {
-            "name": "Deluge",
-            "version": "2.1.1",
-            "peerIdGenerator": {"refreshOn": "NEVER", "algorithm": {"type": "REGEX", "pattern": "-DE2110-[A-Za-z0-9]{12}"}},
-            "keyGenerator": {"refreshOn": "NEVER", "algorithm": {"type": "HASH", "length": 8}},
-            "query": ""
-        }
+        client_config = get_minimal_client_config(
+            name="Deluge",
+            version="2.1.1",
+            peerIdGenerator={"refreshOn": "NEVER", "algorithm": {"type": "REGEX", "pattern": "-DE2110-[A-Za-z0-9]{12}"}}
+        )
         
         client_file = tmp_path / "test.client"
         client_file.write_text(json.dumps(client_config))
@@ -275,13 +248,7 @@ class TestSessionPort:
     
     def test_session_port_in_valid_range(self, tmp_path):
         """Test session port is in valid ephemeral range"""
-        client_config = {
-            "name": "TestClient",
-            "version": "1.0",
-            "peerIdGenerator": {"refreshOn": "NEVER", "algorithm": {"type": "REGEX", "pattern": "-TC1000-[A-Za-z0-9]{12}"}},
-            "keyGenerator": {"refreshOn": "NEVER", "algorithm": {"type": "HASH", "length": 8}},
-            "query": ""
-        }
+        client_config = get_minimal_client_config()
         
         client_file = tmp_path / "test.client"
         client_file.write_text(json.dumps(client_config))
@@ -295,13 +262,7 @@ class TestSessionPort:
     
     def test_session_port_is_consistent(self, tmp_path):
         """Test session port remains consistent for a client instance"""
-        client_config = {
-            "name": "TestClient",
-            "version": "1.0",
-            "peerIdGenerator": {"refreshOn": "NEVER", "algorithm": {"type": "REGEX", "pattern": "-TC1000-[A-Za-z0-9]{12}"}},
-            "keyGenerator": {"refreshOn": "NEVER", "algorithm": {"type": "HASH", "length": 8}},
-            "query": ""
-        }
+        client_config = get_minimal_client_config()
         
         client_file = tmp_path / "test.client"
         client_file.write_text(json.dumps(client_config))

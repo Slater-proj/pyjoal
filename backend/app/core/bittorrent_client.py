@@ -557,7 +557,7 @@ def list_available_clients() -> List[str]:
     for client_file in sorted(clients_dir.glob("*.client")):
         try:
             # Try to load and validate the client
-            test_client = BitTorrentClient(client_file.name)
+            _ = BitTorrentClient(client_file.name)  # noqa: F841
             valid_clients.append(client_file.name)
         except (ValueError, FileNotFoundError, json.JSONDecodeError, KeyError) as e:
             # Invalid client file - log and skip

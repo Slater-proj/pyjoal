@@ -7,6 +7,7 @@ import json
 import re
 import os
 from pathlib import Path
+from typing import Tuple
 
 CLIENTS_DIR = Path(__file__).parent / "clients"
 
@@ -28,7 +29,7 @@ def parse_char_class(char_class: str) -> str:
             i += 1
     return chars
 
-def test_peer_id_pattern(pattern: str) -> tuple[bool, str]:
+def test_peer_id_pattern(pattern: str) -> Tuple[bool, str]:
     """Test if peer_id pattern generates 20 bytes"""
     match = re.match(r'^([^[]+)\[([^\]]+)\]\{(\d+)\}$', pattern)
     if not match:
