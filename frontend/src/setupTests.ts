@@ -16,7 +16,7 @@ class MockWebSocket {
   close = () => {}
 }
 
-// @ts-ignore
+// @ts-expect-error - Mock WebSocket for testing
 global.WebSocket = MockWebSocket
 
 // Mock window.__PYJOAL_TOKEN__
