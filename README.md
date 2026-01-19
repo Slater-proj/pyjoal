@@ -1,5 +1,11 @@
 # PyJOAL - BitTorrent Ratio Client 🚀
 
+[![CI/CD Pipeline](https://github.com/Slater-proj/pyjoal/actions/workflows/ci.yml/badge.svg)](https://github.com/Slater-proj/pyjoal/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/Slater-proj/pyjoal/branch/master/graph/badge.svg)](https://codecov.io/gh/Slater-proj/pyjoal)
+[![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![Docker](https://img.shields.io/docker/pulls/slaterduke/pyjoal.svg)](https://hub.docker.com/r/slaterduke/pyjoal)
+[![License](https://img.shields.io/github/license/Slater-proj/pyjoal.svg)](LICENSE)
+
 **PyJOAL** is a smart BitTorrent client that emulates various clients to maintain seed ratio without consuming real bandwidth. Written entirely in Python with a modern React web interface.
 
 ## ✨ Features
@@ -82,7 +88,7 @@ Created automatically on first launch, editable via the interface:
   "minUploadRate": 30,
   "maxUploadRate": 160,
   "simultaneousSeed": 20,
-  "client": "qbittorrent-1.9.0.client",
+  "client": "qbittorrent-1.9.1.client",
   "keepTorrentWithZeroLeechers": true,
   "uploadRatioTarget": -1.0,
   "seedingDurationLimit": -1.0

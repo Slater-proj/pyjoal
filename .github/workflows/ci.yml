@@ -47,7 +47,7 @@ jobs:
       run: |
         echo "🧪 Running backend tests..."
         pip install watchdog  # Required for file_watcher tests
-        pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-fail-under=45
+        pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=45
         echo "✅ All tests passed!"
     
     - name: Upload coverage report
@@ -57,6 +57,17 @@ jobs:
         name: coverage-report
         path: backend/htmlcov/
         retention-days: 7
+
+    - name: Upload coverage to Codecov
+      if: github.ref == 'refs/heads/master'
+      uses: codecov/codecov-action@v4
+      with:
+        directory: backend
+        files: ./coverage.xml
+        fail_ci_if_error: false
+        verbose: true
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   lint-backend:
     name: "Backend Linting"
