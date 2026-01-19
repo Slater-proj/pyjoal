@@ -93,6 +93,7 @@ export default function HistoryPage() {
     fetchHistory()
     const interval = setInterval(fetchHistory, 10000)
     return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, page])
 
   const formatTime = (timestamp: string) => {
@@ -151,11 +152,10 @@ export default function HistoryPage() {
             <button
               key={f.id}
               onClick={() => setFilter(f.id)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                filter === f.id
+              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${filter === f.id
                   ? 'bg-blue-600 text-white'
                   : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+                }`}
             >
               {f.label}
             </button>
@@ -178,19 +178,19 @@ export default function HistoryPage() {
               // Get icon and colors
               const Icon = EVENT_ICONS[entry.eventType] || Activity
               const defaultColors = EVENT_COLORS[entry.eventType] || 'text-slate-400 bg-slate-500/10'
-              
+
               // Special handling for archived torrents with reason-specific colors
-              const colors = entry.eventType === 'torrent_archived' && entry.data.reason 
+              const colors = entry.eventType === 'torrent_archived' && entry.data.reason
                 ? getArchiveColor(entry.data.reason)
                 : defaultColors
-                
+
               const [textColor, bgColor] = colors.split(' ')
 
               // Format archive reason for display
               const formatArchiveReason = (reason: string) => {
                 switch (reason) {
                   case 'ratio_target': return 'Ratio Target Reached'
-                  case 'duration_limit': return 'Time Limit Reached' 
+                  case 'duration_limit': return 'Time Limit Reached'
                   case 'zero_peers': return 'No Active Peers'
                   case 'error': return 'Error Condition'
                   default: return 'Auto Archived'
@@ -205,7 +205,7 @@ export default function HistoryPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-white text-sm">{entry.message}</p>
-                      
+
                       {/* Enhanced data display with archive reason */}
                       {entry.eventType === 'torrent_archived' && entry.data.reason && (
                         <div className="mt-2 space-y-1">
@@ -243,7 +243,7 @@ export default function HistoryPage() {
                           )}
                         </div>
                       )}
-                      
+
                       {/* Enhanced data display for load failures */}
                       {entry.eventType === 'torrent_load_failed' && (
                         <div className="mt-1">
@@ -257,7 +257,7 @@ export default function HistoryPage() {
                           )}
                         </div>
                       )}
-                      
+
                       {/* Default data display for other events */}
                       {entry.eventType !== 'torrent_archived' && entry.eventType !== 'torrent_load_failed' && Object.keys(entry.data).length > 0 && (
                         <div className="mt-1 text-xs text-slate-500">

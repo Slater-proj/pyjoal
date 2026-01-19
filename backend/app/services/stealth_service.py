@@ -290,7 +290,7 @@ class StealthService:
         - Some bytes are often "corrupt" and re-downloaded
         - Upload starts before download completes (superseeding)
         """
-        profile = self.get_session_profile(torrent_hash)
+        _profile = self.get_session_profile(torrent_hash)  # Keep for potential future use
         
         # Use torrent hash as seed for consistency
         seed = int(hashlib.md5(torrent_hash.encode()).hexdigest()[:8], 16)

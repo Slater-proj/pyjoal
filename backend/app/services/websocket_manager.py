@@ -3,7 +3,7 @@ WebSocket Manager
 Manages WebSocket connections and broadcasts with intelligent batching
 """
 from fastapi import WebSocket
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import json
 import logging
 import asyncio

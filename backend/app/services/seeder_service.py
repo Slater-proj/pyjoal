@@ -87,7 +87,7 @@ class SeederService:
             # Update config with valid client
             self._config["client"] = configured_client
             await self.save_config()
-            logger.info(f"💾 Configuration mise à jour automatiquement")
+            logger.info("💾 Configuration mise à jour automatiquement")
         
         # Initialize client
         try:
@@ -181,7 +181,7 @@ class SeederService:
             missing_parts = missing_client.replace('.client', '').split('-')
             if len(missing_parts) >= 2:
                 missing_name = missing_parts[0]
-                missing_version = missing_parts[1]
+                # missing_version is not needed for current logic
                 
                 # Try to find same client with different version
                 same_client_candidates = [c for c in available_clients if c.startswith(missing_name)]
@@ -395,7 +395,7 @@ class SeederService:
         
         # Stop announcer
         if announcer.is_running:
-            logger.debug(f"   Stopping announcer...")
+            logger.debug("   Stopping announcer...")
             await announcer.stop()
         
         # Remove from dict
@@ -990,7 +990,7 @@ class SeederService:
             
             # Store current state
             old_count = len(self.announcers)
-            was_running = self.is_running
+            _was_running = self.is_running  # Keep for potential future use
             
             # Reload torrents (this preserves running state)
             await self.load_torrents()

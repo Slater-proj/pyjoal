@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional
 import json
 import os
+import tempfile
 from pathlib import Path
 
 # Import version from main module
@@ -30,7 +31,7 @@ def get_current_version():
 
 class VersionChecker:
     def __init__(self):
-        self.cache_file = Path("/tmp/pyjoal_version_check.json")
+        self.cache_file = Path(tempfile.gettempdir()) / "pyjoal_version_check.json"
         self.cache_duration = timedelta(hours=24)  # Check once per day
         self.github_api_url = "https://api.github.com/repos/Slater-proj/pyjoal/releases/latest"
         self.current_version = get_current_version()  # Use dynamic version

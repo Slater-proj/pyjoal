@@ -92,7 +92,6 @@ class SmartCache:
     def cleanup_expired(self) -> int:
         """Remove expired entries, return count removed"""
         removed_count = 0
-        current_time = time.time()
         
         with self._lock:
             expired_keys = [

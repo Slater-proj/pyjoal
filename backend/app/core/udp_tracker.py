@@ -409,7 +409,7 @@ class UDPTracker:
         action, resp_transaction_id = struct.unpack('>II', response[:8])
         
         if resp_transaction_id != transaction_id:
-            raise UDPTrackerError(f"Transaction ID mismatch")
+            raise UDPTrackerError("Transaction ID mismatch")
         
         results = {}
         scrape_data = response[8:]

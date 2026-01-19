@@ -202,7 +202,7 @@ class TrackerAnnouncer:
         
         # 🎯 Send initial "completed" event (natural behavior after download)
         if self._initial_seeding:
-            logger.debug(f"   📋 Sending 'completed' event - torrent finished downloading")
+            logger.debug("   📋 Sending 'completed' event - torrent finished downloading")
             await self._send_announce(event="completed")
             self._initial_seeding = False
         
@@ -348,7 +348,7 @@ class TrackerAnnouncer:
             upload_delta = int(current_speed * capped_interval)
             
             # Ajouter au total uploadé
-            old_uploaded = self.uploaded
+            _old_uploaded = self.uploaded
             self.uploaded += upload_delta
             
             logger.info(f"📈 UPLOAD: {self.torrent.name[:25]} +{upload_delta/1024:.1f}KB ({current_speed/1024:.1f}KB/s × {capped_interval:.1f}s) = Total: {self.uploaded/(1024*1024):.2f}MB")
@@ -420,7 +420,7 @@ class TrackerAnnouncer:
             logger.debug(f"   Total uploaded: {self.uploaded / (1024**2):.2f} MB")
             logger.debug(f"   Ratio: {self.uploaded / self.torrent.size if self.torrent.size > 0 else 0:.3f}")
         else:
-            logger.debug(f"   Speed is 0 - no upload progress made")
+            logger.debug("   Speed is 0 - no upload progress made")
     
     def _update_download_stats(self):
         """Update download stats during download simulation phase"""
@@ -496,7 +496,7 @@ class TrackerAnnouncer:
         )
         
         # Log announce parameters
-        logger.debug(f"📤 Announce parameters:")
+        logger.debug("📤 Announce parameters:")
         logger.debug(f"   Tracker: {tracker_url}")
         logger.debug(f"   Info hash: {self.torrent.info_hash}")
         logger.debug(f"   Peer ID: {self.peer_id}")
@@ -532,7 +532,7 @@ class TrackerAnnouncer:
                 timeout=30.0,
                 verify=False  # Disable SSL verification for private trackers
             ) as client:
-                logger.debug(f"   Sending HTTP GET request...")
+                logger.debug("   Sending HTTP GET request...")
                 response = await client.get(url)
                 logger.debug(f"   Response status: {response.status_code}")
                 response.raise_for_status()
@@ -709,7 +709,7 @@ class TrackerAnnouncer:
             # Tracker ID for subsequent announces
             if b'tracker id' in response:
                 self._tracker_id = response[b'tracker id']
-                logger.debug(f"   Tracker ID received")
+                logger.debug("   Tracker ID received")
             
         except Exception as e:
             logger.error(f"⚠️  Failed to parse announce response: {e}", exc_info=True)

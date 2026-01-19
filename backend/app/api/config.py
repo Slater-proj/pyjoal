@@ -29,7 +29,7 @@ async def update_config(config: ConfigSchema):
         
         # Get the updated config to ensure consistency
         updated_config = seeder_service.get_config()
-        logger.info(f"✅ API: Configuration updated successfully")
+        logger.info("✅ API: Configuration updated successfully")
         
         return SuccessResponse(
             message="Configuration updated successfully",

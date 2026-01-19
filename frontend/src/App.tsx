@@ -35,6 +35,7 @@ function App() {
     return () => {
       useStore.getState().disconnectWebSocket()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const renderPage = () => {

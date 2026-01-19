@@ -32,12 +32,12 @@ export default function TorrentsTable() {
   const [currentPage, setCurrentPage] = useState(1)
   const [isReloading, setIsReloading] = useState(false)
   const torrentsPerPage = 20
-  
+
   // Column resize state
   const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS)
   const [resizing, setResizing] = useState<string | null>(null)
   const tableRef = useRef<HTMLTableElement>(null)
-  
+
   // Use refs to avoid stale closures in event listeners
   const resizeRef = useRef<{
     column: string | null
@@ -53,7 +53,7 @@ export default function TorrentsTable() {
   const handleMouseDown = useCallback((column: string, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    
+
     resizeRef.current = {
       column,
       startX: e.clientX,
@@ -65,25 +65,25 @@ export default function TorrentsTable() {
   // Handle double-click to auto-size column (like Excel)
   const handleDoubleClick = useCallback((column: string) => {
     if (!tableRef.current) return
-    
+
     // Find the column index
     const columnIndex = Object.keys(DEFAULT_COLUMN_WIDTHS).indexOf(column)
     if (columnIndex === -1) return
-    
+
     // Get header text width
     const headerCells = tableRef.current.querySelectorAll('thead th')
     const headerCell = headerCells[columnIndex] as HTMLElement
-    
+
     // Measure using a hidden clone with no width constraints
     const measureDiv = document.createElement('div')
     measureDiv.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font:14px system-ui,-apple-system,sans-serif;'
     document.body.appendChild(measureDiv)
-    
+
     // Measure header
     const headerText = headerCell?.querySelector('span')?.textContent || headerCell?.textContent || ''
     measureDiv.textContent = headerText
     let maxWidth = measureDiv.offsetWidth + 24 // Header padding
-    
+
     // Measure all rows in this column
     const rows = tableRef.current.querySelectorAll('tbody tr')
     rows.forEach(row => {
@@ -100,22 +100,22 @@ export default function TorrentsTable() {
         maxWidth = Math.max(maxWidth, width)
       }
     })
-    
+
     document.body.removeChild(measureDiv)
-    
+
     // Add some extra padding for the name column (has icon)
     if (column === 'name') {
       maxWidth += 32 // For the status dot
     }
-    
+
     // Apply min/max constraints
     const minWidth = MIN_COLUMN_WIDTHS[column as keyof typeof MIN_COLUMN_WIDTHS] || 50
     maxWidth = Math.max(minWidth, maxWidth)
-    
+
     // Max limit to prevent crazy widths
     const maxLimit = column === 'name' ? 600 : 250
     maxWidth = Math.min(maxWidth, maxLimit)
-    
+
     setColumnWidths(prev => ({
       ...prev,
       [column]: maxWidth
@@ -130,7 +130,7 @@ export default function TorrentsTable() {
       const { startX, startWidth } = resizeRef.current
       const diff = e.clientX - startX
       const newWidth = Math.max(40, startWidth + diff) // Minimum 40px
-      
+
       setColumnWidths(prev => ({
         ...prev,
         [resizing]: newWidth
@@ -169,7 +169,7 @@ export default function TorrentsTable() {
 
   const formatSeedingTime = (seconds: number | null | undefined) => {
     if (seconds == null || seconds < 0) return '0s'
-    
+
     const minutes = Math.floor(seconds / 60)
     const hours = Math.floor(minutes / 60)
     const days = Math.floor(hours / 24)
@@ -188,7 +188,7 @@ export default function TorrentsTable() {
 
   const handleReload = async () => {
     if (isReloading) return
-    
+
     setIsReloading(true)
     try {
       await reloadTorrents()
@@ -227,6 +227,7 @@ export default function TorrentsTable() {
   useEffect(() => {
     startAutoRefresh()
     return () => stopAutoRefresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // When no torrents
@@ -272,7 +273,7 @@ export default function TorrentsTable() {
           </div>
         </div>
       </div>
-      
+
       {/* Table with visible borders - full width */}
       <div className="overflow-hidden">
         <table ref={tableRef} className="w-full border-collapse table-fixed">
@@ -280,7 +281,7 @@ export default function TorrentsTable() {
             <tr className="bg-slate-700/70 text-left text-sm text-slate-200 font-semibold">
               <th className="px-4 py-3 border-r border-slate-600 relative overflow-hidden" style={{ width: columnWidths.name }}>
                 <span className="truncate block">Name</span>
-                <div 
+                <div
                   className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500/50 transition-colors"
                   onMouseDown={(e) => handleMouseDown('name', e)}
                   onDoubleClick={() => handleDoubleClick('name')}
@@ -289,7 +290,7 @@ export default function TorrentsTable() {
               </th>
               <th className="px-4 py-3 border-r border-slate-600 text-right relative overflow-hidden" style={{ width: columnWidths.size }}>
                 <span className="truncate block">Size</span>
-                <div 
+                <div
                   className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500/50 transition-colors"
                   onMouseDown={(e) => handleMouseDown('size', e)}
                   onDoubleClick={() => handleDoubleClick('size')}
@@ -298,7 +299,7 @@ export default function TorrentsTable() {
               </th>
               <th className="px-4 py-3 border-r border-slate-600 text-right relative overflow-hidden" style={{ width: columnWidths.speed }}>
                 <span className="truncate block">Speed ↑</span>
-                <div 
+                <div
                   className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500/50 transition-colors"
                   onMouseDown={(e) => handleMouseDown('speed', e)}
                   onDoubleClick={() => handleDoubleClick('speed')}
@@ -307,7 +308,7 @@ export default function TorrentsTable() {
               </th>
               <th className="px-4 py-3 border-r border-slate-600 text-right relative overflow-hidden" style={{ width: columnWidths.uploaded }}>
                 <span className="truncate block">Uploaded</span>
-                <div 
+                <div
                   className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500/50 transition-colors"
                   onMouseDown={(e) => handleMouseDown('uploaded', e)}
                   onDoubleClick={() => handleDoubleClick('uploaded')}
@@ -316,7 +317,7 @@ export default function TorrentsTable() {
               </th>
               <th className="px-4 py-3 border-r border-slate-600 text-center relative overflow-hidden" style={{ width: columnWidths.peers }}>
                 <span className="truncate block">Peers</span>
-                <div 
+                <div
                   className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500/50 transition-colors"
                   onMouseDown={(e) => handleMouseDown('peers', e)}
                   onDoubleClick={() => handleDoubleClick('peers')}
@@ -325,7 +326,7 @@ export default function TorrentsTable() {
               </th>
               <th className="px-4 py-3 border-r border-slate-600 text-center relative overflow-hidden" style={{ width: columnWidths.ratio }}>
                 <span className="truncate block">Ratio {ratioTarget > 0 ? <span className="text-slate-400 font-normal">/{ratioTarget}</span> : <span className="text-slate-400 font-normal">/∞</span>}</span>
-                <div 
+                <div
                   className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500/50 transition-colors"
                   onMouseDown={(e) => handleMouseDown('ratio', e)}
                   onDoubleClick={() => handleDoubleClick('ratio')}
@@ -334,7 +335,7 @@ export default function TorrentsTable() {
               </th>
               <th className="px-4 py-3 border-r border-slate-600 text-center relative overflow-hidden" style={{ width: columnWidths.duration }}>
                 <span className="truncate block">Duration {durationTarget > 0 ? <span className="text-slate-400 font-normal">/{formatDurationTarget(durationTarget)}</span> : <span className="text-slate-400 font-normal">/∞</span>}</span>
-                <div 
+                <div
                   className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-500/50 transition-colors"
                   onMouseDown={(e) => handleMouseDown('duration', e)}
                   onDoubleClick={() => handleDoubleClick('duration')}
@@ -351,15 +352,14 @@ export default function TorrentsTable() {
               const isActive = torrent.state === 'seeding'
               const isEven = index % 2 === 0
               return (
-                <tr 
+                <tr
                   key={torrent.id}
-                  className={`border-b border-slate-700 hover:bg-slate-600/50 transition-colors ${
-                    isEven ? 'bg-slate-800/50' : 'bg-slate-750/30'
-                  }`}
+                  className={`border-b border-slate-700 hover:bg-slate-600/50 transition-colors ${isEven ? 'bg-slate-800/50' : 'bg-slate-750/30'
+                    }`}
                 >
                   <td className="px-4 py-3 border-r border-slate-700 overflow-hidden" style={{ width: columnWidths.name }}>
                     <div className="flex items-center gap-2 overflow-hidden">
-                      <div 
+                      <div
                         className="flex flex-col items-center gap-0.5 flex-shrink-0 p-1 -m-1 cursor-help"
                         title={(() => {
                           const status = torrent.status;
@@ -377,20 +377,19 @@ export default function TorrentsTable() {
                           return parts.join('\n');
                         })()}
                       >
-                        <span 
-                          className={`w-3 h-3 rounded-full flex-shrink-0 transition-all ${
-                            torrent.status?.status === 'pause_fake'
+                        <span
+                          className={`w-3 h-3 rounded-full flex-shrink-0 transition-all ${torrent.status?.status === 'pause_fake'
                               ? 'bg-yellow-400 animate-pulse'
                               : torrent.status?.status === 'seeding_active'
-                              ? 'bg-green-400 animate-pulse'
-                              : torrent.status?.status === 'seeding_low'
-                              ? 'bg-blue-400'
-                              : isActive
-                              ? torrent.uploadSpeed > 0
                                 ? 'bg-green-400 animate-pulse'
-                                : 'bg-yellow-400'
-                              : 'bg-slate-500'
-                          }`}
+                                : torrent.status?.status === 'seeding_low'
+                                  ? 'bg-blue-400'
+                                  : isActive
+                                    ? torrent.uploadSpeed > 0
+                                      ? 'bg-green-400 animate-pulse'
+                                      : 'bg-yellow-400'
+                                    : 'bg-slate-500'
+                            }`}
                         />
                       </div>
                       <div className="min-w-0 flex-1 overflow-hidden">
@@ -434,15 +433,14 @@ export default function TorrentsTable() {
                   </td>
                   <td className="px-4 py-3 text-center border-r border-slate-700 text-sm overflow-hidden">
                     <div className="flex items-center justify-center gap-1 overflow-hidden">
-                      <span className={`font-mono font-bold px-1 py-0.5 rounded text-xs truncate ${
-                        ratioTarget > 0 && torrent.ratio >= ratioTarget
+                      <span className={`font-mono font-bold px-1 py-0.5 rounded text-xs truncate ${ratioTarget > 0 && torrent.ratio >= ratioTarget
                           ? 'bg-green-500/30 text-green-300'
-                          : torrent.ratio >= 1 
-                            ? 'bg-green-500/20 text-green-300' 
-                            : torrent.ratio >= 0.5 
+                          : torrent.ratio >= 1
+                            ? 'bg-green-500/20 text-green-300'
+                            : torrent.ratio >= 0.5
                               ? 'bg-yellow-500/20 text-yellow-300'
                               : 'bg-slate-600/50 text-slate-300'
-                      }`}>
+                        }`}>
                         {torrent.ratio.toFixed(2)}
                       </span>
                       <span className="text-slate-500 flex-shrink-0">/</span>
@@ -451,11 +449,10 @@ export default function TorrentsTable() {
                   </td>
                   <td className="px-4 py-3 text-center text-slate-300 font-mono border-r border-slate-700 text-sm overflow-hidden">
                     <div className="flex items-center justify-center gap-1 overflow-hidden">
-                      <span className={`px-1 py-0.5 rounded text-xs truncate ${
-                        durationTarget > 0 && (torrent.seedingTime / 3600) >= durationTarget
+                      <span className={`px-1 py-0.5 rounded text-xs truncate ${durationTarget > 0 && (torrent.seedingTime / 3600) >= durationTarget
                           ? 'bg-green-500/30 text-green-300'
                           : 'bg-slate-700/50 text-slate-300'
-                      }`}>
+                        }`}>
                         {torrent.seedingTime != null ? formatSeedingTime(torrent.seedingTime) : '0s'}
                       </span>
                       <span className="text-slate-500 flex-shrink-0">/</span>
