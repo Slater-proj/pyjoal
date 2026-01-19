@@ -311,10 +311,11 @@ logger.debug(f"📁 Frontend exists: {frontend_build_path.exists()}")
 if frontend_build_path.exists():
     logger.info(f"✅ Mounting frontend from: {frontend_build_path}")
     
-    # Mount all assets at root level (for relative imports in index.html)
+    # Mount all assets with prefix support
     if (frontend_build_path / "assets").exists():
+        assets_path = f"/{settings.UI_PATH_PREFIX}/assets" if settings.UI_PATH_PREFIX else "/assets"
         app.mount(
-            "/assets",
+            assets_path,
             StaticFiles(directory=frontend_build_path / "assets"),
             name="static"
         )
@@ -332,6 +333,11 @@ if frontend_build_path.exists():
             token_script = f'<script>window.__PYJOAL_TOKEN__ = {json.dumps(settings.SECRET_TOKEN)};</script>'
             html_content = html_content.replace('</head>', f'{token_script}</head>')
             
+            # Fix asset paths to include UI_PATH_PREFIX
+            if settings.UI_PATH_PREFIX:
+                html_content = html_content.replace('"/assets/', f'"/{settings.UI_PATH_PREFIX}/assets/')
+                html_content = html_content.replace("'/assets/", f"'/{settings.UI_PATH_PREFIX}/assets/")
+            
             return HTMLResponse(content=html_content)
         
         # Check if file exists
@@ -346,6 +352,11 @@ if frontend_build_path.exists():
         
         token_script = f'<script>window.__PYJOAL_TOKEN__ = {json.dumps(settings.SECRET_TOKEN)};</script>'
         html_content = html_content.replace('</head>', f'{token_script}</head>')
+        
+        # Fix asset paths to include UI_PATH_PREFIX
+        if settings.UI_PATH_PREFIX:
+            html_content = html_content.replace('"/assets/', f'"/{settings.UI_PATH_PREFIX}/assets/')
+            html_content = html_content.replace("'/assets/", f"'/{settings.UI_PATH_PREFIX}/assets/")
 
         return HTMLResponse(content=html_content)
 else:
