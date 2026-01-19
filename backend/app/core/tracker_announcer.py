@@ -1081,7 +1081,7 @@ class TrackerAnnouncer:
             current_seeding_time += session_duration
         
         # Log pour debug
-        logger.debug(f"⏱️ Seeding time: {self.torrent.name[:25]} = {current_seeding_time}s ({current_seeding_time//60}m{current_seeding_time%60}s)")
+        logger.debug(f"⏱️ Seeding time: {self.torrent.name[:25]} = {current_seeding_time}s ({current_seeding_time//60}m{current_seeding_time % 60}s)")
         
         # Get stealth session information
         stealth_stats = stealth_service.get_session_stats(self.torrent.info_hash)
