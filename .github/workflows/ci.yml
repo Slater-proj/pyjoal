@@ -11,150 +11,32 @@ permissions:
   packages: write
 
 jobs:
-  # Tests : Toujours exécutés sur toutes les branches
+  # ============================================
+  # STAGE 1: Quality Gates (MUST PASS)
+  # ============================================
+  
   test-backend:
+    name: "Backend Tests"
     runs-on: ubuntu-latest
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python 3.12
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-    
-    - name: Install backend dependencies
-      working-directory: backend
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install flake8 black isort bandit safety
-    
-    - name: Python linting (flake8)
-      working-directory: backend
-      run: |
-        echo "🔍 Running Python linting..."
-        flake8 app/ --max-line-length=88 --extend-ignore=E203,W503 || echo "⚠️ Linting issues found but continuing"
-        echo "✅ Linting check completed"
-    
-    - name: Code formatting check (black)
-      working-directory: backend
-      run: |
-        echo "🎨 Checking code formatting..."
-        black --check app/ || echo "⚠️ Formatting issues found but continuing"
-        echo "✅ Format check completed"
-    
-    - name: Import sorting check (isort)
-      working-directory: backend
-      run: |
-        echo "📦 Checking import sorting..."
-        isort --check-only app/ || echo "⚠️ Import sorting issues found but continuing"
-        echo "✅ Import check completed"
-    
-    - name: Security scan (bandit)
-      working-directory: backend
-      run: |
-        echo "🔒 Running security scan..."
-        bandit -r app/ -f json || echo "⚠️ Security issues found but continuing"
-        echo "✅ Security scan completed"
-    
-    - name: Dependency vulnerability check (safety)
-      working-directory: backend
-      run: |
-        echo "🛡️ Checking dependencies for vulnerabilities..."
-        safety check || echo "⚠️ Vulnerability issues found but continuing"
-        echo "✅ Dependency check completed"
-    
-    - name: Basic backend validation
-      working-directory: backend
-      run: |
-        echo "✅ Testing backend structure..."
-        
-        # Test que les fichiers principaux existent
-        test -f "app/__init__.py" && echo "✅ app module found"
-        test -f "app/main.py" && echo "✅ main.py found" 
-        test -f "app/core/config.py" && echo "✅ config.py found"
-        
-        # Test syntax Python basique
-        python -m py_compile app/main.py && echo "✅ main.py syntax OK"
-        echo "✅ Backend validation completed"
-
-  test-frontend:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Node.js 20
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
+        cache: 'pip'
+        cache-dependency-path: backend/requirements.txt
     
     - name: Install dependencies
-      working-directory: frontend
-      run: npm install
-    
-    - name: TypeScript linting (ESLint)
-      working-directory: frontend
-      run: |
-        echo "🔍 Running ESLint..."
-        npm run lint || echo "⚠️ Linting issues found but continuing"
-        echo "✅ ESLint check completed"
-    
-    - name: TypeScript type checking
-      working-directory: frontend
-      run: |
-        echo "📝 Running TypeScript type check..."
-        npx tsc --noEmit || echo "⚠️ Type issues found but continuing"
-        echo "✅ Type check completed"
-    
-    - name: Security audit (npm audit)
-      working-directory: frontend
-      run: |
-        echo "🛡️ Running npm security audit..."
-        npm audit --audit-level=high || echo "⚠️ Security vulnerabilities found but continuing"
-        echo "✅ Security audit completed"
-    
-    - name: Frontend tests (if available)
-      working-directory: frontend
-      run: |
-        echo "🧪 Running frontend tests..."
-        if npm run test:ci 2>/dev/null; then
-          echo "✅ Tests passed"
-        elif npm run test 2>/dev/null; then
-          echo "✅ Tests passed"
-        else
-          echo "⚠️ No tests found or test command not configured"
-        fi
-    
-    - name: Frontend build validation
-      working-directory: frontend
-      run: |
-        echo "🏗️ Building frontend..."
-        npm run build
-        echo "✅ Frontend build successful"
-
-  # Code Coverage : Mesure la couverture des tests
-  code-coverage:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-    
-    - name: Install dependencies with coverage tools
       working-directory: backend
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-cov coverage
+        pip install pytest pytest-cov pytest-asyncio
     
-    - name: Run tests with coverage
+    - name: Run pytest (MUST PASS)
       working-directory: backend
       env:
         SECRET_TOKEN: test-secret-token
@@ -163,23 +45,120 @@ jobs:
         TORRENTS_DIR: /tmp/pyjoal_test/torrents
         CLIENTS_DIR: /tmp/pyjoal_test/clients
       run: |
-        echo "📊 Running tests with coverage..."
-        if [ -d "tests" ]; then
-          pytest tests/ --cov=app --cov-report=xml --cov-report=html --cov-report=term -v || echo "⚠️ Some tests failed but continuing"
-          echo "✅ Coverage report generated"
-        else
-          echo "⚠️ No tests directory found, skipping coverage"
-        fi
+        echo "🧪 Running backend tests..."
+        pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-fail-under=30
+        echo "✅ All tests passed!"
+    
+    - name: Upload coverage report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: backend/htmlcov/
+        retention-days: 7
 
-  # Docker Image Vulnerability Scan
-  docker-security:
+  lint-backend:
+    name: "Backend Linting"
     runs-on: ubuntu-latest
-    needs: [build-docker]  # Wait for Docker build to complete
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     
     steps:
     - uses: actions/checkout@v4
     
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Install linting tools
+      run: pip install flake8 black isort
+    
+    - name: Flake8 (MUST PASS - syntax errors)
+      working-directory: backend
+      run: flake8 app/ --max-line-length=120 --extend-ignore=E203,W503,E501
+    
+    - name: Black (formatting) - Warning only
+      working-directory: backend
+      continue-on-error: true
+      run: black --check --diff app/
+    
+    - name: isort (imports) - Warning only
+      working-directory: backend
+      continue-on-error: true
+      run: isort --check-only --diff app/
+
+  security-backend:
+    name: "Backend Security"
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    
+    - name: Install security tools
+      working-directory: backend
+      run: |
+        pip install -r requirements.txt
+        pip install bandit safety
+    
+    - name: Bandit (MUST PASS - high severity only)
+      working-directory: backend
+      run: bandit -r app/ -ll -ii
+    
+    - name: Safety (dependency vulnerabilities) - Warning only
+      working-directory: backend
+      continue-on-error: true
+      run: safety check --full-report
+
+  test-frontend:
+    name: "Frontend Tests"
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: frontend
+      run: npm ci
+    
+    - name: TypeScript type check (MUST PASS)
+      working-directory: frontend
+      run: npx tsc --noEmit
+    
+    - name: ESLint (MUST PASS)
+      working-directory: frontend
+      run: npm run lint
+    
+    - name: Run tests
+      working-directory: frontend
+      continue-on-error: true
+      run: npm run test:ci --if-present || echo "No test:ci script"
+    
+    - name: Build frontend (MUST PASS)
+      working-directory: frontend
+      run: npm run build
+
+  # ============================================
+  # STAGE 2: Build (only if tests pass)
+  # ============================================
+
+  # Docker Image Vulnerability Scan
+  docker-security:
+    name: "Docker Security Scan"
+    runs-on: ubuntu-latest
+    needs: [build-docker]
+    
+    steps:
     - name: Download Docker image artifact
       uses: actions/download-artifact@v4
       with:
@@ -188,80 +167,30 @@ jobs:
     
     - name: Load Docker image
       run: |
-        echo "📦 Loading Docker image from artifact..."
-        ls -lh /tmp/pyjoal-image.tar.gz
-        
-        # Load compressed image
         gunzip -c /tmp/pyjoal-image.tar.gz | docker load
-        docker tag pyjoal:latest pyjoal-security-scan:latest
         echo "✅ Image loaded for security scan"
-        
-        # Show image size and info
-        docker images pyjoal-security-scan:latest
     
-    - name: Install and run Trivy security scanner
-      run: |
-        echo "🔍 Installing Trivy scanner..."
-        
-        # Download and install Trivy binary
-        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-        
-        echo "🔍 Scanning Docker image for vulnerabilities..."
-        trivy image --severity HIGH,CRITICAL --no-progress --quiet pyjoal-security-scan:latest || echo "⚠️ Vulnerabilities found but pipeline continues"
-        
-        echo "✅ Security scan completed"
-
-  # API Documentation Generation
-  api-docs:
-    runs-on: ubuntu-latest
-    needs: [test-backend]  # Only needs backend to be tested
-    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v5
+    - name: Run Trivy (CRITICAL vulns = FAIL)
+      uses: aquasecurity/trivy-action@master
       with:
-        python-version: '3.12'
+        image-ref: "pyjoal:latest"
+        format: "table"
+        exit-code: "1"
+        ignore-unfixed: true
+        vuln-type: "os,library"
+        severity: "CRITICAL"
     
-    - name: Generate OpenAPI documentation
-      working-directory: backend
-      run: |
-        echo "📚 Generating API documentation..."
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        
-        # Generate OpenAPI spec if FastAPI app exists
-        python -c "
-        try:
-            from app.main import app
-            import json
-            with open('openapi.json', 'w') as f:
-                json.dump(app.openapi(), f, indent=2)
-            print('✅ OpenAPI spec generated')
-        except Exception as e:
-            print(f'⚠️ Could not generate OpenAPI spec: {e}')
-            # Create empty spec as fallback
-            with open('openapi.json', 'w') as f:
-                json.dump({'openapi': '3.0.0', 'info': {'title': 'PyJOAL API', 'version': '1.3.3'}, 'paths': {}}, f)
-        " || echo "⚠️ FastAPI app not found, creating fallback docs"
-        
-        # Ensure openapi.json exists
-        if [ ! -f openapi.json ]; then
-          echo '{"openapi": "3.0.0", "info": {"title": "PyJOAL API", "version": "1.3.3"}, "paths": {}}' > openapi.json
-          echo "📄 Created fallback OpenAPI documentation"
-        fi
-    
-    - name: Upload API documentation
-      uses: actions/upload-artifact@v4
+    - name: Trivy full report (informational)
+      if: always()
+      uses: aquasecurity/trivy-action@master
       with:
-        name: api-documentation
-        path: backend/openapi.json
-        retention-days: 30
+        image-ref: "pyjoal:latest"
+        format: "table"
+        severity: "HIGH,CRITICAL"
 
   # Smoke Tests : Tests rapides après build
   smoke-tests:
+    name: "Smoke Tests"
     runs-on: ubuntu-latest
     needs: [build-docker]
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
@@ -275,87 +204,84 @@ jobs:
         name: docker-image
         path: /tmp
     
-    - name: Run smoke tests on Docker container
+    - name: Load and run container
       run: |
-        echo "💨 Running smoke tests..."
-        
-        # Load and start container from compressed artifact
-        echo "📦 Loading Docker image..."
-        ls -lh /tmp/pyjoal-image.tar.gz
         gunzip -c /tmp/pyjoal-image.tar.gz | docker load
-        docker tag pyjoal:latest pyjoal-smoke:latest
-        
-        docker run -d --name pyjoal-smoke -p 8080:8080 \
-          -e SECRET_TOKEN=test-token \
-          pyjoal-smoke:latest
-        
-        # Wait for container to be ready
-        echo "⏳ Waiting for container to start..."
-        sleep 15
-        
-        # Basic health check
-        if curl -f http://localhost:8080/health 2>/dev/null || curl -f http://localhost:8080/ 2>/dev/null; then
-          echo "✅ Container is responding"
-        else
-          echo "⚠️ Container health check failed"
-          # Show container logs for debugging
-          docker logs pyjoal-smoke
-        fi
-        
-        # Cleanup
-        docker stop pyjoal-smoke
-        docker rm pyjoal-smoke
-        echo "✅ Smoke tests completed"
+        docker run -d --name pyjoal-test -p 8080:8080 -e SECRET_TOKEN=smoke-test-token pyjoal:latest
+    
+    - name: Wait for startup (MUST PASS)
+      run: |
+        echo "Waiting for container..."
+        for i in $(seq 1 30); do
+          if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
+            echo "Container is healthy!"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "Container failed to start"
+        docker logs pyjoal-test
+        exit 1
+    
+    - name: Test API endpoints
+      run: |
+        curl -sf http://localhost:8080/health && echo " /health OK"
+        curl -sf http://localhost:8080/ > /dev/null && echo " / OK"
+    
+    - name: Cleanup
+      if: always()
+      run: docker rm -f pyjoal-test || true
 
-  # Dependency Updates Check
+  # Dependency Updates Check (informational only)
   dependency-check:
+    name: "Check Outdated Dependencies"
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'schedule'
+    if: github.ref == 'refs/heads/master'
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Check for outdated Python dependencies
+    - name: Check Python dependencies
       working-directory: backend
+      continue-on-error: true
       run: |
-        echo "🔄 Checking for outdated Python packages..."
-        python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip list --outdated || echo "✅ All packages up to date"
+        pip list --outdated || echo "All up to date"
     
-    - name: Check for outdated npm dependencies  
+    - name: Check npm dependencies
       working-directory: frontend
+      continue-on-error: true
       run: |
-        echo "🔄 Checking for outdated npm packages..."
-        npm install
-        npm outdated || echo "✅ All packages up to date"
+        npm ci
+        npm outdated || echo "All up to date"
 
   # Build Docker : Seulement sur master
   build-docker:
+    name: "Build Docker"
     needs: [test-backend, test-frontend]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    
     steps:
     - uses: actions/checkout@v4
+    
+    - name: Get version
+      id: version
+      run: |
+        VERSION=$(cat VERSION | tr -d '\n')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
     
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
     
     - name: Build Docker image
       run: |
-        echo "🐳 Building Docker image for production..."
-        docker build -t pyjoal:latest .
-        echo "✅ Docker build completed"
-        
-        # Show image info
-        docker images pyjoal:latest
-        
-        # Save image as compressed tar for other jobs
-        echo "📦 Saving Docker image as artifact..."
+        docker build -t pyjoal:${{ steps.version.outputs.version }} -t pyjoal:latest .
         docker save pyjoal:latest | gzip > pyjoal-image.tar.gz
-        ls -lh pyjoal-image.tar.gz
-        echo "✅ Docker image saved as compressed artifact"
     
     - name: Upload Docker image artifact
       uses: actions/upload-artifact@v4
@@ -363,26 +289,33 @@ jobs:
         name: docker-image
         path: pyjoal-image.tar.gz
         retention-days: 1
-        compression-level: 0  # Already compressed
+        compression-level: 0
 
-  # Push Docker Hub : SEULEMENT après validation complète
+  # ============================================
+  # STAGE 4: Deploy (only after all validations)
+  # ============================================
+
   push-dockerhub:
-    needs: [build-docker, docker-security, smoke-tests]  # Wait for build + security + smoke tests
+    name: "Push to Docker Hub"
+    needs: [build-docker, docker-security, smoke-tests]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Extract version from VERSION file
+    - name: Get version
       id: version
-      run: |
-        VERSION=$(cat VERSION | tr -d '\n')
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "📋 Using version: $VERSION"
+      run: echo "version=$(cat VERSION | tr -d '\n')" >> $GITHUB_OUTPUT
     
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+    - name: Download Docker image
+      uses: actions/download-artifact@v4
+      with:
+        name: docker-image
+        path: /tmp
+    
+    - name: Load image
+      run: gunzip -c /tmp/pyjoal-image.tar.gz | docker load
     
     - name: Log in to Docker Hub
       uses: docker/login-action@v3
@@ -390,19 +323,14 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
     
-    - name: Build and push Docker image
+    - name: Tag and push
       run: |
         VERSION="${{ steps.version.outputs.version }}"
-        echo "🏷️ Building version: v$VERSION"
-        
-        # Build and push with version from VERSION file
-        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:v$VERSION .
-        docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:latest .
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:v$VERSION
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:latest
-        
-        echo "NEW_VERSION=v$VERSION" >> $GITHUB_ENV
-        echo "✅ Successfully pushed to Docker Hub: v$VERSION"
+        REPO="${{ secrets.DOCKERHUB_USERNAME }}/pyjoal"
+        docker tag pyjoal:latest "$REPO:v$VERSION"
+        docker tag pyjoal:latest "$REPO:latest"
+        docker push "$REPO:v$VERSION"
+        docker push "$REPO:latest"
     
     - name: Update Docker Hub description
       uses: peter-evans/dockerhub-description@v4
@@ -410,12 +338,12 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
         repository: ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal
-        short-description: "PyJOAL - Java Open Acceleration Library for BitTorrent seeding"
         readme-filepath: ./DOCKER_HUB_README.md
 
   # Auto Release : Seulement après publication Docker Hub validée
   auto-release:
-    needs: [push-dockerhub, api-docs]  # Docker Hub validated + documentation ready
+    name: "Create GitHub Release"
+    needs: [push-dockerhub]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     
@@ -423,50 +351,17 @@ jobs:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        token: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Generate version and release
       run: |
         VERSION=$(cat VERSION | tr -d '\n')
-        NEW_VERSION="v$VERSION"
-        
-        echo "Creating release $NEW_VERSION from VERSION file"
-        
-        # Create release notes
-        cat > release_notes.md << EOF
-        ## PyJOAL $NEW_VERSION
-        
-        🚀 **Déploiement automatique depuis master**
-        
-        ### 🐳 Docker Images
-        \`\`\`bash
-        docker pull ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:$NEW_VERSION
-        docker pull ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:latest
-        \`\`\`
-        
-        ### 📝 Commit inclus
-        **Commit:** ${{ github.event.head_commit.message }}
-        **SHA:** \`${{ github.sha }}\`
-        
-        ### 🏃 Quick Start
-        \`\`\`bash
-        docker run -d --name pyjoal \\
-          -p 8080:8080 \\
-          -v \$(pwd)/config:/app/config \\
-          -v \$(pwd)/torrents:/app/torrents \\
-          -e SECRET_TOKEN=your-token \\
-          ${{ secrets.DOCKERHUB_USERNAME }}/pyjoal:latest
-        \`\`\`
-        EOF
-        
-        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+        echo "NEW_VERSION=v$VERSION" >> $GITHUB_ENV
     
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ env.NEW_VERSION }}
         name: PyJOAL ${{ env.NEW_VERSION }}
-        body_path: release_notes.md
         draft: false
         prerelease: false
         generate_release_notes: true
