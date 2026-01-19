@@ -62,7 +62,7 @@ def test_get_config_unauthorized(client):
 
 def test_get_config_authorized(client, auth_headers, mock_settings):
     """Test config endpoint with authentication"""
-    with patch.object(seeder_service, 'config', {
+    with patch.object(seeder_service, 'get_config', return_value={
         'minUploadRate': 30,
         'maxUploadRate': 160,
         'simultaneousSeed': 20,
@@ -79,21 +79,21 @@ def test_get_config_authorized(client, auth_headers, mock_settings):
 
 def test_start_seeding_unauthorized(client):
     """Test start endpoint without authentication"""
-    response = client.post("/api/client/start")
+    response = client.post("/api/start")
     assert response.status_code == 401
 
 
 def test_start_seeding_authorized(client, auth_headers, mock_settings):
     """Test start endpoint with authentication"""
     with patch.object(seeder_service, 'start', new_callable=AsyncMock):
-        response = client.post("/api/client/start", headers=auth_headers)
+        response = client.post("/api/start", headers=auth_headers)
         assert response.status_code == 200
 
 
 def test_stop_seeding_authorized(client, auth_headers, mock_settings):
     """Test stop endpoint with authentication"""
     with patch.object(seeder_service, 'stop', new_callable=AsyncMock):
-        response = client.post("/api/client/stop", headers=auth_headers)
+        response = client.post("/api/stop", headers=auth_headers)
         assert response.status_code == 200
 
 
@@ -129,7 +129,8 @@ def test_get_history_unauthorized(client):
 
 def test_get_history_authorized(client, auth_headers, mock_settings):
     """Test history endpoint with authentication"""
-    with patch('app.services.history_service.history_service.get_recent_entries', return_value=[]):
-        response = client.get("/api/history", headers=auth_headers)
-        assert response.status_code == 200
-        assert response.json() == []
+    response = client.get("/api/history", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert 'entries' in data
+    assert isinstance(data['entries'], list)

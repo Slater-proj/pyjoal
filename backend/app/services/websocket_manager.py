@@ -219,6 +219,33 @@ class WebSocketManager:
             print(f"⚠️  Failed to send to WebSocket: {e}")
             await self.disconnect(websocket)
 
+    async def broadcast_log(self, log_message: str):
+        """Broadcast a log message to all connected clients"""
+        await self._send_immediate({
+            "type": "log",
+            "message": log_message
+        })
+
+    async def cleanup(self):
+        """Close all connections and clean up resources"""
+        # Stop broadcasting first
+        await self.stop_log_broadcasting()
+        
+        # Close all active connections
+        async with self._lock:
+            for connection in self.active_connections.copy():
+                try:
+                    await connection.close()
+                except Exception as e:
+                    logger.debug(f"Error closing WebSocket: {e}")
+            
+            self.active_connections.clear()
+        
+        # Clear message buffer
+        self._message_buffer.clear()
+        
+        logger.info("🧹 WebSocket manager cleaned up")
+
 
 # Global manager instance
 websocket_manager = WebSocketManager()

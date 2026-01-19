@@ -1,17 +1,18 @@
 """
 Tracker Announcer
-Handles announces to BitTorrent trackers
+Handles announces to BitTorrent trackers (HTTP and UDP)
 """
 import asyncio
 import random
 import logging
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 import httpx
 
 from app.core.bittorrent_client import BitTorrentClient
 from app.core.torrent_parser import Torrent
+from app.core.udp_tracker import UDPTracker, is_udp_tracker, UDPTrackerError
 from app.models.schemas import AnnounceResponse
 from app.core.config import settings
 from app.services.history_service import history_service, EventType
@@ -105,6 +106,84 @@ class TrackerAnnouncer:
         # Track real announce success for speed calculation
         self._last_successful_announce: Optional[datetime] = None
         self._last_successful_uploaded: int = 0
+        
+        # 📡 UDP tracker support
+        self._udp_trackers: Dict[str, UDPTracker] = {}
+        
+        # 🔄 Multi-tracker support (announce-list tiers)
+        self._tracker_tiers: List[List[str]] = self._build_tracker_tiers()
+        self._current_tier: int = 0
+        self._current_tracker_idx: int = 0
+        self._tracker_failures: Dict[str, int] = {}  # Track failures per tracker
+    
+    def _build_tracker_tiers(self) -> List[List[str]]:
+        """Build tracker tiers from announce-list (BEP 12)"""
+        tiers = []
+        
+        # Check if torrent has announce-list
+        if hasattr(self.torrent, 'announce_list') and self.torrent.announce_list:
+            for tier in self.torrent.announce_list:
+                if isinstance(tier, list):
+                    valid_trackers = [t for t in tier if t and isinstance(t, str)]
+                    if valid_trackers:
+                        # Randomize order within tier (per spec)
+                        random.shuffle(valid_trackers)
+                        tiers.append(valid_trackers)
+                elif isinstance(tier, str) and tier:
+                    tiers.append([tier])
+        
+        # Fallback to primary tracker if no announce-list
+        if not tiers and self.torrent.primary_tracker:
+            tiers.append([self.torrent.primary_tracker])
+        
+        logger.debug(f"Built {len(tiers)} tracker tier(s) for {self.torrent.name[:30]}")
+        return tiers
+    
+    def _get_next_tracker(self) -> Optional[str]:
+        """Get next tracker to try (respecting tiers)"""
+        if not self._tracker_tiers:
+            return self.torrent.primary_tracker
+        
+        # Try current tier first
+        while self._current_tier < len(self._tracker_tiers):
+            tier = self._tracker_tiers[self._current_tier]
+            
+            while self._current_tracker_idx < len(tier):
+                tracker = tier[self._current_tracker_idx]
+                self._current_tracker_idx += 1
+                
+                # Skip trackers that have failed too many times
+                if self._tracker_failures.get(tracker, 0) < 3:
+                    return tracker
+            
+            # Move to next tier
+            self._current_tier += 1
+            self._current_tracker_idx = 0
+        
+        # Reset and start over if all tiers exhausted
+        self._current_tier = 0
+        self._current_tracker_idx = 0
+        
+        # Return first tracker
+        if self._tracker_tiers and self._tracker_tiers[0]:
+            return self._tracker_tiers[0][0]
+        
+        return self.torrent.primary_tracker
+    
+    def _mark_tracker_success(self, tracker_url: str):
+        """Mark tracker as successful (reset failure count)"""
+        self._tracker_failures[tracker_url] = 0
+        # Move successful tracker to front of its tier
+        for tier in self._tracker_tiers:
+            if tracker_url in tier:
+                tier.remove(tracker_url)
+                tier.insert(0, tracker_url)
+                break
+    
+    def _mark_tracker_failure(self, tracker_url: str):
+        """Mark tracker as failed"""
+        self._tracker_failures[tracker_url] = self._tracker_failures.get(tracker_url, 0) + 1
+        logger.debug(f"Tracker failure #{self._tracker_failures[tracker_url]}: {tracker_url}")
     
     async def start(self):
         """Start announcing"""
@@ -528,45 +607,109 @@ class TrackerAnnouncer:
             )
     
     def _parse_announce_response(self, data: bytes):
-        """Parse tracker response"""
+        """Parse tracker response (BEP 3/23 - supports compact and non-compact)"""
         try:
             import bencodepy
-            response = bencodepy.decode(data)
+            
+            # Handle potential encoding issues
+            try:
+                response = bencodepy.decode(data)
+            except Exception as decode_err:
+                # Try to salvage partial response
+                logger.warning(f"Bencode decode error, trying recovery: {decode_err}")
+                # Some trackers send malformed responses with extra data
+                if b'd' in data and b'e' in data:
+                    # Find the bencoded dict boundaries
+                    start = data.find(b'd')
+                    response = bencodepy.decode(data[start:])
+                else:
+                    raise
             
             logger.debug(f"📥 Parsing tracker response for {self.torrent.name[:30]}")
             
             # Check for failure
             if b'failure reason' in response:
-                reason = response[b'failure reason'].decode('utf-8', errors='ignore')
+                reason = response[b'failure reason']
+                if isinstance(reason, bytes):
+                    reason = reason.decode('utf-8', errors='ignore')
                 logger.error(f"❌ Tracker returned failure: {reason}")
                 self._record_error(f"Tracker failure: {reason}")
                 return
             
-            # Update interval
+            # Check for warning (non-fatal)
+            if b'warning message' in response:
+                warning = response[b'warning message']
+                if isinstance(warning, bytes):
+                    warning = warning.decode('utf-8', errors='ignore')
+                logger.warning(f"⚠️ Tracker warning: {warning}")
+            
+            # Update interval (use min_interval if provided for politeness)
+            if b'min interval' in response:
+                min_interval = response[b'min interval']
+                if isinstance(min_interval, int) and min_interval > 0:
+                    self.announce_interval = max(self.announce_interval, min_interval)
+            
             if b'interval' in response:
-                old_interval = self.announce_interval
-                self.announce_interval = response[b'interval']
-                if old_interval != self.announce_interval:
-                    logger.info(f"⏰ Announce interval updated: {old_interval}s -> {self.announce_interval}s")
+                interval = response[b'interval']
+                if isinstance(interval, int) and interval > 0:
+                    old_interval = self.announce_interval
+                    # Respect tracker's interval but cap at reasonable bounds
+                    self.announce_interval = max(60, min(interval, 3600))
+                    if old_interval != self.announce_interval:
+                        logger.info(f"⏰ Announce interval updated: {old_interval}s -> {self.announce_interval}s")
             
             # Update peer counts
             old_seeders = self.seeders
             old_leechers = self.leechers
-            self.seeders = response.get(b'complete', 0)
-            self.leechers = response.get(b'incomplete', 0)
+            
+            # Handle different key names used by trackers
+            self.seeders = response.get(b'complete', response.get(b'seeders', 0))
+            self.leechers = response.get(b'incomplete', response.get(b'leechers', 0))
+            
+            # Ensure they're integers
+            if not isinstance(self.seeders, int):
+                self.seeders = 0
+            if not isinstance(self.leechers, int):
+                self.leechers = 0
             
             logger.debug(f"   Interval: {self.announce_interval}s")
             logger.debug(f"   Seeders: {old_seeders} -> {self.seeders}")
             logger.debug(f"   Leechers: {old_leechers} -> {self.leechers}")
             
-            # Log peer list if present
+            # Parse peer list (BEP 23 compact format or BEP 3 dictionary format)
+            peer_count = 0
             if b'peers' in response:
                 peers = response[b'peers']
                 if isinstance(peers, bytes):
+                    # Compact format (BEP 23): 6 bytes per peer (4 IP + 2 port)
                     peer_count = len(peers) // 6
-                    logger.debug(f"   Received {peer_count} peer(s) (compact format)")
+                    logger.debug(f"   Received {peer_count} peer(s) (compact IPv4)")
                 elif isinstance(peers, list):
-                    logger.debug(f"   Received {len(peers)} peer(s) (dictionary format)")
+                    # Dictionary format (BEP 3)
+                    peer_count = len(peers)
+                    logger.debug(f"   Received {peer_count} peer(s) (dictionary format)")
+            
+            # IPv6 peers (BEP 7)
+            if b'peers6' in response:
+                peers6 = response[b'peers6']
+                if isinstance(peers6, bytes):
+                    # Compact IPv6: 18 bytes per peer (16 IP + 2 port)
+                    peer6_count = len(peers6) // 18
+                    logger.debug(f"   Received {peer6_count} IPv6 peer(s)")
+                    peer_count += peer6_count
+            
+            # External IP reported by tracker (useful for debugging)
+            if b'external ip' in response:
+                ext_ip = response[b'external ip']
+                if isinstance(ext_ip, bytes) and len(ext_ip) == 4:
+                    import socket
+                    ip_str = socket.inet_ntoa(ext_ip)
+                    logger.debug(f"   Tracker sees our IP as: {ip_str}")
+            
+            # Tracker ID for subsequent announces
+            if b'tracker id' in response:
+                self._tracker_id = response[b'tracker id']
+                logger.debug(f"   Tracker ID received")
             
         except Exception as e:
             logger.error(f"⚠️  Failed to parse announce response: {e}", exc_info=True)
@@ -669,70 +812,239 @@ class TrackerAnnouncer:
                     await asyncio.sleep(backoff_delay)
 
     async def _send_announce_stealth(self, event: Optional[str] = None):
-        """Send announce using stealth profile"""
-        if not self.torrent.primary_tracker:
-            raise Exception("No primary tracker available")
+        """Send announce using client's JOAL-compatible format (HTTP or UDP)"""
+        tracker_url = self._get_next_tracker()
+        if not tracker_url:
+            raise Exception("No tracker available")
         
-        # 🎭 Build announce URL with stealth profile
-        params = self._build_announce_params_stealth(event)
-        url = f"{self.torrent.primary_tracker}?{params}"
+        # Check if UDP tracker
+        if is_udp_tracker(tracker_url):
+            await self._send_announce_udp(tracker_url, event)
+            return
         
-        # 🎭 Use stealth User-Agent
-        headers = {
-            'User-Agent': self.stealth_profile['user_agent']
-        }
+        # HTTP tracker
+        await self._send_announce_http(tracker_url, event)
+    
+    async def _send_announce_http(self, tracker_url: str, event: Optional[str] = None):
+        """Send HTTP announce using client's JOAL-compatible format"""
+        # 🎭 Build announce URL using client's query template (JOAL compatible)
+        url = self.client.build_announce_url(
+            tracker_url=tracker_url,
+            info_hash=self.torrent.info_hash_bytes,
+            peer_id=self.peer_id,
+            port=self.port,
+            uploaded=self.uploaded,
+            downloaded=self.downloaded,
+            left=self.left,
+            event=event
+        )
+        
+        # 🎭 Use client's configured headers
+        headers = self.client.get_request_headers()
         
         timeout = httpx.Timeout(30.0)
         
-        async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
-            logger.debug(f"🎭 Stealth announce to {self.torrent.primary_tracker}")
-            logger.debug(f"   Client: {self.stealth_profile['client_name']}")
-            logger.debug(f"   Port: {self.stealth_profile['session_port']}")
+        async with httpx.AsyncClient(timeout=timeout, headers=headers, verify=False, follow_redirects=True, max_redirects=5) as client:
+            logger.debug(f"🎭 HTTP Announce to {tracker_url}")
+            logger.debug(f"   Client: {self.client.name} {self.client.version}")
+            logger.debug(f"   Port: {self.port}")
+            logger.debug(f"   Peer ID: {self.peer_id}")
+            logger.debug(f"   URL: {url[:150]}...")
             
             start_time = time.time()
             response = await client.get(url)
             response_time = (time.time() - start_time) * 1000
             
             if response.status_code != 200:
-                raise Exception(f"HTTP {response.status_code}: {response.text}")
+                self._mark_tracker_failure(tracker_url)
+                raise Exception(f"HTTP {response.status_code}: {response.text[:200]}")
             
             # Parse and handle response
             self._parse_announce_response(response.content)
             
-            logger.debug(f"✅ Stealth announce successful ({response_time:.0f}ms)")
+            # Mark success
+            self._mark_tracker_success(tracker_url)
             
-            # Record success in history (synchronous call)
+            # Update timing
+            self.last_announce = datetime.utcnow()
+            jitter = random.randint(-self.announce_jitter, self.announce_jitter)
+            self.next_announce = self.last_announce + timedelta(
+                seconds=self.announce_interval + jitter
+            )
+            
+            logger.info(f"✅ HTTP Announce successful ({response_time:.0f}ms) for {self.torrent.name[:40]}")
+            logger.info(f"   Peers: {self.seeders}S/{self.leechers}L | Uploaded: {self.uploaded / (1024**2):.2f} MB")
+            
+            # Record success in history
             history_service.add_entry(
                 EventType.ANNOUNCE_SUCCESS,
-                f"Stealth announce successful for {self.torrent.name}",
-                {"tracker": self.torrent.primary_tracker, "response_time_ms": int(response_time)}
+                f"Announce successful for {self.torrent.name}",
+                {
+                    "tracker": tracker_url, 
+                    "protocol": "HTTP",
+                    "response_time_ms": int(response_time),
+                    "seeders": self.seeders,
+                    "leechers": self.leechers
+                }
             )
-
-    def _build_announce_params_stealth(self, event: Optional[str] = None) -> str:
-        """Build announce parameters using stealth profile"""
-        params = {
-            'info_hash': self.torrent.info_hash,
-            'peer_id': self.peer_id,
-            'port': self.stealth_profile['session_port'],  # Use stealth session port
-            'uploaded': self.uploaded,
-            'downloaded': self.downloaded,
-            'left': self.left,
-            'compact': 1,
-            'no_peer_id': 1
-        }
-        
-        if event:
-            params['event'] = event
+    
+    async def _send_announce_udp(self, tracker_url: str, event: Optional[str] = None):
+        """Send UDP announce (BEP 15)"""
+        try:
+            # Get or create UDP tracker client
+            if tracker_url not in self._udp_trackers:
+                self._udp_trackers[tracker_url] = UDPTracker(tracker_url)
             
-        # Convert to URL parameters
-        param_strings = []
-        for key, value in params.items():
-            if isinstance(value, bytes):
-                param_strings.append(f"{key}={value.hex()}")
-            else:
-                param_strings.append(f"{key}={value}")
+            udp_tracker = self._udp_trackers[tracker_url]
+            
+            logger.debug(f"📡 UDP Announce to {tracker_url}")
+            logger.debug(f"   Event: {event}")
+            logger.debug(f"   Uploaded: {self.uploaded / (1024**2):.2f} MB")
+            
+            start_time = time.time()
+            
+            # Generate key for this session
+            key = self.client.generate_key(self.torrent.info_hash)
+            key_int = int(key, 16) if isinstance(key, str) else key
+            
+            response = await udp_tracker.announce(
+                info_hash=self.torrent.info_hash_bytes,
+                peer_id=self.peer_id,
+                port=self.port,
+                uploaded=self.uploaded,
+                downloaded=self.downloaded,
+                left=self.left,
+                event=event,
+                key=key_int,
+                numwant=200
+            )
+            
+            response_time = (time.time() - start_time) * 1000
+            
+            # Update stats from response
+            self.seeders = response.seeders
+            self.leechers = response.leechers
+            
+            # Use interval from tracker if reasonable
+            if 60 <= response.interval <= 3600:
+                self.announce_interval = response.interval
+            
+            # Mark success
+            self._mark_tracker_success(tracker_url)
+            
+            # Update timing
+            self.last_announce = datetime.utcnow()
+            jitter = random.randint(-self.announce_jitter, self.announce_jitter)
+            self.next_announce = self.last_announce + timedelta(
+                seconds=self.announce_interval + jitter
+            )
+            
+            logger.info(f"✅ UDP Announce successful ({response_time:.0f}ms) for {self.torrent.name[:40]}")
+            logger.info(f"   Peers: {self.seeders}S/{self.leechers}L | Uploaded: {self.uploaded / (1024**2):.2f} MB")
+            
+            # Record success in history
+            history_service.add_entry(
+                EventType.ANNOUNCE_SUCCESS,
+                f"UDP Announce successful for {self.torrent.name}",
+                {
+                    "tracker": tracker_url,
+                    "protocol": "UDP",
+                    "response_time_ms": int(response_time),
+                    "seeders": self.seeders,
+                    "leechers": self.leechers,
+                    "peers_received": len(response.peers)
+                }
+            )
+            
+        except UDPTrackerError as e:
+            self._mark_tracker_failure(tracker_url)
+            logger.warning(f"❌ UDP Announce failed: {e}")
+            raise Exception(f"UDP error: {e}")
+        except Exception as e:
+            self._mark_tracker_failure(tracker_url)
+            logger.warning(f"❌ UDP Announce error: {e}")
+            raise
+    
+    async def scrape_tracker(self) -> Optional[Dict[str, int]]:
+        """Scrape tracker for torrent stats (seeders/leechers)"""
+        tracker_url = self._get_next_tracker()
+        if not tracker_url:
+            return None
         
-        return "&".join(param_strings)
+        try:
+            if is_udp_tracker(tracker_url):
+                return await self._scrape_udp(tracker_url)
+            else:
+                return await self._scrape_http(tracker_url)
+        except Exception as e:
+            logger.debug(f"Scrape failed for {tracker_url}: {e}")
+            return None
+    
+    async def _scrape_udp(self, tracker_url: str) -> Optional[Dict[str, int]]:
+        """Scrape UDP tracker"""
+        try:
+            if tracker_url not in self._udp_trackers:
+                self._udp_trackers[tracker_url] = UDPTracker(tracker_url)
+            
+            udp_tracker = self._udp_trackers[tracker_url]
+            results = await udp_tracker.scrape([self.torrent.info_hash_bytes])
+            
+            if self.torrent.info_hash_bytes in results:
+                scrape = results[self.torrent.info_hash_bytes]
+                return {
+                    'seeders': scrape.seeders,
+                    'leechers': scrape.leechers,
+                    'completed': scrape.completed
+                }
+        except Exception as e:
+            logger.debug(f"UDP scrape failed: {e}")
+        
+        return None
+    
+    async def _scrape_http(self, tracker_url: str) -> Optional[Dict[str, int]]:
+        """Scrape HTTP tracker"""
+        try:
+            # Convert announce URL to scrape URL
+            scrape_url = tracker_url.replace('/announce', '/scrape')
+            if scrape_url == tracker_url:
+                return None  # Not a standard tracker URL
+            
+            # Add info_hash parameter
+            encoded_hash = self.client.url_encode(self.torrent.info_hash_bytes)
+            scrape_url = f"{scrape_url}?info_hash={encoded_hash}"
+            
+            headers = self.client.get_request_headers()
+            
+            async with httpx.AsyncClient(timeout=15.0, headers=headers, verify=False) as client:
+                response = await client.get(scrape_url)
+                
+                if response.status_code == 200:
+                    # Parse bencoded response
+                    return self._parse_scrape_response(response.content)
+        except Exception as e:
+            logger.debug(f"HTTP scrape failed: {e}")
+        
+        return None
+    
+    def _parse_scrape_response(self, data: bytes) -> Optional[Dict[str, int]]:
+        """Parse HTTP scrape response"""
+        try:
+            import bencodepy
+            decoded = bencodepy.decode(data)
+            
+            if b'files' in decoded:
+                files = decoded[b'files']
+                # Get first (should be only) file
+                for info_hash, stats in files.items():
+                    return {
+                        'seeders': stats.get(b'complete', 0),
+                        'leechers': stats.get(b'incomplete', 0),
+                        'completed': stats.get(b'downloaded', 0)
+                    }
+        except Exception as e:
+            logger.debug(f"Scrape parse error: {e}")
+        
+        return None
 
     def _calculate_backoff_delay(self) -> int:
         """Calculate exponential backoff delay"""

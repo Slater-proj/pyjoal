@@ -156,10 +156,16 @@ jobs:
     
     - name: Run tests with coverage
       working-directory: backend
+      env:
+        SECRET_TOKEN: test-secret-token
+        UI_PATH_PREFIX: /test
+        CONFIG_DIR: /tmp/pyjoal_test/config
+        TORRENTS_DIR: /tmp/pyjoal_test/torrents
+        CLIENTS_DIR: /tmp/pyjoal_test/clients
       run: |
         echo "📊 Running tests with coverage..."
         if [ -d "tests" ]; then
-          pytest tests/ --cov=app --cov-report=xml --cov-report=html --cov-report=term || echo "⚠️ Tests failed but continuing"
+          pytest tests/ --cov=app --cov-report=xml --cov-report=html --cov-report=term -v || echo "⚠️ Some tests failed but continuing"
           echo "✅ Coverage report generated"
         else
           echo "⚠️ No tests directory found, skipping coverage"

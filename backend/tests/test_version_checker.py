@@ -17,6 +17,8 @@ class TestVersionChecker:
     def setup_method(self):
         """Setup test fixtures"""
         self.version_checker = VersionChecker()
+        # Override current_version for testing
+        self.version_checker.current_version = "1.5.0"
         # Use a temp file for testing
         self.temp_dir = tempfile.mkdtemp()
         self.version_checker.cache_file = Path(self.temp_dir) / "test_version_cache.json"

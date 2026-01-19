@@ -92,6 +92,18 @@ class HistoryService:
         
         return [e.to_dict() for e in entries]
     
+    def get_recent_entries(self, limit: int = 100) -> List[Dict]:
+        """Get recent history entries (alias for get_entries)"""
+        return self.get_entries(limit=limit)
+    
+    def get_entries_by_type(self, event_type: EventType, limit: int = 100) -> List[Dict]:
+        """Get entries filtered by event type"""
+        return self.get_entries(limit=limit, event_type=event_type)
+    
+    def get_entries_since(self, since: datetime, limit: int = 100) -> List[Dict]:
+        """Get entries since a specific time"""
+        return self.get_entries(limit=limit, since=since)
+    
     def get_stats_by_hour(self, hours: int = 24) -> List[Dict]:
         """Get statistics grouped by hour"""
         cutoff = datetime.utcnow() - timedelta(hours=hours)

@@ -103,22 +103,34 @@ class Torrent:
             raise ValueError(f"Failed to parse torrent: {e}")
     
     def _extract_trackers(self):
-        """Extract tracker URLs from torrent"""
+        """Extract tracker URLs from torrent (with tier support for BEP 12)"""
         trackers = []
+        announce_list = []  # List of tiers, each tier is a list of trackers
         
-        # Single tracker
+        # Single tracker (main announce)
         if b'announce' in self.data:
-            trackers.append(self.data[b'announce'].decode('utf-8', errors='ignore'))
+            main_tracker = self.data[b'announce'].decode('utf-8', errors='ignore')
+            trackers.append(main_tracker)
         
-        # Tracker list
+        # Tracker list (announce-list) with tier support (BEP 12)
         if b'announce-list' in self.data:
             for tier in self.data[b'announce-list']:
+                tier_trackers = []
                 for tracker in tier:
                     url = tracker.decode('utf-8', errors='ignore')
-                    if url not in trackers:
+                    if url and url not in trackers:
                         trackers.append(url)
+                    if url:
+                        tier_trackers.append(url)
+                if tier_trackers:
+                    announce_list.append(tier_trackers)
+        
+        # If no announce-list but have main tracker, create single tier
+        if not announce_list and trackers:
+            announce_list = [[t] for t in trackers]
         
         self.trackers = trackers
+        self.announce_list = announce_list  # BEP 12 tier structure
     
     @property
     def info_hash_bytes(self) -> bytes:

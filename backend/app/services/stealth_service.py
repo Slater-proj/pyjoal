@@ -251,6 +251,177 @@ class StealthService:
         else:  # steady
             return random.uniform(0.95, 1.05)
     
+    # ========== PHASE 4: ADVANCED ANTI-DETECTION ==========
+    
+    def get_gaussian_interval(self, base_interval: int, std_dev_percent: float = 0.15) -> int:
+        """
+        4.1 - Gaussian timing distribution (non-uniform)
+        Returns interval with natural gaussian distribution around base value.
+        More realistic than uniform random - real users don't have perfect timing.
+        
+        Args:
+            base_interval: Base interval in seconds
+            std_dev_percent: Standard deviation as percentage of base (default 15%)
+            
+        Returns:
+            Interval with gaussian distribution, clamped to reasonable bounds
+        """
+        import math
+        
+        # Calculate standard deviation
+        std_dev = base_interval * std_dev_percent
+        
+        # Generate gaussian random value
+        interval = random.gauss(base_interval, std_dev)
+        
+        # Clamp to reasonable bounds (50% to 200% of base)
+        min_interval = max(60, base_interval * 0.5)  # At least 60 seconds
+        max_interval = base_interval * 2.0
+        
+        return int(max(min_interval, min(max_interval, interval)))
+    
+    def simulate_download_to_seed_transition(self, torrent_hash: str, torrent_size: int) -> Dict:
+        """
+        4.2 - Simulate realistic download→seed transition
+        Returns realistic stats for a torrent that just finished downloading.
+        
+        Real behavior:
+        - Download time varies by size and speed
+        - Some bytes are often "corrupt" and re-downloaded
+        - Upload starts before download completes (superseeding)
+        """
+        profile = self.get_session_profile(torrent_hash)
+        
+        # Use torrent hash as seed for consistency
+        seed = int(hashlib.md5(torrent_hash.encode()).hexdigest()[:8], 16)
+        rng = random.Random(seed)
+        
+        # Simulate download speed (1-50 MB/s realistic range)
+        download_speed = rng.uniform(1, 50) * 1024 * 1024  # bytes/s
+        download_time = torrent_size / download_speed
+        
+        # Some data is re-downloaded (0.1-2% typically)
+        corrupt_percent = rng.uniform(0.001, 0.02)
+        extra_downloaded = int(torrent_size * corrupt_percent)
+        total_downloaded = torrent_size + extra_downloaded
+        
+        # Upload during download (superseeding, usually 5-30% of download)
+        upload_during_download_percent = rng.uniform(0.05, 0.30)
+        initial_upload = int(torrent_size * upload_during_download_percent)
+        
+        return {
+            'downloaded': total_downloaded,
+            'uploaded': initial_upload,
+            'corrupt_bytes': extra_downloaded,
+            'download_time_seconds': int(download_time),
+            'left': 0,  # Completed
+            'ratio_at_completion': initial_upload / torrent_size if torrent_size > 0 else 0
+        }
+    
+    def get_rotated_port(self, torrent_hash: str, rotation_interval_hours: int = 24) -> int:
+        """
+        4.3 - Intelligent port rotation (anti-fingerprint)
+        Returns a port that changes periodically but stays consistent within intervals.
+        
+        Real clients sometimes reconnect with different ports due to:
+        - Router reboots, NAT changes
+        - Client restarts
+        - Network changes
+        """
+        profile = self.get_session_profile(torrent_hash)
+        
+        # Calculate which rotation period we're in
+        session_age = datetime.utcnow() - profile['session_start']
+        rotation_period = int(session_age.total_seconds() / (rotation_interval_hours * 3600))
+        
+        # Generate port based on hash + rotation period
+        port_seed = f"{torrent_hash}_{rotation_period}"
+        seed_value = int(hashlib.md5(port_seed.encode()).hexdigest()[:8], 16)
+        
+        # Generate port in ephemeral range (49152-65535)
+        rng = random.Random(seed_value)
+        return rng.randint(49152, 65535)
+    
+    def get_corrupt_field_value(self, torrent_hash: str, total_downloaded: int) -> int:
+        """
+        4.4 - Corrupt field simulation
+        Returns realistic "corrupt" bytes value that some trackers expect.
+        
+        Real torrents have:
+        - Hash check failures (rare)
+        - Network errors requiring re-download
+        - Piece verification failures
+        
+        Typically 0.01-0.5% of total data, sometimes 0.
+        """
+        # Use hash for consistency
+        seed = int(hashlib.md5(f"{torrent_hash}_corrupt".encode()).hexdigest()[:8], 16)
+        rng = random.Random(seed)
+        
+        # 70% chance of no corruption at all (healthy swarm)
+        if rng.random() < 0.70:
+            return 0
+        
+        # Generate small corrupt amount (0.01% to 0.5%)
+        corrupt_percent = rng.uniform(0.0001, 0.005)
+        corrupt_bytes = int(total_downloaded * corrupt_percent)
+        
+        # Round to piece-like boundaries (16KB typical piece)
+        piece_size = 16 * 1024
+        corrupt_bytes = (corrupt_bytes // piece_size) * piece_size
+        
+        return max(0, corrupt_bytes)
+    
+    def get_crypto_support_flags(self, client_name: str) -> Dict[str, bool]:
+        """
+        4.5 - Dynamic crypto support based on client
+        Returns crypto/encryption flags consistent with the emulated client.
+        
+        Different clients have different encryption support:
+        - qBittorrent: Full MSE/PE support
+        - Transmission: RC4 encryption
+        - Deluge: Configurable
+        """
+        crypto_profiles = {
+            'qBittorrent': {
+                'supportcrypto': True,
+                'requirecrypto': False,
+                'cryptoport': True,
+            },
+            'Transmission': {
+                'supportcrypto': True,
+                'requirecrypto': False,
+                'cryptoport': False,
+            },
+            'Deluge': {
+                'supportcrypto': True,
+                'requirecrypto': False,
+                'cryptoport': True,
+            },
+            'uTorrent': {
+                'supportcrypto': True,
+                'requirecrypto': False,
+                'cryptoport': True,
+            },
+            'BitTorrent': {
+                'supportcrypto': True,
+                'requirecrypto': False,
+                'cryptoport': True,
+            },
+        }
+        
+        # Find matching profile or default
+        for name, flags in crypto_profiles.items():
+            if name.lower() in client_name.lower():
+                return flags
+        
+        # Default: basic crypto support
+        return {
+            'supportcrypto': True,
+            'requirecrypto': False,
+            'cryptoport': False,
+        }
+    
     def get_session_stats(self, torrent_hash: str) -> Dict:
         """Get session statistics for monitoring"""
         if torrent_hash not in self.session_profiles:
