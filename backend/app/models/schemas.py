@@ -1,7 +1,7 @@
 """
 Pydantic models for request/response schemas
 """
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -54,40 +54,43 @@ class ConfigSchema(BaseModel):
     stateChangeIntervalMax: int = Field(default=8, ge=1, le=48, description="Maximum interval between state changes (hours)")
     reducedSpeedKbps: int = Field(default=5, ge=1, le=100, description="Upload speed when in reduced mode (kB/s)")
     
-    @validator("minUploadRate")
-    def validate_min_rate(cls, v):
+    @field_validator("minUploadRate")
+    @classmethod
+    def validate_min_rate(cls, v: int) -> int:
         if v < 0:
             raise ValueError("La vitesse minimum ne peut pas être négative")
         if v > 1000000:
             raise ValueError("La vitesse minimum ne peut pas dépasser 1000 MB/s (1000000 KB/s)")
         return v
     
-    @validator("maxUploadRate")
-    def validate_max_rate(cls, v, values):
+    @field_validator("maxUploadRate")
+    @classmethod
+    def validate_max_rate(cls, v: int) -> int:
         if v < 0:
             raise ValueError("La vitesse maximum ne peut pas être négative")
         if v > 1000000:
             raise ValueError("La vitesse maximum ne peut pas dépasser 1000 MB/s (1000000 KB/s)")
-        if "minUploadRate" in values and v > 0 and v < values["minUploadRate"]:
-            raise ValueError(f"La vitesse maximum ({v} KB/s) doit être supérieure ou égale à la vitesse minimum ({values['minUploadRate']} KB/s)")
         return v
     
-    @validator("simultaneousSeed")
-    def validate_simultaneous_seed(cls, v):
+    @field_validator("simultaneousSeed")
+    @classmethod
+    def validate_simultaneous_seed(cls, v: int) -> int:
         if v < 1:
             raise ValueError("Le nombre de seeds simultanés doit être au moins 1")
         if v > 1000:
             raise ValueError("Le nombre de seeds simultanés ne peut pas dépasser 1000")
         return v
     
-    @validator("uploadRatioTarget")
-    def validate_ratio(cls, v):
+    @field_validator("uploadRatioTarget")
+    @classmethod
+    def validate_ratio(cls, v: float) -> float:
         if v < -1:
             raise ValueError("Le ratio cible doit être -1 (illimité) ou un nombre positif")
         return v
     
-    @validator("seedingDurationLimit")
-    def validate_duration(cls, v):
+    @field_validator("seedingDurationLimit")
+    @classmethod
+    def validate_duration(cls, v: float) -> float:
         if v < -1:
             raise ValueError("La durée de seed doit être -1 (illimitée) ou un nombre positif")
         if v > 8760:  # 1 year in hours

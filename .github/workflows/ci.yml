@@ -46,7 +46,8 @@ jobs:
         CLIENTS_DIR: /tmp/pyjoal_test/clients
       run: |
         echo "🧪 Running backend tests..."
-        pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-fail-under=30
+        pip install watchdog  # Required for file_watcher tests
+        pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-fail-under=45
         echo "✅ All tests passed!"
     
     - name: Upload coverage report
