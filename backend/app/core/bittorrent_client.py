@@ -45,9 +45,94 @@ class BitTorrentClient:
         with open(client_path, 'r', encoding='utf-8') as f:
             self.config = json.load(f)
         
+        # Validate JOAL format
+        validation_errors = self._validate_joal_format()
+        if validation_errors:
+            error_msg = f"Invalid JOAL format in {self.client_file}: {', '.join(validation_errors)}"
+            logger.error(f"❌ {error_msg}")
+            # Log to history
+            self._log_validation_error(validation_errors)
+            raise ValueError(error_msg)
+        
         logger.info(f"📱 Loaded client config: {self.name} {self.version}")
         logger.debug(f"   Key algorithm: {self.config.get('keyGenerator', {}).get('algorithm', {}).get('type', 'UNKNOWN')}")
         logger.debug(f"   PeerId algorithm: {self.config.get('peerIdGenerator', {}).get('algorithm', {}).get('type', 'UNKNOWN')}")
+    
+    def _validate_joal_format(self) -> List[str]:
+        """Validate that client file follows JOAL format
+        Returns list of validation errors (empty if valid)
+        """
+        errors = []
+        
+        # Check required fields
+        required_fields = ['name', 'version', 'keyGenerator', 'peerIdGenerator', 'query', 'numwant', 'requestHeaders']
+        for field in required_fields:
+            if field not in self.config:
+                errors.append(f"missing required field '{field}'")
+        
+        # Validate keyGenerator structure
+        if 'keyGenerator' in self.config:
+            kg = self.config['keyGenerator']
+            if not isinstance(kg, dict):
+                errors.append("keyGenerator must be an object")
+            elif 'algorithm' not in kg:
+                errors.append("keyGenerator.algorithm is required")
+            elif not isinstance(kg['algorithm'], dict):
+                errors.append("keyGenerator.algorithm must be an object")
+            elif 'type' not in kg['algorithm']:
+                errors.append("keyGenerator.algorithm.type is required")
+        
+        # Validate peerIdGenerator structure
+        if 'peerIdGenerator' in self.config:
+            pg = self.config['peerIdGenerator']
+            if not isinstance(pg, dict):
+                errors.append("peerIdGenerator must be an object")
+            elif 'algorithm' not in pg:
+                errors.append("peerIdGenerator.algorithm is required")
+            elif not isinstance(pg['algorithm'], dict):
+                errors.append("peerIdGenerator.algorithm must be an object")
+            elif 'type' not in pg['algorithm']:
+                errors.append("peerIdGenerator.algorithm.type is required")
+        
+        # Validate requestHeaders format (must be array of {name, value})
+        if 'requestHeaders' in self.config:
+            headers = self.config['requestHeaders']
+            if not isinstance(headers, list):
+                errors.append("requestHeaders must be an array")
+            else:
+                for i, header in enumerate(headers):
+                    if not isinstance(header, dict):
+                        errors.append(f"requestHeaders[{i}] must be an object")
+                    elif 'name' not in header or 'value' not in header:
+                        errors.append(f"requestHeaders[{i}] must have 'name' and 'value' fields")
+        
+        # Validate query string
+        if 'query' in self.config:
+            query = self.config['query']
+            if not isinstance(query, str) or len(query) == 0:
+                errors.append("query must be a non-empty string")
+            # Check for essential placeholders
+            required_placeholders = ['{infohash}', '{peerid}', '{port}']
+            for placeholder in required_placeholders:
+                if placeholder not in query:
+                    errors.append(f"query must contain {placeholder} placeholder")
+        
+        return errors
+    
+    def _log_validation_error(self, errors: List[str]):
+        """Log validation error to history"""
+        try:
+            from app.services.history_service import history_service
+            history_service.add_entry(
+                event_type="client_validation_error",
+                message=f"Invalid client file format: {self.client_file}",
+                details={
+                    "client_file": self.client_file,
+                    "errors": errors
+                }
+            )
+        except Exception as e:
+            logger.debug(f"Could not log to history: {e}")
     
     # ========== PEER ID GENERATION ==========
     
@@ -461,14 +546,36 @@ class BitTorrentClient:
 
 
 def list_available_clients() -> List[str]:
-    """List all available .client files (sorted alphabetically)"""
+    """List all available and valid .client files (sorted alphabetically)"""
     clients_dir = settings.CLIENTS_DIR
     if not clients_dir.exists():
         return []
     
-    # Sort clients alphabetically for consistent ordering
-    clients = sorted([f.name for f in clients_dir.glob("*.client")])
-    return clients
+    valid_clients = []
+    
+    # Validate each client file
+    for client_file in sorted(clients_dir.glob("*.client")):
+        try:
+            # Try to load and validate the client
+            test_client = BitTorrentClient(client_file.name)
+            valid_clients.append(client_file.name)
+        except (ValueError, FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+            # Invalid client file - log and skip
+            logger.warning(f"⚠️  Skipping invalid client file {client_file.name}: {e}")
+            try:
+                from app.services.history_service import history_service
+                history_service.add_entry(
+                    event_type="client_validation_error",
+                    message=f"Invalid client file skipped: {client_file.name}",
+                    details={
+                        "client_file": client_file.name,
+                        "error": str(e)
+                    }
+                )
+            except Exception:
+                pass  # Ignore history logging errors
+    
+    return valid_clients
 
 
 def get_default_client() -> BitTorrentClient:

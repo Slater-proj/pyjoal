@@ -81,17 +81,114 @@ def generate_client_file(client_key: str, version: str, output_dir: Path):
     """Generate a .client file for the given client and version"""
     client_config = CLIENTS[client_key]
     
-    # Generate client data
-    client_data = {
-        "name": client_config["name"],
-        "version": version,
-        "peerIdPattern": {
-            "prefix": client_config["peer_id_format"](version)
-        },
-        "userAgent": client_config["user_agent_format"](version),
-        "numwant": client_config["numwant"],
-        "requestHeaders": client_config["headers"]
-    }
+    # Generate JOAL-compatible client configuration
+    if client_key == "qbittorrent":
+        # qBittorrent format
+        version_code = version.replace('.', '')[:4].ljust(4, '0')
+        client_data = {
+            "name": client_config["name"],
+            "version": version,
+            "keyGenerator": {
+                "algorithm": {
+                    "type": "HASH_NO_LEADING_ZERO",
+                    "length": 8
+                },
+                "refreshOn": "TORRENT_PERSISTENT",
+                "keyCase": "upper"
+            },
+            "peerIdGenerator": {
+                "algorithm": {
+                    "type": "REGEX",
+                    "pattern": f"-qB{version_code}-[A-Za-z0-9_~\\(\\)\\!\\.\\*-]{{12}}"
+                },
+                "refreshOn": "NEVER",
+                "shouldUrlEncode": False
+            },
+            "urlEncoder": {
+                "encodingExclusionPattern": "[A-Za-z0-9_~\\(\\)\\!\\.\\*-]",
+                "encodedHexCase": "lower"
+            },
+            "query": "info_hash={infohash}&peer_id={peerid}&port={port}&uploaded={uploaded}&downloaded={downloaded}&left={left}&corrupt=0&key={key}&event={event}&numwant={numwant}&compact=1&no_peer_id=1&supportcrypto=1&redundant=0",
+            "numwant": 200,
+            "numwantOnStop": 0,
+            "requestHeaders": [
+                {"name": "User-Agent", "value": f"qBittorrent/{version}"},
+                {"name": "Accept-Encoding", "value": "gzip"},
+                {"name": "Connection", "value": "close"}
+            ]
+        }
+    elif client_key == "deluge":
+        # Deluge format
+        version_code = version.replace('.', '')[:3].ljust(3, '0')
+        client_data = {
+            "name": client_config["name"],
+            "version": version,
+            "keyGenerator": {
+                "algorithm": {
+                    "type": "HASH",
+                    "length": 8
+                },
+                "refreshOn": "TORRENT_PERSISTENT",
+                "keyCase": "upper"
+            },
+            "peerIdGenerator": {
+                "algorithm": {
+                    "type": "REGEX",
+                    "pattern": f"-DE{version_code}s-[A-Za-z0-9]{{12}}"
+                },
+                "refreshOn": "NEVER",
+                "shouldUrlEncode": False
+            },
+            "urlEncoder": {
+                "encodingExclusionPattern": "[A-Za-z0-9_~\\(\\)\\!\\.\\*-]",
+                "encodedHexCase": "lower"
+            },
+            "query": "info_hash={infohash}&peer_id={peerid}&port={port}&uploaded={uploaded}&downloaded={downloaded}&left={left}&key={key}&event={event}&numwant={numwant}&compact=1&no_peer_id=1&supportcrypto=1",
+            "numwant": 200,
+            "numwantOnStop": 0,
+            "requestHeaders": [
+                {"name": "User-Agent", "value": f"Deluge {version}"},
+                {"name": "Accept-Encoding", "value": "gzip, deflate"},
+                {"name": "Connection", "value": "close"}
+            ]
+        }
+    elif client_key == "transmission":
+        # Transmission format
+        version_code = version.replace('.', '')[:3].ljust(3, '0')
+        client_data = {
+            "name": client_config["name"],
+            "version": version,
+            "keyGenerator": {
+                "algorithm": {
+                    "type": "HASH",
+                    "length": 8
+                },
+                "refreshOn": "NEVER",
+                "keyCase": "lower"
+            },
+            "peerIdGenerator": {
+                "algorithm": {
+                    "type": "REGEX",
+                    "pattern": f"-TR{version_code}Z-[A-Za-z0-9]{{12}}"
+                },
+                "refreshOn": "NEVER",
+                "shouldUrlEncode": False
+            },
+            "urlEncoder": {
+                "encodingExclusionPattern": "[A-Za-z0-9_~\\(\\)\\!\\.\\*-]",
+                "encodedHexCase": "upper"
+            },
+            "query": "info_hash={infohash}&peer_id={peerid}&port={port}&uploaded={uploaded}&downloaded={downloaded}&left={left}&key={key}&event={event}&numwant={numwant}&compact=1&supportcrypto=1",
+            "numwant": 80,
+            "numwantOnStop": 0,
+            "requestHeaders": [
+                {"name": "User-Agent", "value": f"Transmission/{version}"},
+                {"name": "Accept-Encoding", "value": "gzip"},
+                {"name": "Connection", "value": "close"}
+            ]
+        }
+    else:
+        raise ValueError(f"Unknown client: {client_key}")
     
     # Create filename
     filename = f"{client_key}-{version}.client"
@@ -99,7 +196,7 @@ def generate_client_file(client_key: str, version: str, output_dir: Path):
     
     # Write to file
     with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump(client_data, f, indent=2)
+        json.dump(client_data, f, indent=4)
         f.write('\n')
     
     print(f"✅ Generated: {filename}")

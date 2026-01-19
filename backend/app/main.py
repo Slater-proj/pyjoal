@@ -95,9 +95,9 @@ async def update_clients_on_startup():
         logger.info("🐳 Running in Docker, client update handled by entrypoint")
         return
     
-    # Find update_clients.py in project root
+    # Find update_clients.py in scripts folder
     project_root = Path(__file__).parent.parent.parent
-    update_script = project_root / "update_clients.py"
+    update_script = project_root / "scripts" / "update_clients.py"
     
     if not update_script.exists():
         logger.warning("⚠️  update_clients.py not found, skipping client update")
