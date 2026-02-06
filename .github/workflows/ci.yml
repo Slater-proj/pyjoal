@@ -58,14 +58,6 @@ jobs:
         path: backend/htmlcov/
         retention-days: 7
 
-    - name: Debug list backend files
-      if: always()
-      run: |
-        echo "Listing backend dir contents for debug"
-        ls -la backend || true
-        echo "Checking for coverage.xml"
-        if [ -f backend/coverage.xml ]; then echo "FOUND backend/coverage.xml"; else echo "MISSING backend/coverage.xml"; fi
-
     - name: Upload coverage to Codecov
       if: github.ref == 'refs/heads/master'
       uses: codecov/codecov-action@v5
@@ -154,10 +146,9 @@ jobs:
       working-directory: frontend
       run: npm run lint
     
-    - name: Run tests
+    - name: Run tests (MUST PASS)
       working-directory: frontend
-      continue-on-error: true
-      run: npm run test:ci --if-present || echo "No test:ci script"
+      run: npm run test:ci
     
     - name: Build frontend (MUST PASS)
       working-directory: frontend
@@ -272,7 +263,7 @@ jobs:
   # Build Docker : Seulement sur master
   build-docker:
     name: "Build Docker"
-    needs: [test-backend, test-frontend]
+    needs: [test-backend, lint-backend, security-backend, test-frontend]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     

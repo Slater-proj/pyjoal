@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { useStore } from '../../store/useStore'
+import { useStore } from '../store/useStore'
 import { act } from '@testing-library/react'
 
 // Mock the API module
-vi.mock('../../services/api', () => ({
+vi.mock('../services/api', () => ({
   api: {
     getConfig: vi.fn(),
     updateConfig: vi.fn(),
@@ -173,7 +173,7 @@ describe('useStore', () => {
 
   describe('API actions', () => {
     it('should fetch config and update store', async () => {
-      const { api } = await import('../../services/api')
+      const { api } = await import('../services/api')
       const mockConfig = {
         minUploadRate: 50,
         maxUploadRate: 200,
@@ -198,7 +198,7 @@ describe('useStore', () => {
     })
 
     it('should handle fetch config error gracefully', async () => {
-      const { api } = await import('../../services/api')
+      const { api } = await import('../services/api')
       vi.mocked(api.getConfig).mockRejectedValueOnce(new Error('Network error'))
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -210,7 +210,7 @@ describe('useStore', () => {
     })
 
     it('should fetch stats and update store', async () => {
-      const { api } = await import('../../services/api')
+      const { api } = await import('../services/api')
       const mockStats = {
         totalUploaded: 10000,
         totalRatio: 2.0,
@@ -232,7 +232,7 @@ describe('useStore', () => {
     })
 
     it('should fetch torrents and update store', async () => {
-      const { api } = await import('../../services/api')
+      const { api } = await import('../services/api')
       const mockTorrents = [
         { id: 'abc', name: 'Test', size: 1024, uploaded: 512, uploadSpeed: 50, ratio: 0.5, seeders: 10, leechers: 5, state: 'seeding', addedAt: '', lastAnnounce: null, nextAnnounce: null, tracker: 'http://tracker.test', seedingTime: 100 },
       ]

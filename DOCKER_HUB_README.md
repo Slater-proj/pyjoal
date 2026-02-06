@@ -19,7 +19,6 @@
 ### Docker Compose (Recommended)
 
 ```yaml
-version: '3.8'
 services:
   pyjoal:
     image: adminclem/pyjoal:latest

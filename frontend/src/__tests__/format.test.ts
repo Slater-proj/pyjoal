@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatBytes, formatSpeed, formatDuration, formatRatio, formatPercentage } from '../../utils/format'
+import { formatBytes, formatSpeed, formatDuration, formatRatio, formatPercentage } from '../utils/format'
 
 describe('formatBytes', () => {
   it('should return "0 B" for zero', () => {
