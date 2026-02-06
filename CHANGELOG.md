@@ -1,6 +1,6 @@
 # Changelog - PyJOAL
 
-## [1.10.2] - 2026-02-06
+## [1.11.2] - 2026-02-06
 
 ### Added
 - **Configurable Peer Speed Tiers**: Upload speed now scales based on total peer count
@@ -18,7 +18,7 @@
 - Torrents with few peers no longer report near-zero upload speed
 
 
-## [1.12.0] - 2026-02-06
+## [1.11.2] - 2026-02-06
 
 ### Added
 - **Configurable Peer Speed Tiers**: Upload speed now scales based on total peer count
