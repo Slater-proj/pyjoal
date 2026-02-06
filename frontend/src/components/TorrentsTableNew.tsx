@@ -415,16 +415,16 @@ export default function TorrentsTable() {
                         <div className="font-semibold text-white truncate text-sm leading-tight" title={torrent.name}>
                           {torrent.name}
                         </div>
-                        {torrent.createdBy && (
-                          <div className="text-xs text-slate-400 mt-0.5 truncate" title={`Created by: ${torrent.createdBy}`}>
-                            🏷️ {torrent.createdBy}
-                          </div>
-                        )}
-                        <div className="text-xs text-slate-400 mt-0.5 truncate">
-                          📡 {torrent.tracker ? new URL(torrent.tracker).hostname : 'Unknown'}
-                        </div>
-                        <div className="text-xs text-slate-500 mt-0.5 truncate" title={torrent.addedAt ? new Date(torrent.addedAt).toLocaleString() : ''}>
-                          📅 {torrent.addedAt ? formatRelativeDate(torrent.addedAt) : '-'}
+                        <div className="text-xs text-slate-400 mt-0.5 truncate flex items-center gap-1.5 flex-wrap">
+                          {torrent.createdBy && (
+                            <span title={`Created by: ${torrent.createdBy}`}>🏷️ {torrent.createdBy}</span>
+                          )}
+                          {torrent.createdBy && <span className="text-slate-600">·</span>}
+                          <span>📡 {torrent.tracker ? new URL(torrent.tracker).hostname : 'Unknown'}</span>
+                          <span className="text-slate-600">·</span>
+                          <span className="text-slate-500" title={torrent.addedAt ? new Date(torrent.addedAt).toLocaleString() : ''}>
+                            📅 {torrent.addedAt ? formatRelativeDate(torrent.addedAt) : '-'}
+                          </span>
                         </div>
                       </div>
                     </div>

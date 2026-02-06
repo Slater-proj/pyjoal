@@ -49,6 +49,13 @@ class StatsSimulator:
         self.state_change_interval_max = config.get("stateChangeIntervalMax", settings.STATE_CHANGE_INTERVAL_MAX)
         self.reduced_speed_kbps = config.get("reducedSpeedKbps", settings.REDUCED_SPEED_KBPS)
         
+        # Peer-based speed tiers
+        self.peer_tier1_max_peers = config.get("peer_tier1_max_peers", settings.PEER_TIER1_MAX_PEERS)
+        self.peer_tier1_speed_percent = config.get("peer_tier1_speed_percent", settings.PEER_TIER1_SPEED_PERCENT)
+        self.peer_tier2_max_peers = config.get("peer_tier2_max_peers", settings.PEER_TIER2_MAX_PEERS)
+        self.peer_tier2_speed_percent = config.get("peer_tier2_speed_percent", settings.PEER_TIER2_SPEED_PERCENT)
+        self.peer_tier3_speed_percent = config.get("peer_tier3_speed_percent", settings.PEER_TIER3_SPEED_PERCENT)
+        
         # Stats
         self.uploaded: int = 0
         self.downloaded: int = torrent_size
@@ -415,15 +422,27 @@ class StatsSimulator:
         
         speed = random.randint(effective_min, effective_max)
         
-        # Apply swarm-aware weighting if peer data is available
+        # Apply peer-based speed tiers if peer data is available
         if seeders >= 0 and leechers > 0:
             total_peers = seeders + leechers
-            leecher_ratio = leechers / total_peers
-            # More leechers relative to seeders = higher demand = more upload opportunity
-            swarm_factor = max(0.2, min(1.5, leecher_ratio * leecher_ratio * min(leechers, 10) / 3))
-            speed = int(speed * swarm_factor)
-            speed = max(1024, speed)
-            logger.debug(f"🎯 {self.torrent_name[:20]}: {speed/1024:.0f} KB/s (tier: {current_tier}, swarm: {seeders}S/{leechers}L, factor: {swarm_factor:.2f})")
+            if total_peers <= self.peer_tier1_max_peers:
+                peer_pct = self.peer_tier1_speed_percent / 100.0
+                tier_label = "T1"
+            elif total_peers <= self.peer_tier2_max_peers:
+                peer_pct = self.peer_tier2_speed_percent / 100.0
+                tier_label = "T2"
+            else:
+                peer_pct = self.peer_tier3_speed_percent / 100.0
+                tier_label = "T3"
+            effective_max_peer = int(min_rate + (max_rate - min_rate) * peer_pct)
+            effective_max_peer = max(min_rate, effective_max_peer)
+            speed = random.randint(min_rate, effective_max_peer)
+            logger.debug(
+                f"🎯 {self.torrent_name[:20]}: {speed / 1024:.0f} KB/s "
+                f"(speed-tier: {current_tier}, peer-tier: {tier_label} "
+                f"[{total_peers}p → {int(peer_pct * 100)}%], "
+                f"range: {min_rate / 1024:.0f}-{effective_max_peer / 1024:.0f})"
+            )
         else:
             logger.debug(f"🎯 {self.torrent_name[:20]}: {speed/1024:.0f} KB/s (tier: {current_tier}, range: {effective_min/1024:.0f}-{effective_max/1024:.0f})")
         
@@ -442,19 +461,19 @@ class StatsSimulator:
 
         min_rate, max_rate = client.get_upload_rate_range()
         
-        base_speed = random.randint(min_rate, max_rate)
-        
         total_peers = seeders + leechers
         
-        # Swarm-weighted speed: more leechers relative to seeders = higher demand = more upload
-        if total_peers > 0:
-            leecher_ratio = leechers / total_peers
-            # Weight proportional to demand: leecher_ratio² * leechers (JOAL formula)
-            swarm_factor = max(0.1, min(1.5, leecher_ratio * leecher_ratio * min(leechers, 10) / 3))
+        # Peer-based speed tiers
+        if total_peers <= self.peer_tier1_max_peers:
+            peer_pct = self.peer_tier1_speed_percent / 100.0
+        elif total_peers <= self.peer_tier2_max_peers:
+            peer_pct = self.peer_tier2_speed_percent / 100.0
         else:
-            swarm_factor = 0.1
+            peer_pct = self.peer_tier3_speed_percent / 100.0
         
-        realistic_speed = int(base_speed * swarm_factor)
+        effective_max_peer = int(min_rate + (max_rate - min_rate) * peer_pct)
+        effective_max_peer = max(min_rate, effective_max_peer)
+        realistic_speed = random.randint(min_rate, effective_max_peer)
         return max(1024, min(max_rate, realistic_speed))
     
     # ================================================================

@@ -54,6 +54,13 @@ class ConfigSchema(BaseModel):
     stateChangeIntervalMax: int = Field(default=8, ge=1, le=48, description="Maximum interval between state changes (hours)")
     reducedSpeedKbps: int = Field(default=5, ge=1, le=100, description="Upload speed when in reduced mode (kB/s)")
     
+    # Peer-based speed tiers
+    peerTier1MaxPeers: int = Field(default=20, ge=1, le=500, description="Tier 1 upper bound (peer count)")
+    peerTier1SpeedPercent: int = Field(default=15, ge=1, le=100, description="Speed % for tier 1")
+    peerTier2MaxPeers: int = Field(default=100, ge=1, le=1000, description="Tier 2 upper bound (peer count)")
+    peerTier2SpeedPercent: int = Field(default=60, ge=1, le=100, description="Speed % for tier 2")
+    peerTier3SpeedPercent: int = Field(default=100, ge=1, le=100, description="Speed % for tier 3 (100+ peers)")
+    
     @field_validator("minUploadRate")
     @classmethod
     def validate_min_rate(cls, v: int) -> int:

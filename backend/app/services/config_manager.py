@@ -120,4 +120,10 @@ class ConfigManager:
             "speedVariationPercent": settings.SPEED_VARIATION_PERCENT,
             # Torrent Behavior Mode
             "seedingOnlyMode": settings.SEEDING_ONLY_MODE,
+            # Peer-based speed tiers
+            "peerTier1MaxPeers": settings.PEER_TIER1_MAX_PEERS,
+            "peerTier1SpeedPercent": settings.PEER_TIER1_SPEED_PERCENT,
+            "peerTier2MaxPeers": settings.PEER_TIER2_MAX_PEERS,
+            "peerTier2SpeedPercent": settings.PEER_TIER2_SPEED_PERCENT,
+            "peerTier3SpeedPercent": settings.PEER_TIER3_SPEED_PERCENT,
         }

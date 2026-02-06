@@ -27,6 +27,12 @@ interface FormDataType {
   stateChangeIntervalMin: number | string
   stateChangeIntervalMax: number | string
   reducedSpeedKbps: number | string
+  // Peer-based speed tiers
+  peerTier1MaxPeers: number | string
+  peerTier1SpeedPercent: number | string
+  peerTier2MaxPeers: number | string
+  peerTier2SpeedPercent: number | string
+  peerTier3SpeedPercent: number | string
 }
 
 export default function SettingsPage() {
@@ -58,7 +64,13 @@ export default function SettingsPage() {
     reducedSpeedDurationMax: 240,
     stateChangeIntervalMin: 2,
     stateChangeIntervalMax: 8,
-    reducedSpeedKbps: 5
+    reducedSpeedKbps: 5,
+    // Peer-based speed tiers
+    peerTier1MaxPeers: 20,
+    peerTier1SpeedPercent: 15,
+    peerTier2MaxPeers: 100,
+    peerTier2SpeedPercent: 60,
+    peerTier3SpeedPercent: 100
   })
 
   useEffect(() => {
@@ -94,6 +106,12 @@ export default function SettingsPage() {
       stateChangeIntervalMin: Number(formData.stateChangeIntervalMin) || 2,
       stateChangeIntervalMax: Number(formData.stateChangeIntervalMax) || 8,
       reducedSpeedKbps: Number(formData.reducedSpeedKbps) || 5,
+      // Peer-based speed tiers
+      peerTier1MaxPeers: Number(formData.peerTier1MaxPeers) || 20,
+      peerTier1SpeedPercent: Number(formData.peerTier1SpeedPercent) || 15,
+      peerTier2MaxPeers: Number(formData.peerTier2MaxPeers) || 100,
+      peerTier2SpeedPercent: Number(formData.peerTier2SpeedPercent) || 60,
+      peerTier3SpeedPercent: Number(formData.peerTier3SpeedPercent) || 100,
     }
     
     // Client-side validation before sending to server
@@ -833,6 +851,170 @@ export default function SettingsPage() {
               <p>• State changes should happen every few hours (2-8h), not minutes</p>
               <p>• Pauses should last 30min to 3 hours like a real user away</p>
               <p>• Reduced speed should be very low (~5 kB/s) like background seeding</p>
+            </div>
+          </div>
+
+          {/* Peer-Based Speed Tiers */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wide flex items-center gap-2">
+              <span>📊</span>
+              <span>Peer-Based Speed Tiers</span>
+            </h3>
+            <p className="text-sm text-slate-400">
+              Adjust upload speed based on total peer count. Each tier defines the percentage of the configured speed range (min→max) used when the torrent has that many peers.
+            </p>
+            
+            {/* Tier 1 */}
+            <div className="bg-slate-700 rounded-lg p-4 space-y-3">
+              <h4 className="text-sm font-medium text-slate-300">Tier 1 — Few peers</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                    Max peers for Tier 1
+                    <div className="group relative">
+                      <HelpCircle className="w-4 h-4 text-slate-500 cursor-help" />
+                      <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg">
+                        0 to this value = Tier 1
+                      </div>
+                    </div>
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white text-sm"
+                    value={formData.peerTier1MaxPeers ?? 20}
+                    onFocus={(e) => { if (Number(e.target.value) === 0) handleChange('peerTier1MaxPeers', '') }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') { handleChange('peerTier1MaxPeers', ''); return; }
+                      const parsed = parseInt(val);
+                      handleChange('peerTier1MaxPeers', isNaN(parsed) ? 20 : Math.max(1, Math.min(500, parsed)));
+                    }}
+                    onBlur={(e) => { if (e.target.value === '') handleChange('peerTier1MaxPeers', 20) }}
+                    min="1" max="500" placeholder="20"
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                    Speed % for Tier 1
+                    <div className="group relative">
+                      <HelpCircle className="w-4 h-4 text-slate-500 cursor-help" />
+                      <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg">
+                        Percentage of speed range used for few peers
+                      </div>
+                    </div>
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white text-sm"
+                    value={formData.peerTier1SpeedPercent ?? 15}
+                    onFocus={(e) => { if (Number(e.target.value) === 0) handleChange('peerTier1SpeedPercent', '') }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') { handleChange('peerTier1SpeedPercent', ''); return; }
+                      const parsed = parseInt(val);
+                      handleChange('peerTier1SpeedPercent', isNaN(parsed) ? 15 : Math.max(1, Math.min(100, parsed)));
+                    }}
+                    onBlur={(e) => { if (e.target.value === '') handleChange('peerTier1SpeedPercent', 15) }}
+                    min="1" max="100" placeholder="15"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            {/* Tier 2 */}
+            <div className="bg-slate-700 rounded-lg p-4 space-y-3">
+              <h4 className="text-sm font-medium text-slate-300">Tier 2 — Medium peers</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                    Max peers for Tier 2
+                    <div className="group relative">
+                      <HelpCircle className="w-4 h-4 text-slate-500 cursor-help" />
+                      <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg">
+                        Tier 1 max to this value = Tier 2
+                      </div>
+                    </div>
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white text-sm"
+                    value={formData.peerTier2MaxPeers ?? 100}
+                    onFocus={(e) => { if (Number(e.target.value) === 0) handleChange('peerTier2MaxPeers', '') }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') { handleChange('peerTier2MaxPeers', ''); return; }
+                      const parsed = parseInt(val);
+                      handleChange('peerTier2MaxPeers', isNaN(parsed) ? 100 : Math.max(1, Math.min(1000, parsed)));
+                    }}
+                    onBlur={(e) => { if (e.target.value === '') handleChange('peerTier2MaxPeers', 100) }}
+                    min="1" max="1000" placeholder="100"
+                  />
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                    Speed % for Tier 2
+                    <div className="group relative">
+                      <HelpCircle className="w-4 h-4 text-slate-500 cursor-help" />
+                      <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg">
+                        Percentage of speed range used for medium peer count
+                      </div>
+                    </div>
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white text-sm"
+                    value={formData.peerTier2SpeedPercent ?? 60}
+                    onFocus={(e) => { if (Number(e.target.value) === 0) handleChange('peerTier2SpeedPercent', '') }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') { handleChange('peerTier2SpeedPercent', ''); return; }
+                      const parsed = parseInt(val);
+                      handleChange('peerTier2SpeedPercent', isNaN(parsed) ? 60 : Math.max(1, Math.min(100, parsed)));
+                    }}
+                    onBlur={(e) => { if (e.target.value === '') handleChange('peerTier2SpeedPercent', 60) }}
+                    min="1" max="100" placeholder="60"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            {/* Tier 3 */}
+            <div className="bg-slate-700 rounded-lg p-4 space-y-3">
+              <h4 className="text-sm font-medium text-slate-300">Tier 3 — Many peers (above Tier 2)</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-slate-400 mb-2">
+                    Speed % for Tier 3
+                    <div className="group relative">
+                      <HelpCircle className="w-4 h-4 text-slate-500 cursor-help" />
+                      <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg">
+                        Percentage of speed range for high peer count torrents
+                      </div>
+                    </div>
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full px-3 py-2 bg-slate-600 border border-slate-500 rounded-lg text-white text-sm"
+                    value={formData.peerTier3SpeedPercent ?? 100}
+                    onFocus={(e) => { if (Number(e.target.value) === 0) handleChange('peerTier3SpeedPercent', '') }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') { handleChange('peerTier3SpeedPercent', ''); return; }
+                      const parsed = parseInt(val);
+                      handleChange('peerTier3SpeedPercent', isNaN(parsed) ? 100 : Math.max(1, Math.min(100, parsed)));
+                    }}
+                    onBlur={(e) => { if (e.target.value === '') handleChange('peerTier3SpeedPercent', 100) }}
+                    min="1" max="100" placeholder="100"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <div className="text-xs text-slate-500 space-y-1 mt-2">
+              <p>💡 <strong>Example:</strong> With min=30 kB/s, max=300 kB/s, Tier 1 at 15%:</p>
+              <p>• Speed range = 30 + (300-30) × 15% = 30–70 kB/s for torrents with ≤{String(formData.peerTier1MaxPeers || 20)} peers</p>
+              <p>• Tier 2 ({String(formData.peerTier2SpeedPercent || 60)}%) → 30–192 kB/s for ≤{String(formData.peerTier2MaxPeers || 100)} peers</p>
+              <p>• Tier 3 ({String(formData.peerTier3SpeedPercent || 100)}%) → 30–300 kB/s for more peers</p>
             </div>
           </div>
 

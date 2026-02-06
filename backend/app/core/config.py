@@ -73,6 +73,13 @@ class Settings(BaseSettings):
     # Reduced speed: the actual speed when in reduced mode (in kB/s)
     REDUCED_SPEED_KBPS: int = Field(default=5, description="Upload speed when in reduced mode (kB/s) - realistic low activity")
     
+    # Peer-based speed tiers (percentage of configured speed range based on total peer count)
+    PEER_TIER1_MAX_PEERS: int = Field(default=20, description="Tier 1 upper bound (0 to this many peers)")
+    PEER_TIER1_SPEED_PERCENT: int = Field(default=15, description="Speed percentage for tier 1 (0-100)")
+    PEER_TIER2_MAX_PEERS: int = Field(default=100, description="Tier 2 upper bound (tier1 to this many peers)")
+    PEER_TIER2_SPEED_PERCENT: int = Field(default=60, description="Speed percentage for tier 2 (0-100)")
+    PEER_TIER3_SPEED_PERCENT: int = Field(default=100, description="Speed percentage for tier 3 / 100+ peers (0-100)")
+    
     class Config:
         env_file = ".env"
         case_sensitive = True

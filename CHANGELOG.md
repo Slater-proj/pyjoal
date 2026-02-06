@@ -1,5 +1,41 @@
 # Changelog - PyJOAL
 
+## [1.10.2] - 2026-02-06
+
+### Added
+- **Configurable Peer Speed Tiers**: Upload speed now scales based on total peer count
+  - Tier 1 (0-20 peers): 15% of speed range (configurable)
+  - Tier 2 (20-100 peers): 60% of speed range (configurable)
+  - Tier 3 (100+ peers): 100% of speed range (configurable)
+  - All thresholds and percentages configurable in Settings page
+- **Peer Speed Tiers Settings Section**: New section in Settings page with inline help
+
+### Changed
+- **Torrent Metadata Layout**: Creator, tracker, and date displayed inline instead of stacked
+- **Speed Calculation**: Replaced broken swarm_factor formula with configurable tier-based system
+
+### Fixed
+- Torrents with few peers no longer report near-zero upload speed
+
+
+## [1.12.0] - 2026-02-06
+
+### Added
+- **Configurable Peer Speed Tiers**: Upload speed now scales based on total peer count
+  - Tier 1 (0-20 peers): 15% of speed range (configurable)
+  - Tier 2 (20-100 peers): 60% of speed range (configurable)
+  - Tier 3 (100+ peers): 100% of speed range (configurable)
+  - All thresholds and percentages configurable in Settings page
+- **Peer Speed Tiers Settings Section**: New "Peer-Based Speed Tiers" section in Settings page with inline help and live examples
+
+### Changed
+- **Torrent Metadata Layout**: Created by, tracker, and added date now displayed inline (single line) instead of stacked vertically — improved readability and reduced row height
+- **Speed Calculation**: Replaced broken swarm_factor formula (leecher_ratio² × min(leechers,10)/3) with configurable tier-based percentage system — ensures all torrents share at minimum configured rate
+
+### Fixed
+- Torrents with few peers no longer report near-zero upload speed (was caused by aggressive swarm_factor formula)
+
+
 ## [1.11.0] - 2026-02-06
 
 ### Added

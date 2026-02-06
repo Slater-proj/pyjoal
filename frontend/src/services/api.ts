@@ -36,6 +36,12 @@ export interface Config {
   speedVariationPercent: number;
   // Behavior Mode Settings
   seedingOnlyMode: boolean;
+  // Peer-based speed tiers
+  peerTier1MaxPeers: number;
+  peerTier1SpeedPercent: number;
+  peerTier2MaxPeers: number;
+  peerTier2SpeedPercent: number;
+  peerTier3SpeedPercent: number;
 }
 
 export interface TorrentStatus {
