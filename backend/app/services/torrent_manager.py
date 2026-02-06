@@ -5,7 +5,7 @@ Handles loading, adding, removing, and archiving torrents
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from app.core.config import settings
 from app.core.bittorrent_client import BitTorrentClient

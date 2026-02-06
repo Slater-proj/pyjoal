@@ -120,7 +120,7 @@ jobs:
     - name: Safety (dependency vulnerabilities) - Warning only
       working-directory: backend
       continue-on-error: true
-      run: safety check --full-report
+      run: safety check --full-report 2>&1 || echo "⚠️ Safety check completed with warnings"
 
   test-frontend:
     name: "Frontend Tests"

@@ -25,7 +25,7 @@ vi.mock('../services/api', () => ({
 describe('useStore', () => {
   beforeEach(() => {
     // Reset store state between tests
-    const store = useStore.getState()
+    useStore.getState()
     useStore.setState({
       config: null,
       torrents: [],

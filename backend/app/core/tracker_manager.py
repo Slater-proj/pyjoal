@@ -6,7 +6,6 @@ Extracted from tracker_announcer.py for better modularity.
 """
 import random
 import logging
-import time
 from typing import Optional, Dict, List
 
 import httpx

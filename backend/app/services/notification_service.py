@@ -6,7 +6,7 @@ Sends alerts for errors, torrent completions (with bilan), and system events.
 import asyncio
 import logging
 import json
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict
 from enum import Enum
 from datetime import datetime, timezone
 from pathlib import Path

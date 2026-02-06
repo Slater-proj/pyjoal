@@ -32,7 +32,7 @@ async def update_notification_config(config: NotificationConfigUpdate):
     """Update notification configuration"""
     update = {k: v for k, v in config.model_dump().items() if v is not None}
     notification_service.update_config(update)
-    logger.info(f"📨 Notification config updated via API")
+    logger.info("📨 Notification config updated via API")
     return {"status": "ok", "config": notification_service.config}
 
 

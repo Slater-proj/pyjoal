@@ -262,7 +262,7 @@ class StatsSimulator:
             logger.debug("   Speed is 0 - no upload progress made")
     
     def update_stats_with_stealth(self, client, stealth_service, torrent_info_hash: str, is_running: bool,
-                                    seeders: int = -1, leechers: int = -1):
+                                  seeders: int = -1, leechers: int = -1):
         """Update stats with stealth service natural variations.
         
         Args:
