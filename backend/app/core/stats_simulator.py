@@ -380,7 +380,7 @@ class StatsSimulator:
         Args:
             client: BitTorrentClient instance
             seeders: Number of seeders (-1 = unknown, use base speed)
-            leechers: Number of leechers (-1 = unknown, use base speed; 0 = zero upload)
+            leechers: Number of leechers (-1 = unknown, use base speed)
         
         Speed tiers:
         - 'paused' / _is_in_fake_pause: 0 bytes/sec
@@ -388,9 +388,10 @@ class StatsSimulator:
         - 'medium': 30-60% of max speed
         - 'high': 60-100% of max speed
         """
-        # CRITICAL stealth: if we KNOW there are 0 leechers, upload is impossible
-        if leechers == 0:
-            logger.debug(f"🛡️ {self.torrent_name[:20]}: 0 leechers → speed=0 (stealth)")
+        # If no peers at all (no seeders AND no leechers), no swarm exists
+        total_peers_check = max(0, seeders) + max(0, leechers)
+        if total_peers_check == 0 and seeders != -1:
+            logger.debug(f"🛡️ {self.torrent_name[:20]}: 0 total peers → speed=0 (no swarm)")
             return 0
         
         if self._is_in_fake_pause:
@@ -423,8 +424,8 @@ class StatsSimulator:
         speed = random.randint(effective_min, effective_max)
         
         # Apply peer-based speed tiers if peer data is available
-        if seeders >= 0 and leechers > 0:
-            total_peers = seeders + leechers
+        total_peers = max(0, seeders) + max(0, leechers)
+        if total_peers > 0:
             if total_peers <= self.peer_tier1_max_peers:
                 peer_pct = self.peer_tier1_speed_percent / 100.0
                 tier_label = "T1"
@@ -451,12 +452,12 @@ class StatsSimulator:
     def get_realistic_upload_speed_based_on_swarm(self, client, seeders: int, leechers: int) -> int:
         """Calculate realistic upload speed based on swarm activity.
         
-        Critical for stealth: a real BitTorrent client cannot upload if there are
-        no leechers, so reporting upload in that case is an instant detection flag.
+        Uses total peer count (seeders + leechers) to determine speed tier.
+        Returns 0 only if no peers exist at all (empty swarm).
         """
-        # CRITICAL: Zero leechers = zero upload (impossible to upload with no downloaders)
-        if leechers == 0:
-            logger.debug(f"🛡️ {self.torrent_name[:20]}: 0 leechers → 0 upload (stealth protection)")
+        # If no peers at all, no swarm exists - no upload possible
+        if (seeders + leechers) == 0:
+            logger.debug(f"🛡️ {self.torrent_name[:20]}: 0 total peers → 0 upload (no swarm)")
             return 0
 
         min_rate, max_rate = client.get_upload_rate_range()

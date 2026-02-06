@@ -1,5 +1,14 @@
 # Changelog - PyJOAL
 
+## [1.11.4] - 2026-02-06
+
+### Fixed
+- **Upload speed with 0 leechers**: Torrents now upload based on total peer count (seeders + leechers), not leechers only. Only truly empty swarms (0 total peers) result in 0 speed.
+- **Favicon not displaying**: Added proper routes for serving favicon.svg, favicon.ico, and apple-touch-icon.png from frontend build
+
+### Changed
+- Speed tier calculation now uses total peers (seeders + leechers) instead of requiring leechers > 0
+
 ## [1.11.3] - 2026-02-06
 
 ### Changed
