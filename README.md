@@ -2,7 +2,7 @@
 
 [![CI/CD Pipeline](https://github.com/Slater-proj/pyjoal/actions/workflows/ci.yml/badge.svg)](https://github.com/Slater-proj/pyjoal/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/Slater-proj/pyjoal/branch/master/graph/badge.svg)](https://codecov.io/gh/Slater-proj/pyjoal)
-[![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
 [![Docker Pulls](https://img.shields.io/docker/pulls/pyjoal/pyjoal.svg)](https://hub.docker.com/r/slaterdev/pyjoal)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 

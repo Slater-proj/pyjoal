@@ -1,5 +1,39 @@
 # Changelog - PyJOAL
 
+## [1.12.1] - 2025-02-07
+
+### Fixed — Critical
+- **Route shadowing**: `/api/torrents/failed` was unreachable because FastAPI matched "failed" as `{info_hash}` — moved it before the path-parameter route
+- **Double upload counting**: Monitor loop (`update_stats_for_display`) and announce loop (`update_stats_with_stealth`) both incremented `self.uploaded` — display path now only updates `upload_speed`
+- **Wrong announce path on start/stop**: Initial "completed" and "stopped" events used legacy `_send_announce()` (single HTTP tracker) instead of `_send_announce_stealth()` (multi-tracker + UDP)
+
+### Fixed — High
+- **Global PRNG corruption**: `random.seed()` / `random.seed(value)` in `StealthService._generate_session_profile()` polluted global state — replaced with local `random.Random(seed)` instance
+- **Dict mutation during iteration**: Monitor loop iterated `self.announcers.values()` while add/remove torrent tasks could mutate it — now iterates a `list()` copy
+- **WebSocket unauthenticated**: `/ws` endpoint had no token verification — now requires `?token=` query parameter matching `SECRET_TOKEN`
+- **Non-deterministic download phase**: `is_in_downloading_phase()` re-rolled `random.randint(5,30)` on every call — delay is now cached per instance
+
+### Fixed — Medium
+- **`datetime.utcnow()` deprecated**: All 16 occurrences replaced with `datetime.now(timezone.utc)` in `stats_simulator.py`
+- **Peak hours midnight wrap**: `range(18, 25)` didn't handle wrap-around (e.g. 20→2) — rewritten with proper modular comparison
+
+### Changed — Frontend
+- **WebSocket auth**: Frontend now sends `?token=` on WebSocket connect
+- **Toast handler**: Added `case "toast"` to WebSocket message handler for server-sent notifications
+- **Removed dead code**: `startAutoRefresh`/`stopAutoRefresh` (unused), `startTorrent`/`stopTorrent` API methods (no backend endpoints)
+- **Logo added**: PyJOAL logo displayed next to the title in the header, linked to dashboard
+
+## [1.11.6] - 2026-02-06
+
+### Fixed
+- **Torrents not uploading with 0 leechers**: Replaced hard `speed=0` when leechers=0 with minimal background speed (~1 KB/s). Tracker peer lists are stale (15-30 min updates) and brief peer connections between announces are normal — a real client doesn't drop to 0
+- **Peer Speed Tiers table hidden despite being active**: The tier configuration table was invisible when `peerSpeedTiersEnabled` was `undefined` (old config), even though the checkbox showed as checked. Now both use `?? true` consistently
+- **`get_realistic_upload_speed_based_on_swarm` ignoring dynamic config**: Now uses runtime config for min/max upload rate instead of static defaults
+
+### Changed
+- **Tier 1 default**: 15% → 40% (was too aggressive for small private tracker swarms ≤20 peers)
+- **Tier 2 default**: 35% → 55% (same reason, ≤50 peers)
+
 ## [1.11.5] - 2026-02-06
 
 ### Added
@@ -15,7 +49,8 @@
 - **Gotify Test**: Test notification button now sends current (unsaved) form values instead of requiring save first
 
 ### Fixed
-- Missing enderPage() call in App.tsx after loading banner addition
+- Missing 
+enderPage() call in App.tsx after loading banner addition
 - Unused Response import in main.py
 
 ## [1.11.4] - 2026-02-06
