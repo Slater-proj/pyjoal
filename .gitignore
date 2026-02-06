@@ -31,28 +31,18 @@ Thumbs.db
 # Project specific
 .env
 config/config.json
-torrents/*.torrent
-!torrents/.gitkeep
-
-# Client files - Keep only base versions
-clients/*-5.*.client
-clients/*-2.2.*.client
-clients/*-4.0.6.client
-# Keep: deluge-2.1.1, qbittorrent-4.6.0, transmission-4.0.5
 
 # Test and debug data
 test-data/
+backend/htmlcov/
+*.coverage
+coverage.xml
+.pytest_cache/
+
+# Temp scripts
+_*.sh
 
 # Keep directories
 !config/.gitkeep
 !torrents/.gitkeep
 !clients/.gitkeep
-
-# Logs
-*.log
-logs/
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
