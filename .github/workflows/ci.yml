@@ -43,7 +43,7 @@ jobs:
         CONFIG_DIR: /tmp/pyjoal_test/config
         TORRENTS_DIR: /tmp/pyjoal_test/torrents
         CLIENTS_DIR: /tmp/pyjoal_test/clients
-      run: pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=45
+      run: pytest tests/ -v --tb=short --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=75
 
     - name: Upload coverage to Codecov
       if: github.ref == 'refs/heads/master' && github.event_name == 'push'
