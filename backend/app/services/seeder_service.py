@@ -333,7 +333,7 @@ class SeederService:
             "isRunning": self.is_running,
             "activeTorrents": active_count,
             "totalTorrents": len(self.announcers),
-            "totalUploaded": total_uploaded,
+            "totalUploaded": int(total_uploaded),
             "totalDownloaded": 0,
             "uploadSpeed": int(total_speed),
             "startedAt": self.started_at.isoformat() if self.started_at else None,
