@@ -160,6 +160,39 @@ class TestActivityHelpers:
         speed = sim.get_activity_based_upload_speed(client)
         assert speed == 0
 
+    def test_speed_background_when_zero_leechers(self):
+        """With 0 leechers, should return minimal background speed, not 0."""
+        sim = _make_simulator()
+        sim.simulate_natural_seeding_start()
+        client = _make_mock_client()
+
+        speed = sim.get_activity_based_upload_speed(client, seeders=10, leechers=0)
+        assert isinstance(speed, int)
+        assert speed > 0, "Speed should not be 0 when leechers=0 (background speed expected)"
+        # Background speed should be small (around 5% of min_rate)
+        assert speed < 10 * 1024, "Background speed should be small (< 10 KB/s)"
+
+    def test_speed_background_when_zero_leechers_not_paused(self):
+        """Background speed should still be 0 if fake paused, even with 0 leechers."""
+        sim = _make_simulator()
+        sim.simulate_natural_seeding_start()
+        sim._is_in_fake_pause = True
+        client = _make_mock_client()
+
+        speed = sim.get_activity_based_upload_speed(client, seeders=10, leechers=0)
+        assert speed == 0, "Paused torrents should have 0 speed regardless of leechers"
+
+    def test_speed_normal_with_leechers(self):
+        """With positive leechers, should return normal speed."""
+        sim = _make_simulator()
+        sim.simulate_natural_seeding_start()
+        sim._current_speed_tier = 'high'
+        client = _make_mock_client()
+
+        speed = sim.get_activity_based_upload_speed(client, seeders=10, leechers=5)
+        assert isinstance(speed, int)
+        assert speed > 1024, "Speed should be significant with active leechers"
+
     def test_is_user_active_hour(self):
         sim = _make_simulator()
         sim.simulate_natural_seeding_start()
@@ -189,7 +222,7 @@ class TestIndividualState:
 
         # Force into pause with past expiry
         sim._is_in_fake_pause = True
-        sim._pause_until = datetime.utcnow() - timedelta(minutes=1)
+        sim._pause_until = datetime.now(timezone.utc) - timedelta(minutes=1)
 
         sim.update_individual_state()
         assert sim._is_in_fake_pause is False

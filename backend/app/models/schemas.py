@@ -57,9 +57,9 @@ class ConfigSchema(BaseModel):
     # Peer-based speed tiers
     peerSpeedTiersEnabled: bool = Field(default=True, description="Enable peer-based speed tiers")
     peerTier1MaxPeers: int = Field(default=20, ge=1, le=500, description="Tier 1 upper bound (peer count)")
-    peerTier1SpeedPercent: int = Field(default=15, ge=1, le=100, description="Speed % for tier 1")
+    peerTier1SpeedPercent: int = Field(default=40, ge=1, le=100, description="Speed % for tier 1")
     peerTier2MaxPeers: int = Field(default=50, ge=1, le=1000, description="Tier 2 upper bound")
-    peerTier2SpeedPercent: int = Field(default=35, ge=1, le=100, description="Speed % for tier 2")
+    peerTier2SpeedPercent: int = Field(default=55, ge=1, le=100, description="Speed % for tier 2")
     peerTier3MaxPeers: int = Field(default=100, ge=1, le=1000, description="Tier 3 upper bound")
     peerTier3SpeedPercent: int = Field(default=60, ge=1, le=100, description="Speed % for tier 3")
     peerTier4MaxPeers: int = Field(default=200, ge=1, le=2000, description="Tier 4 upper bound")
