@@ -1,5 +1,43 @@
 # Changelog - PyJOAL
 
+## [1.11.0] - 2026-02-06
+
+### Added
+- **Created by field** - Display torrent creator from .torrent metadata in UI table
+- **Added date column** - Torrent addition date with relative formatting and tooltip
+- **Stats persistence** - Uploaded bytes, seeding time, and added date survive container restarts (JSON at CONFIG_DIR/torrent_stats.json)
+- **Notification system** - Gotify and generic webhook support with per-event filtering, rate limiting, and test button
+- **Notification settings UI** - Full configuration panel in Settings page (backends, events, test)
+- **Favicon/app icon** - Custom hexagonal logo for browser tabs and bookmarks
+- **API endpoint** - GET/PUT /api/notifications/config + POST /api/notifications/test
+
+### Changed
+- **Stealth: peer-based upload rate** - Zero leechers = zero upload (critical anti-detection), swarm-weighted speed distribution
+- **Mobile responsive** - Horizontal scroll for torrent table on small screens
+- **Auto-archive with reason tracking** - Notification includes full bilan (ratio, uploaded, seeding time)
+
+### Fixed
+- Test datetime naive/aware mismatch in test_pause_ends_when_time_expires
+
+## [1.11.0] - 2026-02-06
+
+### Added
+- **Created by field** - Display torrent creator from .torrent metadata in UI table
+- **Added date column** - Torrent addition date with relative formatting and tooltip
+- **Stats persistence** - Uploaded bytes, seeding time, and added date survive container restarts (JSON at CONFIG_DIR/torrent_stats.json)
+- **Notification system** - Gotify and generic webhook support with per-event filtering, rate limiting, and test button
+- **Notification settings UI** - Full configuration panel in Settings page (backends, events, test)
+- **Favicon/app icon** - Custom hexagonal logo for browser tabs and bookmarks
+- **API endpoint** - GET/PUT /api/notifications/config + POST /api/notifications/test
+
+### Changed
+- **Stealth: peer-based upload rate** - Zero leechers = zero upload (critical anti-detection), swarm-weighted speed distribution using JOAL-inspired leecher_ratio² formula
+- **Mobile responsive** - Horizontal scroll for torrent table on small screens
+- **Auto-archive with reason tracking** - Notification includes full bilan (ratio, uploaded, seeding time)
+
+### Fixed
+- Test datetime naive/aware mismatch in test_pause_ends_when_time_expires
+
 ## [1.10.0] - 2026-02-06
 
 ### Added

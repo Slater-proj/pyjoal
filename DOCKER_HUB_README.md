@@ -12,6 +12,8 @@
 - 🔄 **Auto-update clients** - Automatic client updates
 - 🛡️ **Anti-detection** - Natural activity patterns
 - 🐳 **Docker Ready** - Optimized image (~150MB)
+- 📨 **Notifications** - Gotify + webhook alerts
+- 💾 **Stats persistence** - Survives container restarts
 - 🔐 **Secure** - API token + path obfuscation
 
 ## 🚀 Docker Usage
@@ -95,6 +97,7 @@ http://localhost:8080/{UI_PATH_PREFIX}/ui/
 - **History** - Complete announce history
 - **Settings** - Client, speed, proxy configuration
 - **Logs** - Real-time log console
+- **Notifications** - Gotify/webhook alerts configuration
 
 ## 🛡️ Anti-detection
 

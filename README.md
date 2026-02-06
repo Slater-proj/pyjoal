@@ -29,7 +29,8 @@
 - **Time limit** - Maximum seed duration per torrent
 - **Proxy support** - Built-in HTTP proxy
 - **Advanced stealth** - Jitter, intervals, configurable variations
-
+- **📨 Notifications** - Gotify + webhook with per-event filtering
+- **💾 Stats persistence** - Upload stats survive container restarts
 ### 🐳 Production Ready
 
 - **Optimized Docker** - Multi-stage image (~150MB)
@@ -120,6 +121,8 @@ Interactive Swagger documentation: `http://localhost:8080/docs`
 | POST | `/api/stop` | Stop seeding |
 | GET | `/api/stats` | Statistics |
 | WS | `/ws` | Real-time WebSocket |
+| GET/PUT | `/api/notifications/config` | Notification settings |
+| POST | `/api/notifications/test` | Test notification |
 
 ## 🏗️ Architecture
 
