@@ -208,7 +208,7 @@ class TrackerAnnouncer:
         
         if self._initial_seeding:
             logger.debug("   📋 Sending 'completed' event - torrent finished downloading")
-            await self._send_announce(event="completed")
+            await self._send_announce_stealth(event="completed")
             self._initial_seeding = False
         
         if self.upload_speed == 0:
@@ -241,7 +241,10 @@ class TrackerAnnouncer:
             except asyncio.CancelledError:
                 pass
         
-        await self._send_announce(event="stopped")
+        try:
+            await self._send_announce_stealth(event="stopped")
+        except Exception as e:
+            logger.warning(f"Failed to send 'stopped' announce for {self.torrent.name}: {e}")
     
     # ================================================================
     # Announce loop

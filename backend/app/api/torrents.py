@@ -77,6 +77,24 @@ async def add_torrent(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/torrents/failed")
+async def get_failed_torrents():
+    """Get list of failed torrents for debugging"""
+    failed_torrents = seeder_service.failed_torrents
+    return {
+        "failed_count": len(failed_torrents),
+        "failed_torrents": [
+            {
+                "filename": info["filename"],
+                "error": info["error"],
+                "timestamp": info["timestamp"].isoformat(),
+                "size": info["size"]
+            }
+            for info in failed_torrents.values()
+        ]
+    }
+
+
 @router.delete("/torrents/{info_hash}")
 async def remove_torrent(info_hash: str):
     """Remove a torrent"""
@@ -96,24 +114,6 @@ async def get_torrent(info_hash: str):
         raise HTTPException(status_code=404, detail="Torrent not found")
     
     return torrent_info
-
-
-@router.get("/torrents/failed")
-async def get_failed_torrents():
-    """Get list of failed torrents for debugging"""
-    failed_torrents = seeder_service.failed_torrents
-    return {
-        "failed_count": len(failed_torrents),
-        "failed_torrents": [
-            {
-                "filename": info["filename"],
-                "error": info["error"],
-                "timestamp": info["timestamp"].isoformat(),
-                "size": info["size"]
-            }
-            for info in failed_torrents.values()
-        ]
-    }
 
 
 @router.post("/torrents/reload")
