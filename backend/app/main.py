@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+import asyncio
 import os
 import sys
 import logging
@@ -134,25 +135,17 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting PyJOAL - Python BitTorrent Ratio Client")
     logger.info("=" * 80)
     
-    # Update clients from GitHub
-    await update_clients_on_startup()
+    # Update clients in background (non-blocking)
+    asyncio.create_task(_background_client_update())
     
-    # Initialize seeder service
+    # Initialize seeder service (core only: config + client loading, fast)
     await seeder_service.initialize()
     
     # Start log broadcasting for WebSocket
     await websocket_manager.start_log_broadcasting()
     
-    # Auto-start seeding if torrents are available
-    if seeder_service.has_torrents():
-        logger.info("🚀 Auto-starting seeder service (torrents found)")
-        try:
-            await seeder_service.start()
-            logger.info("✅ Seeder service started automatically")
-        except Exception as e:
-            logger.warning(f"⚠️  Failed to auto-start seeder service: {e}")
-    else:
-        logger.info("💤 No torrents found, seeder service remains stopped")
+    # Defer torrent loading + auto-start to background (non-blocking)
+    asyncio.create_task(_background_torrent_startup())
     
     logger.info("=" * 80)
     logger.info(f"✅ PyJOAL v{APP_VERSION} started successfully on port {settings.PORT}")
@@ -170,6 +163,47 @@ async def lifespan(app: FastAPI):
     await seeder_service.stop()
     logger.info("✅ Shutdown complete")
     logger.info("=" * 80)
+
+
+async def _background_client_update():
+    """Update clients from GitHub in background (non-blocking)."""
+    try:
+        await update_clients_on_startup()
+    except Exception as e:
+        logger.warning(f"Background client update failed: {e}")
+
+
+async def _background_torrent_startup():
+    """Load torrents and auto-start seeding in background.
+    
+    This runs after the HTTP server is already accepting connections,
+    so the UI can load immediately while torrents are being loaded.
+    """
+    try:
+        # Small delay to let the HTTP server finish startup
+        await asyncio.sleep(0.5)
+        
+        # Notify UI that loading has started
+        await websocket_manager.broadcast({"type": "loading_status", "data": {"status": "loading_torrents", "message": "Loading torrents..."}})
+        
+        await seeder_service.load_torrents()
+        
+        if seeder_service.has_torrents():
+            logger.info("🚀 Auto-starting seeder service (torrents found)")
+            try:
+                await seeder_service.start()
+                logger.info("✅ Seeder service started automatically")
+            except Exception as e:
+                logger.warning(f"⚠️  Failed to auto-start seeder service: {e}")
+        else:
+            logger.info("💤 No torrents found, seeder service remains stopped")
+        
+        # Notify UI that loading is complete
+        await websocket_manager.broadcast({"type": "loading_status", "data": {"status": "ready", "message": "Ready"}})
+        
+    except Exception as e:
+        logger.error(f"Background torrent startup failed: {e}", exc_info=True)
+        await websocket_manager.broadcast({"type": "loading_status", "data": {"status": "error", "message": str(e)}})
 
 
 # Create FastAPI app
@@ -319,21 +353,6 @@ if frontend_build_path.exists():
             name="static"
         )
     
-    # Serve favicon and other root-level static files
-    @app.get(f"/{settings.UI_PATH_PREFIX}/favicon.svg")
-    @app.get(f"/{settings.UI_PATH_PREFIX}/favicon.ico")
-    @app.get(f"/{settings.UI_PATH_PREFIX}/apple-touch-icon.png")
-    @app.get("/favicon.svg")
-    @app.get("/favicon.ico")
-    @app.get("/apple-touch-icon.png")
-    async def serve_favicon(request: Request):
-        """Serve favicon and icon files from frontend build"""
-        filename = request.url.path.split("/")[-1]
-        file_path = frontend_build_path / filename
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(file_path)
-        return Response(status_code=404)
-
     @app.get(f"/{settings.UI_PATH_PREFIX}/ui/{{full_path:path}}")
     async def serve_frontend(full_path: str):
         """Serve frontend application with token injection"""
@@ -351,8 +370,6 @@ if frontend_build_path.exists():
             if settings.UI_PATH_PREFIX:
                 html_content = html_content.replace('"/assets/', f'"/{settings.UI_PATH_PREFIX}/assets/')
                 html_content = html_content.replace("'/assets/", f"'/{settings.UI_PATH_PREFIX}/assets/")
-                html_content = html_content.replace('href="/favicon', f'href="/{settings.UI_PATH_PREFIX}/favicon')
-                html_content = html_content.replace('href="/apple-touch-icon', f'href="/{settings.UI_PATH_PREFIX}/apple-touch-icon')
             
             return HTMLResponse(content=html_content)
         
@@ -373,8 +390,6 @@ if frontend_build_path.exists():
         if settings.UI_PATH_PREFIX:
             html_content = html_content.replace('"/assets/', f'"/{settings.UI_PATH_PREFIX}/assets/')
             html_content = html_content.replace("'/assets/", f"'/{settings.UI_PATH_PREFIX}/assets/")
-            html_content = html_content.replace('href="/favicon', f'href="/{settings.UI_PATH_PREFIX}/favicon')
-            html_content = html_content.replace('href="/apple-touch-icon', f'href="/{settings.UI_PATH_PREFIX}/apple-touch-icon')
 
         return HTMLResponse(content=html_content)
 else:

@@ -74,11 +74,16 @@ class Settings(BaseSettings):
     REDUCED_SPEED_KBPS: int = Field(default=5, description="Upload speed when in reduced mode (kB/s) - realistic low activity")
     
     # Peer-based speed tiers (percentage of configured speed range based on total peer count)
+    PEER_SPEED_TIERS_ENABLED: bool = Field(default=True, description="Enable peer-based speed tiers")
     PEER_TIER1_MAX_PEERS: int = Field(default=20, description="Tier 1 upper bound (0 to this many peers)")
     PEER_TIER1_SPEED_PERCENT: int = Field(default=15, description="Speed percentage for tier 1 (0-100)")
-    PEER_TIER2_MAX_PEERS: int = Field(default=100, description="Tier 2 upper bound (tier1 to this many peers)")
-    PEER_TIER2_SPEED_PERCENT: int = Field(default=60, description="Speed percentage for tier 2 (0-100)")
-    PEER_TIER3_SPEED_PERCENT: int = Field(default=100, description="Speed percentage for tier 3 / 100+ peers (0-100)")
+    PEER_TIER2_MAX_PEERS: int = Field(default=50, description="Tier 2 upper bound")
+    PEER_TIER2_SPEED_PERCENT: int = Field(default=35, description="Speed percentage for tier 2 (0-100)")
+    PEER_TIER3_MAX_PEERS: int = Field(default=100, description="Tier 3 upper bound")
+    PEER_TIER3_SPEED_PERCENT: int = Field(default=60, description="Speed percentage for tier 3 (0-100)")
+    PEER_TIER4_MAX_PEERS: int = Field(default=200, description="Tier 4 upper bound")
+    PEER_TIER4_SPEED_PERCENT: int = Field(default=80, description="Speed percentage for tier 4 (0-100)")
+    PEER_TIER5_SPEED_PERCENT: int = Field(default=100, description="Speed percentage for tier 5 / above tier 4 (0-100)")
     
     class Config:
         env_file = ".env"

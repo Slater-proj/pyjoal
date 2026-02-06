@@ -13,7 +13,7 @@ type Page = 'dashboard' | 'settings' | 'history'
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard')
   const [appVersion, setAppVersion] = useState<string>('dev')
-  const { connectWebSocket, fetchConfig, fetchTorrents, fetchStats, fetchClients, toasts, removeToast } = useStore()
+  const { connectWebSocket, fetchConfig, fetchTorrents, fetchStats, fetchClients, toasts, removeToast, loadingStatus } = useStore()
 
   useEffect(() => {
     // Fetch app version
@@ -58,7 +58,15 @@ function App() {
 
       {/* Main Content - Full width */}
       <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-4 pb-20">
-        {renderPage()}
+          {loadingStatus && (
+            <div className="mb-4 px-4 py-3 bg-blue-900/50 border border-blue-500/30 rounded-lg flex items-center gap-3">
+              <div className="w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+              <span className="text-blue-300 text-sm">
+                {loadingStatus === 'loading_torrents' ? 'Loading torrents...' : 'Initializing...'}
+              </span>
+            </div>
+          )}
+          {renderPage()}
       </main>
 
       {/* Bottom Navigation */}

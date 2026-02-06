@@ -99,11 +99,23 @@ class TestConfigManagerLoad:
             mock_settings.ENABLE_SPEED_VARIATION = True
             mock_settings.SPEED_VARIATION_PERCENT = 20
             mock_settings.SEEDING_ONLY_MODE = True
+            mock_settings.PAUSE_DURATION_MIN = 30
+            mock_settings.PAUSE_DURATION_MAX = 180
+            mock_settings.REDUCED_SPEED_DURATION_MIN = 60
+            mock_settings.REDUCED_SPEED_DURATION_MAX = 240
+            mock_settings.STATE_CHANGE_INTERVAL_MIN = 2
+            mock_settings.STATE_CHANGE_INTERVAL_MAX = 8
+            mock_settings.REDUCED_SPEED_KBPS = 5
+            mock_settings.PEER_SPEED_TIERS_ENABLED = True
             mock_settings.PEER_TIER1_MAX_PEERS = 20
             mock_settings.PEER_TIER1_SPEED_PERCENT = 15
-            mock_settings.PEER_TIER2_MAX_PEERS = 100
-            mock_settings.PEER_TIER2_SPEED_PERCENT = 60
-            mock_settings.PEER_TIER3_SPEED_PERCENT = 100
+            mock_settings.PEER_TIER2_MAX_PEERS = 50
+            mock_settings.PEER_TIER2_SPEED_PERCENT = 35
+            mock_settings.PEER_TIER3_MAX_PEERS = 100
+            mock_settings.PEER_TIER3_SPEED_PERCENT = 60
+            mock_settings.PEER_TIER4_MAX_PEERS = 200
+            mock_settings.PEER_TIER4_SPEED_PERCENT = 80
+            mock_settings.PEER_TIER5_SPEED_PERCENT = 100
 
             await cm.load()
 

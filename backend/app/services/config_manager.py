@@ -120,10 +120,23 @@ class ConfigManager:
             "speedVariationPercent": settings.SPEED_VARIATION_PERCENT,
             # Torrent Behavior Mode
             "seedingOnlyMode": settings.SEEDING_ONLY_MODE,
+            # Realistic Behavior Timing
+            "pauseDurationMin": settings.PAUSE_DURATION_MIN,
+            "pauseDurationMax": settings.PAUSE_DURATION_MAX,
+            "reducedSpeedDurationMin": settings.REDUCED_SPEED_DURATION_MIN,
+            "reducedSpeedDurationMax": settings.REDUCED_SPEED_DURATION_MAX,
+            "stateChangeIntervalMin": settings.STATE_CHANGE_INTERVAL_MIN,
+            "stateChangeIntervalMax": settings.STATE_CHANGE_INTERVAL_MAX,
+            "reducedSpeedKbps": settings.REDUCED_SPEED_KBPS,
             # Peer-based speed tiers
+            "peerSpeedTiersEnabled": settings.PEER_SPEED_TIERS_ENABLED,
             "peerTier1MaxPeers": settings.PEER_TIER1_MAX_PEERS,
             "peerTier1SpeedPercent": settings.PEER_TIER1_SPEED_PERCENT,
             "peerTier2MaxPeers": settings.PEER_TIER2_MAX_PEERS,
             "peerTier2SpeedPercent": settings.PEER_TIER2_SPEED_PERCENT,
+            "peerTier3MaxPeers": settings.PEER_TIER3_MAX_PEERS,
             "peerTier3SpeedPercent": settings.PEER_TIER3_SPEED_PERCENT,
+            "peerTier4MaxPeers": settings.PEER_TIER4_MAX_PEERS,
+            "peerTier4SpeedPercent": settings.PEER_TIER4_SPEED_PERCENT,
+            "peerTier5SpeedPercent": settings.PEER_TIER5_SPEED_PERCENT,
         }

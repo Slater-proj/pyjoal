@@ -387,9 +387,22 @@ class NotificationService:
             details,
         )
 
-    async def send_test(self) -> bool:
-        """Send a test notification to verify config."""
-        # Temporarily override event check
+    async def send_test(self, override_config: dict = None) -> bool:
+        """Send a test notification to verify config.
+        
+        Args:
+            override_config: Optional inline config (from unsaved form) to use instead of saved config.
+        """
+        # If inline config provided, temporarily swap it in
+        old_config = None
+        if override_config:
+            old_config = self._config.copy()
+            for key, value in override_config.items():
+                if isinstance(value, dict) and key in self._config and isinstance(self._config[key], dict):
+                    self._config[key] = {**self._config[key], **value}
+                else:
+                    self._config[key] = value
+
         old_enabled = self._config.get("enabled", False)
         self._config["enabled"] = True
         try:
@@ -402,7 +415,10 @@ class NotificationService:
             )
             return True
         finally:
-            self._config["enabled"] = old_enabled
+            if old_config is not None:
+                self._config = old_config
+            else:
+                self._config["enabled"] = old_enabled
 
 
 # Global singleton

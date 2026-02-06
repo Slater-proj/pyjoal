@@ -459,7 +459,15 @@ export default function TorrentsTable() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-center border-r border-slate-700 text-sm overflow-hidden">
-                    <div className="flex items-center justify-center gap-1 overflow-hidden">
+                    <div className="flex items-center justify-center gap-1 overflow-hidden" title={
+                      ratioTarget > 0 && torrent.ratio >= ratioTarget
+                        ? `Ratio target reached (${ratioTarget})`
+                        : torrent.ratio >= 1
+                          ? 'Ratio ≥ 1.0 (good)'
+                          : torrent.ratio >= 0.5
+                            ? 'Ratio 0.5–1.0 (in progress)'
+                            : 'Ratio < 0.5 (starting)'
+                    }>
                       <span className={`font-mono font-bold px-1 py-0.5 rounded text-xs truncate ${ratioTarget > 0 && torrent.ratio >= ratioTarget
                           ? 'bg-green-500/30 text-green-300'
                           : torrent.ratio >= 1

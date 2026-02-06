@@ -16,6 +16,7 @@ interface Store {
   ws: WebSocket | null;
   connected: boolean;
   toasts: ToastNotification[];
+  loadingStatus: string | null;  // null=ready, 'loading_torrents', 'error'
 
   // Actions
   setConfig: (config: Config) => void;
@@ -55,6 +56,7 @@ export const useStore = create<Store>((set, get) => ({
   ws: null,
   connected: false,
   toasts: [],
+  loadingStatus: 'loading_torrents',  // Start as loading until backend signals ready
 
   // Setters
   setConfig: (config) => set({ config }),
@@ -311,6 +313,16 @@ export const useStore = create<Store>((set, get) => ({
             // Update both stats and torrents for comprehensive state
             get().fetchStats();
             get().fetchTorrents();
+            break;
+
+          case "loading_status":
+            if (message.data?.status === 'ready') {
+              set({ loadingStatus: null });
+              get().fetchTorrents();
+              get().fetchStats();
+            } else {
+              set({ loadingStatus: message.data?.status || 'loading' });
+            }
             break;
 
           default:

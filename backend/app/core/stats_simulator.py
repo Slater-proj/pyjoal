@@ -50,11 +50,16 @@ class StatsSimulator:
         self.reduced_speed_kbps = config.get("reducedSpeedKbps", settings.REDUCED_SPEED_KBPS)
         
         # Peer-based speed tiers
+        self.peer_speed_tiers_enabled = config.get("peer_speed_tiers_enabled", settings.PEER_SPEED_TIERS_ENABLED)
         self.peer_tier1_max_peers = config.get("peer_tier1_max_peers", settings.PEER_TIER1_MAX_PEERS)
         self.peer_tier1_speed_percent = config.get("peer_tier1_speed_percent", settings.PEER_TIER1_SPEED_PERCENT)
         self.peer_tier2_max_peers = config.get("peer_tier2_max_peers", settings.PEER_TIER2_MAX_PEERS)
         self.peer_tier2_speed_percent = config.get("peer_tier2_speed_percent", settings.PEER_TIER2_SPEED_PERCENT)
+        self.peer_tier3_max_peers = config.get("peer_tier3_max_peers", settings.PEER_TIER3_MAX_PEERS)
         self.peer_tier3_speed_percent = config.get("peer_tier3_speed_percent", settings.PEER_TIER3_SPEED_PERCENT)
+        self.peer_tier4_max_peers = config.get("peer_tier4_max_peers", settings.PEER_TIER4_MAX_PEERS)
+        self.peer_tier4_speed_percent = config.get("peer_tier4_speed_percent", settings.PEER_TIER4_SPEED_PERCENT)
+        self.peer_tier5_speed_percent = config.get("peer_tier5_speed_percent", settings.PEER_TIER5_SPEED_PERCENT)
         
         # Stats
         self.uploaded: int = 0
@@ -206,7 +211,7 @@ class StatsSimulator:
             upload_delta = int(current_speed * capped_interval)
             self.uploaded += upload_delta
             
-            logger.info(f"📈 UPLOAD: {self.torrent_name[:25]} +{upload_delta/1024:.1f}KB ({current_speed/1024:.1f}KB/s × {capped_interval:.1f}s) = Total: {self.uploaded/(1024*1024):.2f}MB")
+            logger.debug(f"📈 UPLOAD: {self.torrent_name[:25]} +{upload_delta/1024:.1f}KB ({current_speed/1024:.1f}KB/s × {capped_interval:.1f}s) = Total: {self.uploaded/(1024*1024):.2f}MB")
             
             if self._seeding_session_start:
                 self._total_seeding_time = (datetime.utcnow() - self._seeding_session_start).total_seconds()
@@ -380,7 +385,7 @@ class StatsSimulator:
         Args:
             client: BitTorrentClient instance
             seeders: Number of seeders (-1 = unknown, use base speed)
-            leechers: Number of leechers (-1 = unknown, use base speed)
+            leechers: Number of leechers (-1 = unknown, use base speed; 0 = zero upload)
         
         Speed tiers:
         - 'paused' / _is_in_fake_pause: 0 bytes/sec
@@ -388,10 +393,9 @@ class StatsSimulator:
         - 'medium': 30-60% of max speed
         - 'high': 60-100% of max speed
         """
-        # If no peers at all (no seeders AND no leechers), no swarm exists
-        total_peers_check = max(0, seeders) + max(0, leechers)
-        if total_peers_check == 0 and seeders != -1:
-            logger.debug(f"🛡️ {self.torrent_name[:20]}: 0 total peers → speed=0 (no swarm)")
+        # CRITICAL stealth: if we KNOW there are 0 leechers, upload is impossible
+        if leechers == 0:
+            logger.debug(f"🛡️ {self.torrent_name[:20]}: 0 leechers → speed=0 (stealth)")
             return 0
         
         if self._is_in_fake_pause:
@@ -423,18 +427,24 @@ class StatsSimulator:
         
         speed = random.randint(effective_min, effective_max)
         
-        # Apply peer-based speed tiers if peer data is available
-        total_peers = max(0, seeders) + max(0, leechers)
-        if total_peers > 0:
+        # Apply peer-based speed tiers if peer data is available and feature enabled
+        if self.peer_speed_tiers_enabled and seeders >= 0 and leechers > 0:
+            total_peers = seeders + leechers
             if total_peers <= self.peer_tier1_max_peers:
                 peer_pct = self.peer_tier1_speed_percent / 100.0
                 tier_label = "T1"
             elif total_peers <= self.peer_tier2_max_peers:
                 peer_pct = self.peer_tier2_speed_percent / 100.0
                 tier_label = "T2"
-            else:
+            elif total_peers <= self.peer_tier3_max_peers:
                 peer_pct = self.peer_tier3_speed_percent / 100.0
                 tier_label = "T3"
+            elif total_peers <= self.peer_tier4_max_peers:
+                peer_pct = self.peer_tier4_speed_percent / 100.0
+                tier_label = "T4"
+            else:
+                peer_pct = self.peer_tier5_speed_percent / 100.0
+                tier_label = "T5"
             effective_max_peer = int(min_rate + (max_rate - min_rate) * peer_pct)
             effective_max_peer = max(min_rate, effective_max_peer)
             speed = random.randint(min_rate, effective_max_peer)
@@ -452,25 +462,32 @@ class StatsSimulator:
     def get_realistic_upload_speed_based_on_swarm(self, client, seeders: int, leechers: int) -> int:
         """Calculate realistic upload speed based on swarm activity.
         
-        Uses total peer count (seeders + leechers) to determine speed tier.
-        Returns 0 only if no peers exist at all (empty swarm).
+        Critical for stealth: a real BitTorrent client cannot upload if there are
+        no leechers, so reporting upload in that case is an instant detection flag.
         """
-        # If no peers at all, no swarm exists - no upload possible
-        if (seeders + leechers) == 0:
-            logger.debug(f"🛡️ {self.torrent_name[:20]}: 0 total peers → 0 upload (no swarm)")
+        # CRITICAL: Zero leechers = zero upload (impossible to upload with no downloaders)
+        if leechers == 0:
+            logger.debug(f"🛡️ {self.torrent_name[:20]}: 0 leechers → 0 upload (stealth protection)")
             return 0
 
         min_rate, max_rate = client.get_upload_rate_range()
         
         total_peers = seeders + leechers
         
-        # Peer-based speed tiers
-        if total_peers <= self.peer_tier1_max_peers:
-            peer_pct = self.peer_tier1_speed_percent / 100.0
-        elif total_peers <= self.peer_tier2_max_peers:
-            peer_pct = self.peer_tier2_speed_percent / 100.0
+        # Peer-based speed tiers (if enabled)
+        if self.peer_speed_tiers_enabled:
+            if total_peers <= self.peer_tier1_max_peers:
+                peer_pct = self.peer_tier1_speed_percent / 100.0
+            elif total_peers <= self.peer_tier2_max_peers:
+                peer_pct = self.peer_tier2_speed_percent / 100.0
+            elif total_peers <= self.peer_tier3_max_peers:
+                peer_pct = self.peer_tier3_speed_percent / 100.0
+            elif total_peers <= self.peer_tier4_max_peers:
+                peer_pct = self.peer_tier4_speed_percent / 100.0
+            else:
+                peer_pct = self.peer_tier5_speed_percent / 100.0
         else:
-            peer_pct = self.peer_tier3_speed_percent / 100.0
+            peer_pct = 1.0
         
         effective_max_peer = int(min_rate + (max_rate - min_rate) * peer_pct)
         effective_max_peer = max(min_rate, effective_max_peer)
@@ -497,7 +514,7 @@ class StatsSimulator:
                 self._pause_until = None
                 hours_until_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
                 self._next_pause_time = now + timedelta(hours=hours_until_change)
-                logger.info(f"▶️ {self.torrent_name[:25]} resuming from pause, next state change in {hours_until_change}h")
+                logger.debug(f"▶️ {self.torrent_name[:25]} resuming from pause, next state change in {hours_until_change}h")
         else:
             if self._next_pause_time and now >= self._next_pause_time:
                 roll = random.random()
@@ -506,17 +523,17 @@ class StatsSimulator:
                     self._is_in_fake_pause = True
                     self._pause_until = now + timedelta(minutes=pause_minutes)
                     self._current_speed_tier = 'paused'
-                    logger.info(f"⏸️ {self.torrent_name[:25]} entering pause for {pause_minutes}min ({pause_minutes/60:.1f}h)")
+                    logger.debug(f"⏸️ {self.torrent_name[:25]} entering pause for {pause_minutes}min ({pause_minutes/60:.1f}h)")
                 elif roll < 0.6:
                     reduced_minutes = random.randint(self.reduced_speed_duration_min, self.reduced_speed_duration_max)
                     self._current_speed_tier = 'low'
                     self._next_speed_change = now + timedelta(minutes=reduced_minutes)
-                    logger.info(f"🔽 {self.torrent_name[:25]} switching to reduced speed for {reduced_minutes}min ({reduced_minutes/60:.1f}h)")
+                    logger.debug(f"🔽 {self.torrent_name[:25]} switching to reduced speed for {reduced_minutes}min ({reduced_minutes/60:.1f}h)")
                 else:
                     self._current_speed_tier = random.choice(['high', 'medium'])
                     hours_until_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
                     self._next_speed_change = now + timedelta(hours=hours_until_change)
-                    logger.info(f"🔼 {self.torrent_name[:25]} staying at {self._current_speed_tier} speed for {hours_until_change}h")
+                    logger.debug(f"🔼 {self.torrent_name[:25]} staying at {self._current_speed_tier} speed for {hours_until_change}h")
                 
                 hours_until_next = random.randint(self.state_change_interval_min, self.state_change_interval_max)
                 self._next_pause_time = now + timedelta(hours=hours_until_next)
@@ -526,7 +543,7 @@ class StatsSimulator:
                 self._current_speed_tier = random.choice(['high', 'medium'])
                 hours_until_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
                 self._next_speed_change = now + timedelta(hours=hours_until_change)
-                logger.info(f"🔼 {self.torrent_name[:25]} reduced period ended, back to {self._current_speed_tier}")
+                logger.debug(f"🔼 {self.torrent_name[:25]} reduced period ended, back to {self._current_speed_tier}")
     
     def is_in_downloading_phase(self) -> bool:
         """Check if torrent is still in realistic downloading phase."""

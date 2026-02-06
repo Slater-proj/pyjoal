@@ -1,5 +1,23 @@
 # Changelog - PyJOAL
 
+## [1.11.5] - 2026-02-06
+
+### Added
+- **5 Configurable Peer Speed Tiers**: Expanded from 3 to 5 tiers with adjustable max peers and speed percentages, plus effective range preview in settings
+- **Peer Speed Tiers Toggle**: Option to completely enable/disable peer-based speed scaling
+- **Loading Banner**: Blue spinner banner during torrent loading at startup, with WebSocket-driven status updates
+- **Ratio Tooltip**: Hover on ratio cells to see color meaning (green = target reached, yellow = in progress, gray = starting)
+
+### Changed
+- **Faster Startup**: Torrent loading and auto-start now run as background tasks after HTTP server is ready
+- **Log Reduction**: Moved frequent per-upload, per-torrent stats, and per-announce logs from INFO to DEBUG level
+- **Config Sync Fix**: Behavior timing settings (pause duration, reduced speed, etc.) now properly propagate from config to torrent simulators
+- **Gotify Test**: Test notification button now sends current (unsaved) form values instead of requiring save first
+
+### Fixed
+- Missing enderPage() call in App.tsx after loading banner addition
+- Unused Response import in main.py
+
 ## [1.11.4] - 2026-02-06
 
 ### Fixed

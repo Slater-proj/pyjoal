@@ -37,11 +37,16 @@ export interface Config {
   // Behavior Mode Settings
   seedingOnlyMode: boolean;
   // Peer-based speed tiers
+  peerSpeedTiersEnabled: boolean;
   peerTier1MaxPeers: number;
   peerTier1SpeedPercent: number;
   peerTier2MaxPeers: number;
   peerTier2SpeedPercent: number;
+  peerTier3MaxPeers: number;
   peerTier3SpeedPercent: number;
+  peerTier4MaxPeers: number;
+  peerTier4SpeedPercent: number;
+  peerTier5SpeedPercent: number;
 }
 
 export interface TorrentStatus {
@@ -198,8 +203,8 @@ export const api = {
     return data;
   },
 
-  testNotification: async () => {
-    const { data } = await axios.post(`${API_BASE}/notifications/test`);
+  testNotification: async (config?: Partial<NotificationConfig>) => {
+    const { data } = await axios.post(`${API_BASE}/notifications/test`, config || {});
     return data;
   },
 

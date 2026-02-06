@@ -37,10 +37,13 @@ async def update_notification_config(config: NotificationConfigUpdate):
 
 
 @router.post("/notifications/test")
-async def send_test_notification():
-    """Send a test notification to verify configuration"""
+async def send_test_notification(inline_config: Optional[NotificationConfigUpdate] = None):
+    """Send a test notification using inline params (unsaved) or saved config"""
     try:
-        await notification_service.send_test()
+        override = None
+        if inline_config:
+            override = {k: v for k, v in inline_config.model_dump().items() if v is not None}
+        await notification_service.send_test(override_config=override)
         return {"status": "ok", "message": "Test notification sent"}
     except Exception as e:
         logger.error(f"Test notification failed: {e}")

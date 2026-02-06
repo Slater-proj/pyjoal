@@ -367,7 +367,7 @@ class TrackerAnnouncer:
             return
         
         event_str = f" ({event})" if event else ""
-        logger.info(f"📡 Sending announce{event_str} for: {self.torrent.name[:50]}")
+        logger.debug(f"📡 Sending announce{event_str} for: {self.torrent.name[:50]}")
         
         url = self.client.build_announce_url(
             tracker_url=tracker_url,
@@ -412,8 +412,8 @@ class TrackerAnnouncer:
                     seconds=self.announce_interval + jitter
                 )
                 
-                logger.info(f"✅ Announce successful for {self.torrent.name[:50]}")
-                logger.info(f"   Peers: {self.seeders} seeders, {self.leechers} leechers")
+                logger.debug(f"✅ Announce successful for {self.torrent.name[:50]}")
+                logger.debug(f"   Peers: {self.seeders} seeders, {self.leechers} leechers")
                 
                 if self.last_error:
                     self.last_error = None
@@ -533,8 +533,8 @@ class TrackerAnnouncer:
                 seconds=self.announce_interval + jitter
             )
             
-            logger.info(f"✅ HTTP Announce successful ({response_time:.0f}ms) for {self.torrent.name[:40]}")
-            logger.info(f"   Peers: {self.seeders}S/{self.leechers}L | Uploaded: {self.uploaded / (1024**2):.2f} MB")
+            logger.debug(f"✅ HTTP Announce successful ({response_time:.0f}ms) for {self.torrent.name[:40]}")
+            logger.debug(f"   Peers: {self.seeders}S/{self.leechers}L | Uploaded: {self.uploaded / (1024**2):.2f} MB")
             
             history_service.add_entry(
                 EventType.ANNOUNCE_SUCCESS,
@@ -587,8 +587,8 @@ class TrackerAnnouncer:
                 seconds=self.announce_interval + jitter
             )
             
-            logger.info(f"✅ UDP Announce successful ({response_time:.0f}ms) for {self.torrent.name[:40]}")
-            logger.info(f"   Peers: {self.seeders}S/{self.leechers}L | Uploaded: {self.uploaded / (1024**2):.2f} MB")
+            logger.debug(f"✅ UDP Announce successful ({response_time:.0f}ms) for {self.torrent.name[:40]}")
+            logger.debug(f"   Peers: {self.seeders}S/{self.leechers}L | Uploaded: {self.uploaded / (1024**2):.2f} MB")
             
             history_service.add_entry(
                 EventType.ANNOUNCE_SUCCESS,

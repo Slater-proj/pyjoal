@@ -131,10 +131,10 @@ class SeederService:
             logger.critical(f"Failed to load client '{configured_client}': {e}")
             raise RuntimeError(f"Impossible de charger le client '{configured_client}': {e}")
 
-        await self.load_torrents()
+        # Torrent loading is deferred to background task for faster startup
         await self._init_file_watcher()
         await persistence_service.start_autosave()
-        logger.info("Seeder Service initialized successfully")
+        logger.info("Seeder Service initialized successfully (torrents loaded in background)")
 
     # ------------------------------------------------------------------
     # Config delegation
@@ -438,7 +438,7 @@ class SeederService:
                     stats = self.get_stats()
                     torrents = self.get_torrents()
 
-                    logger.info(
+                    logger.debug(
                         f"Monitor #{update_count}: {stats['activeTorrents']} active, "
                         f"speed={stats['uploadSpeed'] / 1024:.1f} KB/s, "
                         f"uploaded={stats['totalUploaded'] / (1024 * 1024):.2f} MB"
@@ -450,7 +450,7 @@ class SeederService:
                     if update_count % 5 == 0:
                         for torrent in torrents:
                             if torrent.get("isRunning"):
-                                logger.info(
+                                logger.debug(
                                     f"   {torrent['name'][:30]}: "
                                     f"speed={torrent['uploadSpeed'] / 1024:.1f}KB/s, "
                                     f"uploaded={torrent['uploaded'] / (1024 * 1024):.2f}MB, "
