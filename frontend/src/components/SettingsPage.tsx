@@ -73,9 +73,9 @@ export default function SettingsPage() {
     // Peer-based speed tiers
     peerSpeedTiersEnabled: true,
     peerTier1MaxPeers: 20,
-    peerTier1SpeedPercent: 15,
+    peerTier1SpeedPercent: 40,
     peerTier2MaxPeers: 50,
-    peerTier2SpeedPercent: 35,
+    peerTier2SpeedPercent: 55,
     peerTier3MaxPeers: 100,
     peerTier3SpeedPercent: 60,
     peerTier4MaxPeers: 200,
@@ -119,9 +119,9 @@ export default function SettingsPage() {
       // Peer-based speed tiers
       peerSpeedTiersEnabled: formData.peerSpeedTiersEnabled ?? true,
       peerTier1MaxPeers: Number(formData.peerTier1MaxPeers) || 20,
-      peerTier1SpeedPercent: Number(formData.peerTier1SpeedPercent) || 15,
+      peerTier1SpeedPercent: Number(formData.peerTier1SpeedPercent) || 40,
       peerTier2MaxPeers: Number(formData.peerTier2MaxPeers) || 50,
-      peerTier2SpeedPercent: Number(formData.peerTier2SpeedPercent) || 35,
+      peerTier2SpeedPercent: Number(formData.peerTier2SpeedPercent) || 55,
       peerTier3MaxPeers: Number(formData.peerTier3MaxPeers) || 100,
       peerTier3SpeedPercent: Number(formData.peerTier3SpeedPercent) || 60,
       peerTier4MaxPeers: Number(formData.peerTier4MaxPeers) || 200,
@@ -894,7 +894,7 @@ export default function SettingsPage() {
               </div>
             </label>
 
-            {formData.peerSpeedTiersEnabled && (
+            {(formData.peerSpeedTiersEnabled ?? true) && (
               <>
                 {/* Compact tier table */}
                 <div className="bg-slate-700 rounded-lg overflow-hidden">
@@ -909,8 +909,8 @@ export default function SettingsPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-600/50">
                       {[
-                        { tier: 1, label: '🟢 T1 — Few', maxKey: 'peerTier1MaxPeers' as const, pctKey: 'peerTier1SpeedPercent' as const, defMax: 20, defPct: 15 },
-                        { tier: 2, label: '🟡 T2 — Some', maxKey: 'peerTier2MaxPeers' as const, pctKey: 'peerTier2SpeedPercent' as const, defMax: 50, defPct: 35 },
+                        { tier: 1, label: '🟢 T1 — Few', maxKey: 'peerTier1MaxPeers' as const, pctKey: 'peerTier1SpeedPercent' as const, defMax: 20, defPct: 40 },
+                        { tier: 2, label: '🟡 T2 — Some', maxKey: 'peerTier2MaxPeers' as const, pctKey: 'peerTier2SpeedPercent' as const, defMax: 50, defPct: 55 },
                         { tier: 3, label: '🟠 T3 — Medium', maxKey: 'peerTier3MaxPeers' as const, pctKey: 'peerTier3SpeedPercent' as const, defMax: 100, defPct: 60 },
                         { tier: 4, label: '🔴 T4 — Many', maxKey: 'peerTier4MaxPeers' as const, pctKey: 'peerTier4SpeedPercent' as const, defMax: 200, defPct: 80 },
                       ].map(({ tier, label, maxKey, pctKey, defMax, defPct }) => {

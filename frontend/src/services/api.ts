@@ -160,16 +160,6 @@ export const api = {
     return data;
   },
 
-  startTorrent: async (infoHash: string) => {
-    const { data } = await axios.post(`${API_BASE}/torrents/${infoHash}/start`);
-    return data;
-  },
-
-  stopTorrent: async (infoHash: string) => {
-    const { data } = await axios.post(`${API_BASE}/torrents/${infoHash}/stop`);
-    return data;
-  },
-
   // Control
   start: async () => {
     const { data } = await axios.post(`${API_BASE}/start`);

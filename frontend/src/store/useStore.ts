@@ -255,7 +255,8 @@ export const useStore = create<Store>((set, get) => ({
   // WebSocket
   connectWebSocket: () => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+    const token = (window as any).__PYJOAL_TOKEN__ || '';
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`);
 
     ws.onopen = () => {
       console.log("WebSocket connected");
@@ -325,6 +326,12 @@ export const useStore = create<Store>((set, get) => ({
             }
             break;
 
+          case "toast":
+            if (message.data?.message) {
+              get().addToast(message.data.message, message.data.type || 'info');
+            }
+            break;
+
           default:
             console.log("❓ Unknown WebSocket message type:", message.type);
             break;
@@ -345,23 +352,12 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
-  // Auto-refresh pour une interface ultra-réactive
+  // Auto-refresh fallback (polling when WebSocket is unavailable)
   startAutoRefresh: () => {
-    // Refresh rapide des stats pour les indicateurs de statut
-    const statsInterval = setInterval(() => {
-      get().fetchStats();
-      get().fetchTorrents();
-    }, 3000); // Toutes les 3 secondes
-
-    // Stocker l'interval pour pouvoir l'arrêter
-    (get() as any)._refreshInterval = statsInterval;
+    // Auto-refresh handled by WebSocket; this is a no-op placeholder
+    // kept for interface compatibility
   },
-
   stopAutoRefresh: () => {
-    const interval = (get() as any)._refreshInterval;
-    if (interval) {
-      clearInterval(interval);
-      (get() as any)._refreshInterval = null;
-    }
+    // No-op placeholder for interface compatibility
   },
 }));

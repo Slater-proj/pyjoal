@@ -64,7 +64,10 @@ export default function Header({ appVersion }: HeaderProps) {
       <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <h1 className="text-3xl font-bold text-blue-400">PyJOAL</h1>
+            <a href="/" className="flex items-center space-x-3 hover:opacity-80 transition-opacity" title="Dashboard">
+              <img src="/favicon.svg" alt="PyJOAL Logo" className="w-9 h-9" />
+              <h1 className="text-3xl font-bold text-blue-400">PyJOAL</h1>
+            </a>
             <span className="text-slate-500 text-sm bg-slate-700 px-2 py-0.5 rounded">v{appVersion}</span>
             
             {/* Live Status with Tooltip */}
