@@ -17,7 +17,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           
       - name: Install dependencies
         run: |
@@ -25,7 +25,7 @@ jobs:
           
       - name: Update client files
         run: |
-          python update_clients.py
+          python scripts/update_clients.py
           
       - name: Check for changes
         id: check_changes

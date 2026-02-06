@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for JOAL Modern
+# Multi-stage Dockerfile for PyJOAL
 # Stage 1: Build Frontend
 FROM node:20-alpine AS frontend-builder
 
@@ -16,7 +16,7 @@ RUN npm run build
 
 
 # Stage 2: Python Runtime
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -33,14 +33,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend code
 COPY backend/app ./app
 
+# Copy VERSION file for dynamic version reading
+COPY VERSION ./
+
 # Copy built frontend from previous stage
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Copy client update script
-COPY update_clients.py ./
+COPY scripts/update_clients.py ./scripts/
 
 # Create necessary directories first
-RUN mkdir -p /app/config /app/torrents /app/clients
+RUN mkdir -p /app/config /app/torrents /app/clients /app/scripts
 
 # Copy default client files (fallback if GitHub is unreachable)
 COPY clients/ ./clients/
