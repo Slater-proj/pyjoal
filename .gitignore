@@ -46,3 +46,7 @@ _*.sh
 !config/.gitkeep
 !torrents/.gitkeep
 !clients/.gitkeep
+
+# Torrent files (runtime data)
+torrents/*.torrent
+torrents/archived/
