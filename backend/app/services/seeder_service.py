@@ -428,7 +428,9 @@ class SeederService:
                 update_count += 1
 
                 try:
-                    for announcer in self.announcers.values():
+                    # Use list() copy to avoid RuntimeError if announcers dict
+                    # is mutated by add/remove torrent tasks concurrently.
+                    for announcer in list(self.announcers.values()):
                         if announcer.is_running:
                             try:
                                 announcer._update_stats_for_display()

@@ -53,25 +53,25 @@ class StealthService:
         return self.session_profiles[torrent_hash]
     
     def _generate_session_profile(self, torrent_hash: str) -> Dict:
-        """Generate consistent session profile based on torrent hash"""
+        """Generate consistent session profile based on torrent hash.
+        
+        Uses a local Random instance to avoid corrupting the global PRNG state.
+        """
         # Use torrent hash as seed for consistent behavior per torrent
         seed_value = int(hashlib.md5(torrent_hash.encode()).hexdigest()[:8], 16)
-        random.seed(seed_value)
+        rng = random.Random(seed_value)
         
         # Select user agent with realistic probability
-        ua_profile = self._select_weighted_user_agent()
-        version = random.choice(ua_profile.versions)
+        ua_profile = self._select_weighted_user_agent(rng)
+        version = rng.choice(ua_profile.versions)
         user_agent = ua_profile.pattern.format(version=version)
         
         # Generate session-consistent port (49152-65535 range)
-        session_port = random.randint(49152, 65535)
+        session_port = rng.randint(49152, 65535)
         
         # Natural behavior timing patterns
-        base_announce_variance = random.uniform(0.15, 0.35)  # 15-35% variance
-        activity_pattern = random.choice(['steady', 'burst', 'declining', 'growing'])
-        
-        # Reset random seed to normal
-        random.seed()
+        base_announce_variance = rng.uniform(0.15, 0.35)  # 15-35% variance
+        activity_pattern = rng.choice(['steady', 'burst', 'declining', 'growing'])
         
         profile = {
             'user_agent': user_agent,
@@ -81,15 +81,17 @@ class StealthService:
             'activity_pattern': activity_pattern,
             'session_start': datetime.now(timezone.utc),
             'last_activity_change': datetime.now(timezone.utc),
-            'connection_stability': random.uniform(0.85, 0.98),  # 85-98% stability
+            'connection_stability': rng.uniform(0.85, 0.98),  # 85-98% stability
         }
         
         return profile
     
-    def _select_weighted_user_agent(self) -> UserAgentProfile:
+    def _select_weighted_user_agent(self, rng: random.Random = None) -> UserAgentProfile:
         """Select user agent based on realistic market share"""
+        if rng is None:
+            rng = random.Random()
         total_weight = sum(profile.weight for profile in self.USER_AGENT_PROFILES)
-        rand_weight = random.randint(1, total_weight)
+        rand_weight = rng.randint(1, total_weight)
         
         current_weight = 0
         for profile in self.USER_AGENT_PROFILES:

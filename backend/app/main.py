@@ -321,7 +321,13 @@ async def health_check():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint for real-time updates"""
+    """WebSocket endpoint for real-time updates (authenticated via query param)"""
+    # Verify token from query parameter (?token=xxx)
+    token = websocket.query_params.get("token", "")
+    if token != settings.SECRET_TOKEN:
+        await websocket.close(code=4003, reason="Forbidden")
+        return
+    
     await websocket_manager.connect(websocket)
     try:
         while True:
