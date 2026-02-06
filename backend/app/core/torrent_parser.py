@@ -5,7 +5,7 @@ Handles .torrent file parsing and metadata extraction with intelligent caching
 import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime
 import bencodepy
 import logging
 
@@ -26,7 +26,8 @@ class Torrent:
         self.name: str = ""
         self.size: int = 0
         self.trackers: List[str] = []
-        self.added_at: datetime = datetime.now(timezone.utc)
+        self.created_by: str = ""
+        self.added_at: datetime = datetime.utcnow()
         
         # Generate cache key based on path and modification time
         stat = self.path.stat()
@@ -60,6 +61,7 @@ class Torrent:
         self.name = cached_metadata['name']
         self.size = cached_metadata['size']
         self.trackers = cached_metadata['trackers']
+        self.created_by = cached_metadata.get('created_by', '')
         # Don't cache the full data dict (memory optimization)
     
     def _get_cacheable_metadata(self) -> Dict:
@@ -69,8 +71,9 @@ class Torrent:
             'name': self.name,
             'size': self.size,
             'trackers': self.trackers,
+            'created_by': self.created_by,
             'filename': self.filename,
-            'parsed_at': datetime.now(timezone.utc).isoformat()
+            'parsed_at': datetime.utcnow().isoformat()
         }
     
     def _parse_from_file(self):
@@ -94,6 +97,13 @@ class Torrent:
             else:
                 # Single file torrent
                 self.size = info.get(b'length', 0)
+            
+            # Extract created by
+            raw_created_by = self.data.get(b'created by', b'')
+            if isinstance(raw_created_by, bytes):
+                self.created_by = raw_created_by.decode('utf-8', errors='ignore')
+            else:
+                self.created_by = str(raw_created_by) if raw_created_by else ''
             
             # Extract trackers
             self._extract_trackers()

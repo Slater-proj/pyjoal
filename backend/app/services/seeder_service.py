@@ -19,6 +19,8 @@ from app.core.cache_manager import cache_manager
 from app.services.resource_optimizer import resource_optimizer
 from app.services.config_manager import ConfigManager
 from app.services.torrent_manager import TorrentManager
+from app.services.persistence_service import persistence_service
+from app.services.notification_service import notification_service
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +94,8 @@ class SeederService:
 
         logger.info("Initializing Seeder Service...")
 
+        persistence_service.load()
+        notification_service.load()
         await self._cfg.load()
         logger.info(f"   Configuration loaded: {self._config}")
 
@@ -129,6 +133,7 @@ class SeederService:
 
         await self.load_torrents()
         await self._init_file_watcher()
+        await persistence_service.start_autosave()
         logger.info("Seeder Service initialized successfully")
 
     # ------------------------------------------------------------------
@@ -206,6 +211,7 @@ class SeederService:
         )
 
     async def remove_torrent(self, info_hash: str):
+        persistence_service.remove(info_hash)
         await self._tm.remove_torrent(info_hash)
 
     def get_torrents(self) -> List[Dict]:
@@ -251,6 +257,9 @@ class SeederService:
         await websocket_manager.broadcast({"type": "seeding_started", "data": {"started_at": self.started_at.isoformat()}})
         logger.info(f"Seeding started successfully ({len(announcers_to_start)} active)")
 
+        # Send notification
+        await notification_service.notify_system_start(len(announcers_to_start))
+
     async def stop(self):
         """Stop seeding"""
         if not self.is_running:
@@ -282,6 +291,10 @@ class SeederService:
             logger.debug("   Stopping file watcher...")
             await self.file_watcher.stop()
 
+        # Persist stats before stopping announcers
+        self._persist_all_stats()
+        await persistence_service.stop_autosave()
+
         active_count = sum(1 for a in self.announcers.values() if a.is_running)
         logger.info(f"   Stopping {active_count} active announcer(s)...")
         tasks = [announcer.stop() for announcer in self.announcers.values()]
@@ -298,6 +311,10 @@ class SeederService:
         )
         await websocket_manager.broadcast({"type": "torrents_update", "data": {"torrents": self.get_torrents()}})
         logger.info("Seeding stopped successfully")
+
+        # Send notification and close client
+        await notification_service.notify_system_stop()
+        await notification_service.close()
 
     # ------------------------------------------------------------------
     # Stats
@@ -350,6 +367,18 @@ class SeederService:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _persist_all_stats(self):
+        """Snapshot current stats to persistence for all torrents."""
+        for info_hash, announcer in self.announcers.items():
+            stats = announcer.get_stats()
+            persistence_service.update(
+                info_hash,
+                uploaded=int(stats["uploaded"]),
+                seeding_time=stats["seedingTime"],
+                added_at=announcer.torrent.added_at.isoformat(),
+                torrent_name=announcer.torrent.name,
+            )
 
     @staticmethod
     def _find_best_fallback_client(missing_client: str, available_clients: list) -> str:
@@ -432,6 +461,10 @@ class SeederService:
                     await self._tm.check_ratio_targets(self._config)
                     cache_manager.periodic_cleanup()
                     await self.load_torrents()
+
+                    # Persist stats every ~30s (every 10 iterations)
+                    if update_count % 10 == 0:
+                        self._persist_all_stats()
 
                 except Exception as e:
                     logger.error(f"Monitor loop iteration error: {e}", exc_info=True)

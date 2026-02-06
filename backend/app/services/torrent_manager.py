@@ -14,6 +14,8 @@ from app.core.torrent_validator import validate_torrent_file
 from app.core.tracker_announcer import TrackerAnnouncer
 from app.services.websocket_manager import websocket_manager
 from app.services.history_service import history_service, EventType
+from app.services.persistence_service import persistence_service
+from app.services.notification_service import notification_service
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +189,22 @@ class TorrentManager:
         )
         self.announcers[torrent.info_hash] = announcer
 
+        # Restore persisted stats (uploaded, seeding_time, added_at)
+        saved = persistence_service.get(torrent.info_hash)
+        if saved:
+            announcer.stats.uploaded = int(saved.get("uploaded", 0))
+            announcer.seeding_time = int(saved.get("seeding_time", 0))
+            if saved.get("added_at"):
+                try:
+                    torrent.added_at = datetime.fromisoformat(saved["added_at"])
+                except (ValueError, TypeError):
+                    pass
+            logger.info(
+                f"♻️ Restored stats for {torrent.name[:30]}: "
+                f"uploaded={announcer.stats.uploaded / (1024**2):.1f}MB, "
+                f"time={announcer.seeding_time}s"
+            )
+
         if is_running and start_callback:
             await start_callback(announcer)
 
@@ -233,10 +251,12 @@ class TorrentManager:
         await websocket_manager.broadcast({"type": "torrents_update", "data": {"torrents": self.get_torrents()}})
         logger.info(f"✅ Torrent removed: {info_hash[:8]}...")
 
-    async def archive_torrent(self, info_hash: str, skip_history: bool = False):
+    async def archive_torrent(self, info_hash: str, skip_history: bool = False, reason: str = "manual_archive"):
         """Archive a torrent (move to archived folder instead of deleting)"""
         if info_hash not in self.announcers:
             return
+
+        persistence_service.remove(info_hash)
 
         announcer = self.announcers[info_hash]
         torrent = announcer.torrent
@@ -253,7 +273,7 @@ class TorrentManager:
                     "torrent_name": torrent.name,
                     "final_ratio": stats.get("ratio", 0),
                     "final_seeding_time": stats.get("seedingTime", 0),
-                    "reason": "manual_archive",
+                    "reason": reason,
                     "archived_at": time.time(),
                 },
             )
@@ -275,6 +295,15 @@ class TorrentManager:
 
         await websocket_manager.broadcast({"type": "torrent_archived", "data": {"info_hash": info_hash, "name": torrent.name}})
 
+        # Send notification with bilan
+        await notification_service.notify_torrent_archived(
+            torrent_name=torrent.name,
+            reason=reason,
+            ratio=stats.get("ratio", 0),
+            uploaded_bytes=stats.get("uploaded", 0),
+            seeding_time_seconds=stats.get("seedingTime", 0),
+        )
+
     # ------------------------------------------------------------------
     # Ratio / Duration checks
     # ------------------------------------------------------------------
@@ -285,7 +314,7 @@ class TorrentManager:
         duration_limit = config.get("seedingDurationLimit", -1.0)
         keep_zero_leechers = config.get("keepTorrentWithZeroLeechers", True)
 
-        to_remove: List[str] = []
+        to_remove: List[tuple] = []  # (info_hash, reason)
 
         if ratio_target > 0 or duration_limit > 0:
             logger.debug(f"🎯 Checking targets: ratio={ratio_target}, duration={duration_limit}h, keep_zero_leechers={keep_zero_leechers}")
@@ -307,7 +336,7 @@ class TorrentManager:
                         "reason_detail": f"Ratio {stats['ratio']:.2f} exceeded target of {ratio_target}",
                     },
                 )
-                to_remove.append(info_hash)
+                to_remove.append((info_hash, "ratio_target"))
                 continue
 
             if duration_limit > 0:
@@ -325,7 +354,7 @@ class TorrentManager:
                             "reason_detail": f"Seeded for {seeding_time_hours:.1f} hours, limit is {duration_limit} hours",
                         },
                     )
-                    to_remove.append(info_hash)
+                    to_remove.append((info_hash, "duration_limit"))
                     continue
 
             if not keep_zero_leechers and stats["seeders"] == 0 and stats["leechers"] == 0:
@@ -359,10 +388,10 @@ class TorrentManager:
                         ),
                     },
                 )
-                to_remove.append(info_hash)
+                to_remove.append((info_hash, "no_peers"))
                 continue
 
-        for info_hash in to_remove:
+        for info_hash, archive_reason in to_remove:
             announcer = self.announcers[info_hash]
             stats = announcer.get_stats()
             torrent = announcer.torrent
@@ -381,7 +410,7 @@ class TorrentManager:
                 f"🗃️ AUTO-ARCHIVING: {torrent.name} - ratio: {stats.get('ratio', 0):.2f}, "
                 f"duration: {stats.get('seedingTime', 0) / 3600:.1f}h"
             )
-            await self.archive_torrent(info_hash, skip_history=True)
+            await self.archive_torrent(info_hash, skip_history=True, reason=archive_reason)
 
     # ------------------------------------------------------------------
     # Internal
@@ -421,6 +450,7 @@ class TorrentManager:
             "lastAnnounce": stats["lastAnnounce"].isoformat() if stats["lastAnnounce"] else None,
             "nextAnnounce": stats["nextAnnounce"].isoformat() if stats["nextAnnounce"] else None,
             "tracker": torrent.primary_tracker,
+            "createdBy": torrent.created_by or None,
             "seedingTime": int(stats["seedingTime"]),
             "lastError": stats.get("lastError"),
             "errorCount": stats.get("errorCount", 0),

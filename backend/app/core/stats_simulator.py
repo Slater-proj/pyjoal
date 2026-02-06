@@ -7,7 +7,7 @@ import random
 import logging
 import time
 from typing import Dict, Optional, Any
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from app.core.config import settings
 
@@ -93,24 +93,24 @@ class StatsSimulator:
         self.uploaded = 0
         
         completion_delay_minutes = random.randint(1, 30)
-        self._download_completion_time = datetime.now(timezone.utc) - timedelta(minutes=completion_delay_minutes)
-        self._seeding_session_start = datetime.now(timezone.utc)
+        self._download_completion_time = datetime.utcnow() - timedelta(minutes=completion_delay_minutes)
+        self._seeding_session_start = datetime.utcnow()
         
         self._initial_seeding = True
         self._is_downloading = False
         self._total_seeding_time = 0
-        self._last_speed_change = datetime.now(timezone.utc)
+        self._last_speed_change = datetime.utcnow()
         
         self._peak_hours = self._determine_user_peak_hours()
         self._user_activity_pattern = self._generate_user_activity_pattern()
         
         hours_until_first_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
-        self._next_pause_time = datetime.now(timezone.utc) + timedelta(hours=hours_until_first_change)
+        self._next_pause_time = datetime.utcnow() + timedelta(hours=hours_until_first_change)
         self._pause_duration = 0
         self._pause_until = None
         self._is_in_fake_pause = False
         
-        self._next_speed_change = datetime.now(timezone.utc) + timedelta(hours=hours_until_first_change)
+        self._next_speed_change = datetime.utcnow() + timedelta(hours=hours_until_first_change)
         self._current_speed_tier = random.choice(['high', 'medium'])
         
         logger.info(f"🌱 {self.torrent_name[:30]}: seeding start, tier={self._current_speed_tier}, next state change in {hours_until_first_change}h")
@@ -123,24 +123,24 @@ class StatsSimulator:
         self.uploaded = 0
         
         download_duration_minutes = random.randint(5, 60)
-        self._download_completion_time = datetime.now(timezone.utc) + timedelta(minutes=download_duration_minutes)
+        self._download_completion_time = datetime.utcnow() + timedelta(minutes=download_duration_minutes)
         self._seeding_session_start = self._download_completion_time
         
         self._is_downloading = True
         self._initial_seeding = False
         self._total_seeding_time = 0
-        self._last_speed_change = datetime.now(timezone.utc)
+        self._last_speed_change = datetime.utcnow()
         
         self._peak_hours = self._determine_user_peak_hours()
         self._user_activity_pattern = self._generate_user_activity_pattern()
         
         hours_until_first_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
-        self._next_pause_time = datetime.now(timezone.utc) + timedelta(hours=hours_until_first_change)
+        self._next_pause_time = datetime.utcnow() + timedelta(hours=hours_until_first_change)
         self._pause_duration = 0
         self._pause_until = None
         self._is_in_fake_pause = False
         
-        self._next_speed_change = datetime.now(timezone.utc) + timedelta(hours=hours_until_first_change)
+        self._next_speed_change = datetime.utcnow() + timedelta(hours=hours_until_first_change)
         self._current_speed_tier = random.choice(['high', 'medium'])
         
         logger.debug(f"📥 Natural download start for {self.torrent_name[:30]}: {completion_percentage:.1%} completed, {self.left / (1024**2):.2f} MB remaining")
@@ -149,12 +149,14 @@ class StatsSimulator:
     # Stats update methods
     # ================================================================
     
-    def update_stats(self, client, is_running: bool):
+    def update_stats(self, client, is_running: bool, seeders: int = -1, leechers: int = -1):
         """Update upload stats with realistic behavior based on mode.
         
         Args:
             client: BitTorrentClient instance (for rate ranges)
             is_running: Whether the announcer is currently running
+            seeders: Number of seeders from tracker (-1 = unknown)
+            leechers: Number of leechers from tracker (-1 = unknown)
         """
         if not is_running:
             return
@@ -176,7 +178,7 @@ class StatsSimulator:
             self._update_download_stats(client)
             return
             
-        current_speed = self.get_activity_based_upload_speed(client)
+        current_speed = self.get_activity_based_upload_speed(client, seeders, leechers)
         
         if self.enable_speed_variation and current_speed > 0:
             variation_factor = 1.0 + random.uniform(
@@ -200,7 +202,7 @@ class StatsSimulator:
             logger.info(f"📈 UPLOAD: {self.torrent_name[:25]} +{upload_delta/1024:.1f}KB ({current_speed/1024:.1f}KB/s × {capped_interval:.1f}s) = Total: {self.uploaded/(1024*1024):.2f}MB")
             
             if self._seeding_session_start:
-                self._total_seeding_time = (datetime.now(timezone.utc) - self._seeding_session_start).total_seconds()
+                self._total_seeding_time = (datetime.utcnow() - self._seeding_session_start).total_seconds()
         else:
             logger.debug(f"⚠️ Speed=0 for {self.torrent_name[:30]} - no upload this interval")
             
@@ -208,12 +210,14 @@ class StatsSimulator:
         self.downloaded = self.torrent_size
         self.left = 0
     
-    def update_stats_for_display(self, client, is_running: bool):
+    def update_stats_for_display(self, client, is_running: bool, seeders: int = -1, leechers: int = -1):
         """Update stats for UI display - called by the monitor loop.
         
         Args:
             client: BitTorrentClient instance
             is_running: Whether the announcer is currently running
+            seeders: Number of seeders from tracker (-1 = unknown)
+            leechers: Number of leechers from tracker (-1 = unknown)
         """
         if not is_running:
             self.upload_speed = 0
@@ -229,7 +233,7 @@ class StatsSimulator:
         time_interval = current_time - self._display_update_time
         self._display_update_time = current_time
         
-        current_speed = self.get_activity_based_upload_speed(client)
+        current_speed = self.get_activity_based_upload_speed(client, seeders, leechers)
         
         if self.enable_speed_variation and current_speed > 0:
             variation = random.uniform(-self.speed_variation_percent/100, self.speed_variation_percent/100)
@@ -257,7 +261,8 @@ class StatsSimulator:
         else:
             logger.debug("   Speed is 0 - no upload progress made")
     
-    def update_stats_with_stealth(self, client, stealth_service, torrent_info_hash: str, is_running: bool):
+    def update_stats_with_stealth(self, client, stealth_service, torrent_info_hash: str, is_running: bool,
+                                    seeders: int = -1, leechers: int = -1):
         """Update stats with stealth service natural variations.
         
         Args:
@@ -265,6 +270,8 @@ class StatsSimulator:
             stealth_service: StealthService instance
             torrent_info_hash: Torrent info hash
             is_running: Whether the announcer is currently running
+            seeders: Number of seeders from tracker (-1 = unknown)
+            leechers: Number of leechers from tracker (-1 = unknown)
         """
         if not is_running:
             return
@@ -281,7 +288,7 @@ class StatsSimulator:
             self._update_download_stats(client)
             return
             
-        base_speed = self.get_activity_based_upload_speed(client)
+        base_speed = self.get_activity_based_upload_speed(client, seeders, leechers)
         
         current_speed = stealth_service.get_natural_speed_variation(
             base_speed, 
@@ -300,7 +307,7 @@ class StatsSimulator:
             self.uploaded += upload_delta
             
             if self._seeding_session_start:
-                self._total_seeding_time = (datetime.now(timezone.utc) - self._seeding_session_start).total_seconds()
+                self._total_seeding_time = (datetime.utcnow() - self._seeding_session_start).total_seconds()
             
         self.upload_speed = float(current_speed)
         self.downloaded = self.torrent_size
@@ -346,7 +353,7 @@ class StatsSimulator:
         
         base_speed = random.randint(min_dl, max_dl)
         
-        hour = datetime.now(timezone.utc).hour
+        hour = datetime.utcnow().hour
         if hour in range(self._peak_hours[0], self._peak_hours[1] + 1 if self._peak_hours[0] < self._peak_hours[1] else 25):
             base_speed = int(base_speed * 1.2)
         elif hour < 6 or hour > 22:
@@ -358,10 +365,15 @@ class StatsSimulator:
     # Speed / Activity methods
     # ================================================================
     
-    def get_activity_based_upload_speed(self, client) -> int:
+    def get_activity_based_upload_speed(self, client, seeders: int = -1, leechers: int = -1) -> int:
         """Get upload speed based on user activity patterns with dynamic config.
         
         Returns speed in bytes/sec.
+        
+        Args:
+            client: BitTorrentClient instance
+            seeders: Number of seeders (-1 = unknown, use base speed)
+            leechers: Number of leechers (-1 = unknown, use base speed; 0 = zero upload)
         
         Speed tiers:
         - 'paused' / _is_in_fake_pause: 0 bytes/sec
@@ -369,6 +381,11 @@ class StatsSimulator:
         - 'medium': 30-60% of max speed
         - 'high': 60-100% of max speed
         """
+        # CRITICAL stealth: if we KNOW there are 0 leechers, upload is impossible
+        if leechers == 0:
+            logger.debug(f"🛡️ {self.torrent_name[:20]}: 0 leechers → speed=0 (stealth)")
+            return 0
+        
         if self._is_in_fake_pause:
             logger.debug(f"💤 {self.torrent_name[:20]} is in fake pause - speed = 0")
             return 0
@@ -398,30 +415,47 @@ class StatsSimulator:
         
         speed = random.randint(effective_min, effective_max)
         
-        logger.debug(f"🎯 {self.torrent_name[:20]}: {speed/1024:.0f} KB/s (tier: {current_tier}, range: {effective_min/1024:.0f}-{effective_max/1024:.0f})")
+        # Apply swarm-aware weighting if peer data is available
+        if seeders >= 0 and leechers > 0:
+            total_peers = seeders + leechers
+            leecher_ratio = leechers / total_peers
+            # More leechers relative to seeders = higher demand = more upload opportunity
+            swarm_factor = max(0.2, min(1.5, leecher_ratio * leecher_ratio * min(leechers, 10) / 3))
+            speed = int(speed * swarm_factor)
+            speed = max(1024, speed)
+            logger.debug(f"🎯 {self.torrent_name[:20]}: {speed/1024:.0f} KB/s (tier: {current_tier}, swarm: {seeders}S/{leechers}L, factor: {swarm_factor:.2f})")
+        else:
+            logger.debug(f"🎯 {self.torrent_name[:20]}: {speed/1024:.0f} KB/s (tier: {current_tier}, range: {effective_min/1024:.0f}-{effective_max/1024:.0f})")
         
         return speed
     
     def get_realistic_upload_speed_based_on_swarm(self, client, seeders: int, leechers: int) -> int:
-        """Calculate realistic upload speed based on swarm activity."""
+        """Calculate realistic upload speed based on swarm activity.
+        
+        Critical for stealth: a real BitTorrent client cannot upload if there are
+        no leechers, so reporting upload in that case is an instant detection flag.
+        """
+        # CRITICAL: Zero leechers = zero upload (impossible to upload with no downloaders)
+        if leechers == 0:
+            logger.debug(f"🛡️ {self.torrent_name[:20]}: 0 leechers → 0 upload (stealth protection)")
+            return 0
+
         min_rate, max_rate = client.get_upload_rate_range()
         
         base_speed = random.randint(min_rate, max_rate)
         
         total_peers = seeders + leechers
-        swarm_factor = 1.0
         
-        if total_peers == 0:
+        # Swarm-weighted speed: more leechers relative to seeders = higher demand = more upload
+        if total_peers > 0:
+            leecher_ratio = leechers / total_peers
+            # Weight proportional to demand: leecher_ratio² * leechers (JOAL formula)
+            swarm_factor = max(0.1, min(1.5, leecher_ratio * leecher_ratio * min(leechers, 10) / 3))
+        else:
             swarm_factor = 0.1
-        elif leechers == 0:
-            swarm_factor = 0.3
-        elif leechers > seeders * 2:
-            swarm_factor = 1.3
-        elif leechers < seeders * 0.5:
-            swarm_factor = 0.7
         
         realistic_speed = int(base_speed * swarm_factor)
-        return max(int(min_rate * 0.1), min(max_rate, realistic_speed))
+        return max(1024, min(max_rate, realistic_speed))
     
     # ================================================================
     # State management (pause, speed tiers, activity)
@@ -435,7 +469,7 @@ class StatsSimulator:
         - Pauses last 30min to 3 hours (configurable)
         - Reduced speed periods last 1-4 hours (configurable)
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         
         if self._is_in_fake_pause:
             if self._pause_until and now >= self._pause_until:
@@ -481,7 +515,7 @@ class StatsSimulator:
         
         if self._download_completion_time:
             seeding_start_delay = random.randint(5, 30)
-            should_start_seeding = datetime.now(timezone.utc) > (self._download_completion_time + timedelta(minutes=seeding_start_delay))
+            should_start_seeding = datetime.utcnow() > (self._download_completion_time + timedelta(minutes=seeding_start_delay))
             
             if should_start_seeding:
                 self._is_downloading = False
@@ -530,7 +564,7 @@ class StatsSimulator:
     
     def is_user_active_hour(self) -> bool:
         """Check if current time is within user's peak activity hours."""
-        current_hour = datetime.now(timezone.utc).hour
+        current_hour = datetime.utcnow().hour
         start_hour, end_hour = self._peak_hours
         
         is_active = False
@@ -555,10 +589,10 @@ class StatsSimulator:
         time_until_change = 0
         change_source = "speed"
         if self._is_in_fake_pause and self._pause_until:
-            time_until_change = max(0, int((self._pause_until - datetime.now(timezone.utc)).total_seconds()))
+            time_until_change = max(0, int((self._pause_until - datetime.utcnow()).total_seconds()))
             change_source = "pause_end"
         elif self._next_speed_change:
-            time_until_change = max(0, int((self._next_speed_change - datetime.now(timezone.utc)).total_seconds()))
+            time_until_change = max(0, int((self._next_speed_change - datetime.utcnow()).total_seconds()))
             change_source = "tier_change"
         
         if self._is_in_fake_pause:

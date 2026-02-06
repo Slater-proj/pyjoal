@@ -63,6 +63,7 @@ export interface Torrent {
   lastAnnounce: string | null;
   nextAnnounce: string | null;
   tracker: string | null;
+  createdBy: string | null;
   seedingTime: number;
   status?: TorrentStatus;
 }
@@ -82,6 +83,33 @@ export interface Stats {
 
 export interface Version {
   version: string;
+}
+
+export interface NotificationConfig {
+  enabled: boolean;
+  gotify: {
+    enabled: boolean;
+    url: string;
+    token: string;
+  };
+  webhook: {
+    enabled: boolean;
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+  };
+  events: {
+    system_start: boolean;
+    system_stop: boolean;
+    torrent_archived: boolean;
+    announce_error: boolean;
+    tracker_error: boolean;
+    system_error: boolean;
+  };
+  rate_limit: {
+    max_per_minute: number;
+    cooldown_seconds: number;
+  };
 }
 
 export const api = {
@@ -150,6 +178,22 @@ export const api = {
   // Version
   getVersion: async (): Promise<Version> => {
     const { data } = await axios.get(`${API_BASE}/version`);
+    return data;
+  },
+
+  // Notifications
+  getNotificationConfig: async (): Promise<NotificationConfig> => {
+    const { data } = await axios.get(`${API_BASE}/notifications/config`);
+    return data;
+  },
+
+  updateNotificationConfig: async (config: Partial<NotificationConfig>) => {
+    const { data } = await axios.put(`${API_BASE}/notifications/config`, config);
+    return data;
+  },
+
+  testNotification: async () => {
+    const { data } = await axios.post(`${API_BASE}/notifications/test`);
     return data;
   },
 

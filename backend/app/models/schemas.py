@@ -125,6 +125,7 @@ class TorrentInfo(BaseModel):
     lastAnnounce: Optional[datetime] = Field(default=None, description="Last announce time")
     nextAnnounce: Optional[datetime] = Field(default=None, description="Next announce time")
     tracker: Optional[str] = Field(default=None, description="Tracker URL")
+    createdBy: Optional[str] = Field(default=None, description="Created by field from .torrent")
     # Extended fields
     seedingTime: Optional[int] = Field(default=0, description="Seeding time in seconds")
     lastError: Optional[str] = Field(default=None, description="Last error message")

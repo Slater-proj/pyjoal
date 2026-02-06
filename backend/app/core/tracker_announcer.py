@@ -299,17 +299,18 @@ class TrackerAnnouncer:
     
     def _update_stats_for_display(self):
         """Update stats for UI display."""
-        self.stats.update_stats_for_display(self.client, self.is_running)
+        self.stats.update_stats_for_display(self.client, self.is_running, self.seeders, self.leechers)
     
     def _update_stats_with_stealth(self):
         """Update stats with stealth service natural variations."""
         self.stats.update_stats_with_stealth(
-            self.client, stealth_service, self.torrent.info_hash, self.is_running
+            self.client, stealth_service, self.torrent.info_hash, self.is_running,
+            self.seeders, self.leechers
         )
     
     def _get_activity_based_upload_speed(self) -> int:
         """Get upload speed based on user activity patterns."""
-        return self.stats.get_activity_based_upload_speed(self.client)
+        return self.stats.get_activity_based_upload_speed(self.client, self.seeders, self.leechers)
     
     def _is_user_active_hour(self) -> bool:
         """Check if current time is within user's peak activity hours."""

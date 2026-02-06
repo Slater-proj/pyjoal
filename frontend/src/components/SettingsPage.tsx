@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Save, RefreshCw, HelpCircle } from 'lucide-react'
+import { Save, RefreshCw, HelpCircle, Bell, Send } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import axios from 'axios'
+import { api, NotificationConfig } from '../services/api'
 
 // FormData type - ratio and duration can be string or number during editing
 interface FormDataType {
@@ -31,6 +32,9 @@ interface FormDataType {
 export default function SettingsPage() {
   const { config, clients, fetchClients, updateConfig, addToast } = useStore()
   const [saving, setSaving] = useState(false)
+  const [notifConfig, setNotifConfig] = useState<NotificationConfig | null>(null)
+  const [notifSaving, setNotifSaving] = useState(false)
+  const [notifTesting, setNotifTesting] = useState(false)
   const [formData, setFormData] = useState<FormDataType>({
     minUploadRate: 30,
     maxUploadRate: 160,
@@ -166,6 +170,49 @@ export default function SettingsPage() {
       console.error('Failed to reset config:', error)
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Notification config
+  useEffect(() => {
+    api.getNotificationConfig().then(setNotifConfig).catch(() => {})
+  }, [])
+
+  const handleNotifChange = (path: string, value: any) => {
+    if (!notifConfig) return
+    const keys = path.split('.')
+    const updated = { ...notifConfig }
+    let obj: any = updated
+    for (let i = 0; i < keys.length - 1; i++) {
+      obj[keys[i]] = { ...obj[keys[i]] }
+      obj = obj[keys[i]]
+    }
+    obj[keys[keys.length - 1]] = value
+    setNotifConfig(updated as NotificationConfig)
+  }
+
+  const handleNotifSave = async () => {
+    if (!notifConfig) return
+    setNotifSaving(true)
+    try {
+      await api.updateNotificationConfig(notifConfig)
+      addToast('✅ Notification settings saved', 'success')
+    } catch {
+      addToast('❌ Failed to save notification settings', 'error')
+    } finally {
+      setNotifSaving(false)
+    }
+  }
+
+  const handleNotifTest = async () => {
+    setNotifTesting(true)
+    try {
+      const result = await api.testNotification()
+      addToast(result.status === 'ok' ? '✅ Test notification sent!' : `⚠️ ${result.message}`, result.status === 'ok' ? 'success' : 'error')
+    } catch {
+      addToast('❌ Failed to send test notification', 'error')
+    } finally {
+      setNotifTesting(false)
     }
   }
 
@@ -868,6 +915,160 @@ export default function SettingsPage() {
           </div>
         </form>
       </div>
+
+      {/* Notifications Settings */}
+      {notifConfig && (
+        <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden mt-6">
+          <div className="px-6 py-4 border-b border-slate-700">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <Bell className="w-5 h-5" />
+              Notifications
+            </h2>
+            <p className="text-slate-400 text-sm mt-1">
+              Get notified on errors, torrent completions, and system events
+            </p>
+          </div>
+
+          <div className="p-6 space-y-6">
+            {/* Global toggle */}
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={notifConfig.enabled}
+                onChange={e => handleNotifChange('enabled', e.target.checked)}
+                className="w-5 h-5 rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500"
+              />
+              <span className="text-white font-medium">Enable notifications</span>
+            </label>
+
+            {notifConfig.enabled && (
+              <>
+                {/* Gotify */}
+                <div className="bg-slate-900/50 rounded-lg p-4 space-y-3">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifConfig.gotify.enabled}
+                      onChange={e => handleNotifChange('gotify.enabled', e.target.checked)}
+                      className="w-4 h-4 rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500"
+                    />
+                    <span className="text-white font-medium">Gotify</span>
+                  </label>
+                  {notifConfig.gotify.enabled && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 ml-7">
+                      <div>
+                        <label className="block text-sm text-slate-400 mb-1">Server URL</label>
+                        <input
+                          type="text"
+                          value={notifConfig.gotify.url}
+                          onChange={e => handleNotifChange('gotify.url', e.target.value)}
+                          placeholder="https://gotify.example.com"
+                          className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-slate-400 mb-1">App Token</label>
+                        <input
+                          type="password"
+                          value={notifConfig.gotify.token}
+                          onChange={e => handleNotifChange('gotify.token', e.target.value)}
+                          placeholder="AxxxxxxxxxxxxB"
+                          className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Webhook */}
+                <div className="bg-slate-900/50 rounded-lg p-4 space-y-3">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifConfig.webhook.enabled}
+                      onChange={e => handleNotifChange('webhook.enabled', e.target.checked)}
+                      className="w-4 h-4 rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500"
+                    />
+                    <span className="text-white font-medium">Webhook</span>
+                  </label>
+                  {notifConfig.webhook.enabled && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 ml-7">
+                      <div className="md:col-span-2">
+                        <label className="block text-sm text-slate-400 mb-1">URL</label>
+                        <input
+                          type="text"
+                          value={notifConfig.webhook.url}
+                          onChange={e => handleNotifChange('webhook.url', e.target.value)}
+                          placeholder="https://hooks.example.com/notify"
+                          className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-slate-400 mb-1">HTTP Method</label>
+                        <select
+                          value={notifConfig.webhook.method}
+                          onChange={e => handleNotifChange('webhook.method', e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white text-sm focus:border-blue-500 focus:outline-none"
+                        >
+                          <option value="POST">POST</option>
+                          <option value="PUT">PUT</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Events */}
+                <div className="bg-slate-900/50 rounded-lg p-4 space-y-3">
+                  <h3 className="text-white font-medium mb-2">Events to notify</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {[
+                      { key: 'system_start', label: '🟢 System Start' },
+                      { key: 'system_stop', label: '🔴 System Stop' },
+                      { key: 'torrent_archived', label: '📦 Torrent Archived' },
+                      { key: 'announce_error', label: '📡 Announce Error' },
+                      { key: 'tracker_error', label: '🔗 Tracker Error' },
+                      { key: 'system_error', label: '⚠️ System Error' },
+                    ].map(({ key, label }) => (
+                      <label key={key} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={(notifConfig.events as any)[key] ?? false}
+                          onChange={e => handleNotifChange(`events.${key}`, e.target.checked)}
+                          className="w-4 h-4 rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-slate-300">{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-4 border-t border-slate-700">
+              <button
+                type="button"
+                onClick={handleNotifTest}
+                disabled={notifTesting || !(notifConfig.gotify.enabled || notifConfig.webhook.enabled)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition-colors disabled:opacity-50"
+              >
+                <Send className="w-4 h-4" />
+                {notifTesting ? 'Sending...' : 'Send Test'}
+              </button>
+              <button
+                type="button"
+                onClick={handleNotifSave}
+                disabled={notifSaving}
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                {notifSaving ? 'Saving...' : 'Save Notifications'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

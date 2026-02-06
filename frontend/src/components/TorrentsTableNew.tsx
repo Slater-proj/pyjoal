@@ -186,6 +186,25 @@ export default function TorrentsTable() {
     return `${hours}h`
   }
 
+  const formatRelativeDate = (isoString: string) => {
+    try {
+      const date = new Date(isoString)
+      const now = new Date()
+      const diffMs = now.getTime() - date.getTime()
+      const diffMin = Math.floor(diffMs / 60000)
+      const diffH = Math.floor(diffMin / 60)
+      const diffD = Math.floor(diffH / 24)
+
+      if (diffMin < 1) return 'just now'
+      if (diffMin < 60) return `${diffMin}m ago`
+      if (diffH < 24) return `${diffH}h ago`
+      if (diffD < 30) return `${diffD}d ago`
+      return date.toLocaleDateString()
+    } catch {
+      return '-'
+    }
+  }
+
   const handleReload = async () => {
     if (isReloading) return
 
@@ -275,8 +294,8 @@ export default function TorrentsTable() {
       </div>
 
       {/* Table with visible borders - full width */}
-      <div className="overflow-hidden">
-        <table ref={tableRef} className="w-full border-collapse table-fixed">
+      <div className="overflow-x-auto -webkit-overflow-scrolling-touch">
+        <table ref={tableRef} className="w-full border-collapse table-fixed min-w-[900px]">
           <thead>
             <tr className="bg-slate-700/70 text-left text-sm text-slate-200 font-semibold">
               <th className="px-4 py-3 border-r border-slate-600 relative overflow-hidden" style={{ width: columnWidths.name }}>
@@ -396,8 +415,16 @@ export default function TorrentsTable() {
                         <div className="font-semibold text-white truncate text-sm leading-tight" title={torrent.name}>
                           {torrent.name}
                         </div>
-                        <div className="text-xs text-slate-400 mt-1 truncate">
+                        {torrent.createdBy && (
+                          <div className="text-xs text-slate-400 mt-0.5 truncate" title={`Created by: ${torrent.createdBy}`}>
+                            🏷️ {torrent.createdBy}
+                          </div>
+                        )}
+                        <div className="text-xs text-slate-400 mt-0.5 truncate">
                           📡 {torrent.tracker ? new URL(torrent.tracker).hostname : 'Unknown'}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-0.5 truncate" title={torrent.addedAt ? new Date(torrent.addedAt).toLocaleString() : ''}>
+                          📅 {torrent.addedAt ? formatRelativeDate(torrent.addedAt) : '-'}
                         </div>
                       </div>
                     </div>
