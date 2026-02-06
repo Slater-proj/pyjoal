@@ -7,7 +7,7 @@ import random
 import logging
 import time
 from typing import Dict, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.core.config import settings
 
@@ -93,24 +93,24 @@ class StatsSimulator:
         self.uploaded = 0
         
         completion_delay_minutes = random.randint(1, 30)
-        self._download_completion_time = datetime.utcnow() - timedelta(minutes=completion_delay_minutes)
-        self._seeding_session_start = datetime.utcnow()
+        self._download_completion_time = datetime.now(timezone.utc) - timedelta(minutes=completion_delay_minutes)
+        self._seeding_session_start = datetime.now(timezone.utc)
         
         self._initial_seeding = True
         self._is_downloading = False
         self._total_seeding_time = 0
-        self._last_speed_change = datetime.utcnow()
+        self._last_speed_change = datetime.now(timezone.utc)
         
         self._peak_hours = self._determine_user_peak_hours()
         self._user_activity_pattern = self._generate_user_activity_pattern()
         
         hours_until_first_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
-        self._next_pause_time = datetime.utcnow() + timedelta(hours=hours_until_first_change)
+        self._next_pause_time = datetime.now(timezone.utc) + timedelta(hours=hours_until_first_change)
         self._pause_duration = 0
         self._pause_until = None
         self._is_in_fake_pause = False
         
-        self._next_speed_change = datetime.utcnow() + timedelta(hours=hours_until_first_change)
+        self._next_speed_change = datetime.now(timezone.utc) + timedelta(hours=hours_until_first_change)
         self._current_speed_tier = random.choice(['high', 'medium'])
         
         logger.info(f"🌱 {self.torrent_name[:30]}: seeding start, tier={self._current_speed_tier}, next state change in {hours_until_first_change}h")
@@ -123,24 +123,24 @@ class StatsSimulator:
         self.uploaded = 0
         
         download_duration_minutes = random.randint(5, 60)
-        self._download_completion_time = datetime.utcnow() + timedelta(minutes=download_duration_minutes)
+        self._download_completion_time = datetime.now(timezone.utc) + timedelta(minutes=download_duration_minutes)
         self._seeding_session_start = self._download_completion_time
         
         self._is_downloading = True
         self._initial_seeding = False
         self._total_seeding_time = 0
-        self._last_speed_change = datetime.utcnow()
+        self._last_speed_change = datetime.now(timezone.utc)
         
         self._peak_hours = self._determine_user_peak_hours()
         self._user_activity_pattern = self._generate_user_activity_pattern()
         
         hours_until_first_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
-        self._next_pause_time = datetime.utcnow() + timedelta(hours=hours_until_first_change)
+        self._next_pause_time = datetime.now(timezone.utc) + timedelta(hours=hours_until_first_change)
         self._pause_duration = 0
         self._pause_until = None
         self._is_in_fake_pause = False
         
-        self._next_speed_change = datetime.utcnow() + timedelta(hours=hours_until_first_change)
+        self._next_speed_change = datetime.now(timezone.utc) + timedelta(hours=hours_until_first_change)
         self._current_speed_tier = random.choice(['high', 'medium'])
         
         logger.debug(f"📥 Natural download start for {self.torrent_name[:30]}: {completion_percentage:.1%} completed, {self.left / (1024**2):.2f} MB remaining")
@@ -200,7 +200,7 @@ class StatsSimulator:
             logger.info(f"📈 UPLOAD: {self.torrent_name[:25]} +{upload_delta/1024:.1f}KB ({current_speed/1024:.1f}KB/s × {capped_interval:.1f}s) = Total: {self.uploaded/(1024*1024):.2f}MB")
             
             if self._seeding_session_start:
-                self._total_seeding_time = (datetime.utcnow() - self._seeding_session_start).total_seconds()
+                self._total_seeding_time = (datetime.now(timezone.utc) - self._seeding_session_start).total_seconds()
         else:
             logger.debug(f"⚠️ Speed=0 for {self.torrent_name[:30]} - no upload this interval")
             
@@ -300,7 +300,7 @@ class StatsSimulator:
             self.uploaded += upload_delta
             
             if self._seeding_session_start:
-                self._total_seeding_time = (datetime.utcnow() - self._seeding_session_start).total_seconds()
+                self._total_seeding_time = (datetime.now(timezone.utc) - self._seeding_session_start).total_seconds()
             
         self.upload_speed = float(current_speed)
         self.downloaded = self.torrent_size
@@ -346,7 +346,7 @@ class StatsSimulator:
         
         base_speed = random.randint(min_dl, max_dl)
         
-        hour = datetime.utcnow().hour
+        hour = datetime.now(timezone.utc).hour
         if hour in range(self._peak_hours[0], self._peak_hours[1] + 1 if self._peak_hours[0] < self._peak_hours[1] else 25):
             base_speed = int(base_speed * 1.2)
         elif hour < 6 or hour > 22:
@@ -435,7 +435,7 @@ class StatsSimulator:
         - Pauses last 30min to 3 hours (configurable)
         - Reduced speed periods last 1-4 hours (configurable)
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         if self._is_in_fake_pause:
             if self._pause_until and now >= self._pause_until:
@@ -481,7 +481,7 @@ class StatsSimulator:
         
         if self._download_completion_time:
             seeding_start_delay = random.randint(5, 30)
-            should_start_seeding = datetime.utcnow() > (self._download_completion_time + timedelta(minutes=seeding_start_delay))
+            should_start_seeding = datetime.now(timezone.utc) > (self._download_completion_time + timedelta(minutes=seeding_start_delay))
             
             if should_start_seeding:
                 self._is_downloading = False
@@ -530,7 +530,7 @@ class StatsSimulator:
     
     def is_user_active_hour(self) -> bool:
         """Check if current time is within user's peak activity hours."""
-        current_hour = datetime.utcnow().hour
+        current_hour = datetime.now(timezone.utc).hour
         start_hour, end_hour = self._peak_hours
         
         is_active = False
@@ -555,10 +555,10 @@ class StatsSimulator:
         time_until_change = 0
         change_source = "speed"
         if self._is_in_fake_pause and self._pause_until:
-            time_until_change = max(0, int((self._pause_until - datetime.utcnow()).total_seconds()))
+            time_until_change = max(0, int((self._pause_until - datetime.now(timezone.utc)).total_seconds()))
             change_source = "pause_end"
         elif self._next_speed_change:
-            time_until_change = max(0, int((self._next_speed_change - datetime.utcnow()).total_seconds()))
+            time_until_change = max(0, int((self._next_speed_change - datetime.now(timezone.utc)).total_seconds()))
             change_source = "tier_change"
         
         if self._is_in_fake_pause:

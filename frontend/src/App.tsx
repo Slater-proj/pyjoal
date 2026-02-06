@@ -1,18 +1,27 @@
 import { useEffect, useState } from 'react'
 import BottomNav from './components/BottomNav'
+import Header from './components/Header'
 import DashboardPage from './components/DashboardPage'
 import SettingsPage from './components/SettingsPage'
 import HistoryPage from './components/HistoryPage'
 import Toast from './components/Toast'
+import LogConsole from './components/LogConsole'
 import { useStore } from './store/useStore'
 
 type Page = 'dashboard' | 'settings' | 'history'
 
 function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard')
+  const [appVersion, setAppVersion] = useState<string>('dev')
   const { connectWebSocket, fetchConfig, fetchTorrents, fetchStats, fetchClients, toasts, removeToast } = useStore()
 
   useEffect(() => {
+    // Fetch app version
+    fetch('/api/version')
+      .then(res => res.json())
+      .then(data => setAppVersion(data.version))
+      .catch(() => setAppVersion('dev'))
+
     // Initial data fetch
     fetchConfig()
     fetchTorrents()
@@ -26,6 +35,7 @@ function App() {
     return () => {
       useStore.getState().disconnectWebSocket()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const renderPage = () => {
@@ -43,20 +53,11 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col">
-      {/* Header */}
-      <header className="bg-slate-800 border-b border-slate-700 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-blue-400">JOAL</h1>
-              <span className="text-slate-500 text-sm bg-slate-700/50 px-2 py-0.5 rounded">v3.0.0</span>
-            </div>
-          </div>
-        </div>
-      </header>
+      {/* Header with Health Monitoring */}
+      <Header appVersion={appVersion} />
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24">
+      {/* Main Content - Full width */}
+      <main className="flex-1 w-full px-4 sm:px-6 lg:px-8 py-4 pb-20">
         {renderPage()}
       </main>
 
@@ -74,6 +75,9 @@ function App() {
           />
         ))}
       </div>
+
+      {/* Log Console */}
+      <LogConsole />
     </div>
   )
 }

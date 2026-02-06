@@ -2,6 +2,24 @@ import axios from "axios";
 
 const API_BASE = "/api";
 
+// Get SECRET_TOKEN from environment or window (injected by backend)
+export const getToken = (): string | null => {
+  // Check if token is available in window object (injected by backend in index.html)
+  if (typeof window !== 'undefined' && (window as any).__PYJOAL_TOKEN__) {
+    return (window as any).__PYJOAL_TOKEN__;
+  }
+  return null;
+};
+
+// Configure axios to include token in all requests
+axios.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers['X-API-Token'] = token;
+  }
+  return config;
+});
+
 export interface Config {
   minUploadRate: number;
   maxUploadRate: number;
@@ -10,6 +28,25 @@ export interface Config {
   keepTorrentWithZeroLeechers: boolean;
   uploadRatioTarget: number;
   seedingDurationLimit: number;
+  // Discretion & Timing Settings
+  announceInterval: number;
+  announceJitter: number;
+  minStatsUpdateInterval: number;
+  enableSpeedVariation: boolean;
+  speedVariationPercent: number;
+  // Behavior Mode Settings
+  seedingOnlyMode: boolean;
+}
+
+export interface TorrentStatus {
+  status: string;
+  status_text: string;
+  current_speed: number;
+  speed_formatted: string;
+  time_until_speed_change: number;
+  time_until_change_formatted: string;
+  is_active_hour: boolean;
+  peak_hours: string;
 }
 
 export interface Torrent {
@@ -26,17 +63,25 @@ export interface Torrent {
   lastAnnounce: string | null;
   nextAnnounce: string | null;
   tracker: string | null;
+  seedingTime: number;
+  status?: TorrentStatus;
 }
 
 export interface Stats {
-  isRunning: boolean;
-  activeTorrents: number;
-  totalTorrents: number;
   totalUploaded: number;
+  totalRatio: number;
+  activeTorrents: number;
+  avgUploadSpeed: number;
+  isRunning: boolean;
+  totalTorrents: number;
   totalDownloaded: number;
   uploadSpeed: number;
   startedAt: string | null;
   uptime: number | null;
+}
+
+export interface Version {
+  version: string;
 }
 
 export const api = {
@@ -76,6 +121,16 @@ export const api = {
     return data;
   },
 
+  startTorrent: async (infoHash: string) => {
+    const { data } = await axios.post(`${API_BASE}/torrents/${infoHash}/start`);
+    return data;
+  },
+
+  stopTorrent: async (infoHash: string) => {
+    const { data } = await axios.post(`${API_BASE}/torrents/${infoHash}/stop`);
+    return data;
+  },
+
   // Control
   start: async () => {
     const { data } = await axios.post(`${API_BASE}/start`);
@@ -91,4 +146,24 @@ export const api = {
     const { data } = await axios.get(`${API_BASE}/stats`);
     return data;
   },
+
+  // Version
+  getVersion: async (): Promise<Version> => {
+    const { data } = await axios.get(`${API_BASE}/version`);
+    return data;
+  },
+
+  // Alias for backward compatibility - will be assigned after object creation
+  uploadTorrent: null as any,
+};
+
+// Assign the alias after object creation
+api.uploadTorrent = api.addTorrent;
+
+export const fetchConfig = async (): Promise<Config> => {
+  return api.getConfig();
+};
+
+export const fetchVersion = async (): Promise<Version> => {
+  return api.getVersion();
 };

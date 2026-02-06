@@ -4,7 +4,7 @@ Tests for stats_simulator.py – Extracted stats simulation logic
 import pytest
 import time
 from unittest.mock import Mock, patch
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.core.stats_simulator import StatsSimulator
 
@@ -189,7 +189,7 @@ class TestIndividualState:
 
         # Force into pause with past expiry
         sim._is_in_fake_pause = True
-        sim._pause_until = datetime.utcnow() - timedelta(minutes=1)
+        sim._pause_until = datetime.now(timezone.utc) - timedelta(minutes=1)
 
         sim.update_individual_state()
         assert sim._is_in_fake_pause is False

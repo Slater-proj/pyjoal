@@ -1,0 +1,12 @@
+{
+  "name": "Transmission",
+  "version": "4.1.0",
+  "peerIdPattern": {
+    "prefix": "-TR410Z-"
+  },
+  "userAgent": "Transmission/4.1.0",
+  "numwant": 80,
+  "requestHeaders": {
+    "Accept-Encoding": "gzip"
+  }
+}

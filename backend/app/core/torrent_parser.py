@@ -5,7 +5,7 @@ Handles .torrent file parsing and metadata extraction with intelligent caching
 import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import bencodepy
 import logging
 
@@ -26,7 +26,7 @@ class Torrent:
         self.name: str = ""
         self.size: int = 0
         self.trackers: List[str] = []
-        self.added_at: datetime = datetime.utcnow()
+        self.added_at: datetime = datetime.now(timezone.utc)
         
         # Generate cache key based on path and modification time
         stat = self.path.stat()
@@ -70,7 +70,7 @@ class Torrent:
             'size': self.size,
             'trackers': self.trackers,
             'filename': self.filename,
-            'parsed_at': datetime.utcnow().isoformat()
+            'parsed_at': datetime.now(timezone.utc).isoformat()
         }
     
     def _parse_from_file(self):

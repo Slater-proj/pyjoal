@@ -1,0 +1,48 @@
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = true
+# Gradual adoption: don't require type annotations everywhere yet
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+# Strict optional checking
+strict_optional = true
+# Show error codes for easier suppression
+show_error_codes = true
+# Exclude generated/cache files
+exclude = [
+    "__pycache__",
+    "htmlcov",
+    "venv",
+    "_write_seeder\\.py",
+    "_check_syntax\\.py",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "bencodepy",
+    "bencodepy.*",
+    "watchdog.*",
+    "psutil",
+]
+ignore_missing_imports = true
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+venvPath = "."
+venv = "venv"
+include = ["app"]
+exclude = [
+    "__pycache__",
+    "htmlcov",
+    "venv",
+    "app/services/_write_seeder.py",
+]
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportOptionalMemberAccess = "warning"
+reportGeneralTypeIssues = "warning"

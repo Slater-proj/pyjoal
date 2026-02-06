@@ -88,6 +88,26 @@ export default function ClientInfoPanel() {
         </p>
       </div>
 
+      {/* Configuration Info */}
+      <div className="bg-slate-700/30 rounded-lg p-3 mb-4">
+        <p className="text-slate-500 text-xs uppercase tracking-wide mb-2 text-center">Upload Speed Limits</p>
+        <div className="flex justify-between items-center">
+          <div className="text-center flex-1">
+            <p className="text-orange-400 text-xs">Min</p>
+            <p className="text-orange-400 font-bold text-sm">
+              {formatSpeed((config?.minUploadRate || 0) * 1024)}
+            </p>
+          </div>
+          <div className="text-slate-600 mx-2">•</div>
+          <div className="text-center flex-1">
+            <p className="text-orange-400 text-xs">Max</p>
+            <p className="text-orange-400 font-bold text-sm">
+              {formatSpeed((config?.maxUploadRate || 0) * 1024)}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Stats Table */}
       <div className="bg-slate-900/50 rounded-lg overflow-hidden">
         <table className="w-full text-sm">

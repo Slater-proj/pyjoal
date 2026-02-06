@@ -1,0 +1,4 @@
+BUILD_TIMESTAMP: 2026-01-16-17:30:00
+BUILD_REASON: Force Docker cache invalidation for discretion features
+DISCRETION_FEATURES: enabled
+DEBUG_MODE: active

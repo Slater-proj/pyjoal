@@ -3,7 +3,7 @@ History Service
 Tracks and stores history of announces, torrents, and system events
 """
 from typing import List, Dict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import deque
 from enum import Enum
 
@@ -14,6 +14,8 @@ class EventType(str, Enum):
     SYSTEM_STOP = "system_stop"
     TORRENT_ADDED = "torrent_added"
     TORRENT_REMOVED = "torrent_removed"
+    TORRENT_LOAD_FAILED = "torrent_load_failed"
+    TORRENT_ARCHIVED = "torrent_archived"  # Unified archived category
     ANNOUNCE_SUCCESS = "announce_success"
     ANNOUNCE_FAILED = "announce_failed"
     CONFIG_UPDATED = "config_updated"
@@ -23,7 +25,7 @@ class HistoryEntry:
     """Single history entry"""
     
     def __init__(self, event_type: EventType, message: str, data: Optional[Dict] = None):
-        self.timestamp = datetime.utcnow()
+        self.timestamp = datetime.now(timezone.utc)
         self.event_type = event_type
         self.message = message
         self.data = data or {}
@@ -90,9 +92,21 @@ class HistoryService:
         
         return [e.to_dict() for e in entries]
     
+    def get_recent_entries(self, limit: int = 100) -> List[Dict]:
+        """Get recent history entries (alias for get_entries)"""
+        return self.get_entries(limit=limit)
+    
+    def get_entries_by_type(self, event_type: EventType, limit: int = 100) -> List[Dict]:
+        """Get entries filtered by event type"""
+        return self.get_entries(limit=limit, event_type=event_type)
+    
+    def get_entries_since(self, since: datetime, limit: int = 100) -> List[Dict]:
+        """Get entries since a specific time"""
+        return self.get_entries(limit=limit, since=since)
+    
     def get_stats_by_hour(self, hours: int = 24) -> List[Dict]:
         """Get statistics grouped by hour"""
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         
         result = []
         for hour_key, stats in sorted(self.stats_by_hour.items(), reverse=True):
@@ -116,7 +130,7 @@ class HistoryService:
             counts_by_type[event_type] = counts_by_type.get(event_type, 0) + 1
         
         # Recent activity (last hour)
-        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
         recent = [e for e in self.entries if e.timestamp >= one_hour_ago]
         
         return {

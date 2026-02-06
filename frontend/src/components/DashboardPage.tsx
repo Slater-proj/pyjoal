@@ -81,11 +81,11 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Main layout - Side by side on desktop */}
-      <div className="flex flex-col lg:flex-row gap-6">
+      {/* Layout: Control Panel on left, Torrent table takes full remaining width */}
+      <div className="flex flex-col lg:flex-row gap-4">
         
-        {/* LEFT COLUMN - Control Panel */}
-        <aside className="w-full lg:w-80 flex-shrink-0">
+        {/* LEFT SECTION - Control Panel - Fixed width */}
+        <aside className="w-full lg:w-72 flex-shrink-0">
           <div className="lg:sticky lg:top-20 space-y-4">
             {/* Client Info Panel */}
             <ClientInfoPanel />
@@ -114,7 +114,7 @@ export default function DashboardPage() {
           </div>
         </aside>
 
-        {/* RIGHT COLUMN - Torrents List */}
+        {/* MAIN SECTION - Torrents List - Takes remaining space */}
         <section className="flex-1 min-w-0">
           <TorrentsTableNew />
         </section>

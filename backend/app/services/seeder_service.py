@@ -1,429 +1,477 @@
 """
 Seeder Service
-Manages multiple torrent seeders and orchestrates announces
+Manages multiple torrent seeders and orchestrates announces with intelligent caching.
+
+Delegates configuration management to ConfigManager and torrent lifecycle to TorrentManager.
 """
 import asyncio
+import logging
 from typing import Dict, List, Optional
-from pathlib import Path
-from datetime import datetime
-import json
+from datetime import datetime, timezone
 
 from app.core.config import settings
-from app.core.bittorrent_client import BitTorrentClient, get_default_client
-from app.core.torrent_parser import Torrent, load_torrents_from_directory
+from app.core.bittorrent_client import BitTorrentClient
+from app.core.torrent_parser import Torrent
 from app.core.tracker_announcer import TrackerAnnouncer
 from app.services.websocket_manager import websocket_manager
 from app.services.history_service import history_service, EventType
+from app.core.cache_manager import cache_manager
+from app.services.resource_optimizer import resource_optimizer
+from app.services.config_manager import ConfigManager
+from app.services.torrent_manager import TorrentManager
+
+logger = logging.getLogger(__name__)
+
+# Import file watcher (lazy import to avoid circular dependencies)
+try:
+    from app.services.file_watcher import FileWatcherService
+    FILE_WATCHER_AVAILABLE = True
+except ImportError:
+    FileWatcherService = None
+    FILE_WATCHER_AVAILABLE = False
+    logger.warning("File watcher not available - torrents won't auto-reload")
 
 
 class SeederService:
-    """Service to manage torrent seeding"""
-    
+    """Service to manage torrent seeding with thread safety.
+
+    Composes:
+    - ConfigManager  - config persistence & validation
+    - TorrentManager - torrent load / add / remove / archive / ratio checks
+    """
+
     def __init__(self):
-        """Initialize seeder service"""
         self.client: Optional[BitTorrentClient] = None
-        self.announcers: Dict[str, TrackerAnnouncer] = {}
         self.is_running: bool = False
         self.started_at: Optional[datetime] = None
-        self._config: Dict = {}
+        self._lock = asyncio.Lock()
         self._monitor_task: Optional[asyncio.Task] = None
-    
+
+        # Delegates
+        self._cfg = ConfigManager()
+        self._tm = TorrentManager()
+
+        # File watcher for auto-reload
+        self.file_watcher = None
+
+    # ------------------------------------------------------------------
+    # Backward-compatible properties
+    # ------------------------------------------------------------------
+
+    @property
+    def _config(self) -> Dict:
+        return self._cfg.config
+
+    @_config.setter
+    def _config(self, value: Dict):
+        self._cfg._config = value
+
+    @property
+    def announcers(self) -> Dict[str, TrackerAnnouncer]:
+        return self._tm.announcers
+
+    @announcers.setter
+    def announcers(self, value):
+        self._tm.announcers = value
+
+    @property
+    def failed_torrents(self) -> Dict[str, Dict]:
+        return self._tm.failed_torrents
+
+    @failed_torrents.setter
+    def failed_torrents(self, value):
+        self._tm.failed_torrents = value
+
+    # ------------------------------------------------------------------
+    # Initialization
+    # ------------------------------------------------------------------
+
     async def initialize(self):
         """Initialize service"""
         from app.core.bittorrent_client import list_available_clients
-        
-        # Load configuration
-        await self.load_config()
-        
-        # Get available clients
+
+        logger.info("Initializing Seeder Service...")
+
+        await self._cfg.load()
+        logger.info(f"   Configuration loaded: {self._config}")
+
         available_clients = list_available_clients()
+        logger.info(f"   Available clients: {', '.join(available_clients) if available_clients else 'NONE'}")
+
         if not available_clients:
+            logger.critical("NO CLIENT FILES FOUND!")
             raise RuntimeError(
-                "❌ ERREUR CRITIQUE: Aucun fichier client (.client) trouvé dans le dossier 'clients/'\n"
-                "   Veuillez ajouter au moins un fichier .client pour démarrer l'application."
+                "CRITICAL ERROR: No client files (.client) found in 'clients/' folder\n"
+                "   Please add at least one .client file to start the application."
             )
-        
-        # Get configured client
+
         configured_client = self._config.get("client", settings.DEFAULT_CLIENT)
-        
-        # Validate configured client exists
+        logger.info(f"   Configured client: {configured_client}")
+
         if configured_client not in available_clients:
-            fallback_client = available_clients[0]
-            print(f"⚠️  Client configuré '{configured_client}' introuvable")
-            print(f"🔄 Utilisation du client par défaut: {fallback_client}")
+            fallback_client = self._find_best_fallback_client(configured_client, available_clients)
+            logger.warning(f"Configured client '{configured_client}' not found")
+            logger.info(f"Automatic fallback to: {fallback_client}")
+            logger.info(f"   Other available clients: {', '.join(available_clients)}")
             configured_client = fallback_client
-            # Update config with valid client
-            self._config["client"] = configured_client
-            await self.save_config()
-        
-        # Initialize client
+            self._cfg._config["client"] = configured_client
+            await self._cfg.save()
+            logger.info("Configuration updated automatically")
+
         try:
             self.client = BitTorrentClient(configured_client)
-            print(f"📱 Client chargé: {self.client.name} {self.client.version}")
+            logger.info(f"Client loaded: {self.client.name} {self.client.version}")
+            logger.debug(f"   User-Agent: {self.client.get_user_agent()}")
+            logger.debug(f"   Upload rate range: {settings.MIN_UPLOAD_RATE}-{settings.MAX_UPLOAD_RATE} KB/s")
         except Exception as e:
-            raise RuntimeError(f"❌ Impossible de charger le client '{configured_client}': {e}")
-        
-        # Load existing torrents
+            logger.critical(f"Failed to load client '{configured_client}': {e}")
+            raise RuntimeError(f"Impossible de charger le client '{configured_client}': {e}")
+
         await self.load_torrents()
-    
+        await self._init_file_watcher()
+        logger.info("Seeder Service initialized successfully")
+
+    # ------------------------------------------------------------------
+    # Config delegation
+    # ------------------------------------------------------------------
+
     async def load_config(self):
-        """Load configuration from file"""
-        config_file = settings.CONFIG_DIR / "config.json"
-        
-        if config_file.exists():
-            with open(config_file, 'r', encoding='utf-8') as f:
-                self._config = json.load(f)
-        else:
-            # Create default config
-            self._config = {
-                "minUploadRate": settings.MIN_UPLOAD_RATE,
-                "maxUploadRate": settings.MAX_UPLOAD_RATE,
-                "simultaneousSeed": settings.SIMULTANEOUS_SEED,
-                "client": settings.DEFAULT_CLIENT,
-                "keepTorrentWithZeroLeechers": settings.KEEP_TORRENT_WITH_ZERO_LEECHERS,
-                "uploadRatioTarget": settings.UPLOAD_RATIO_TARGET,
-                "seedingDurationLimit": settings.SEEDING_DURATION_LIMIT
-            }
-            await self.save_config()
-    
+        await self._cfg.load()
+
     async def save_config(self):
-        """Save configuration to file"""
-        config_file = settings.CONFIG_DIR / "config.json"
-        with open(config_file, 'w', encoding='utf-8') as f:
-            json.dump(self._config, f, indent=2)
-    
+        await self._cfg.save()
+
+    def get_config(self) -> Dict:
+        return self._cfg.config.copy()
+
+    async def update_config(self, new_config: Dict):
+        """Update configuration with validation and live reload"""
+        logger.info(f"Updating configuration: {new_config}")
+
+        backup_config = self._config.copy()
+        try:
+            self._cfg.validate(new_config)
+            self._cfg.update_dict(new_config)
+            await self._cfg.save()
+            logger.info("Configuration saved successfully")
+
+            history_service.add_entry(EventType.CONFIG_UPDATED, "Configuration updated", new_config)
+        except Exception as save_error:
+            logger.error(f"Failed to save config: {save_error}")
+            self._cfg._config = backup_config
+            raise save_error
+
+        try:
+            if "minUploadRate" in new_config:
+                settings.MIN_UPLOAD_RATE = new_config["minUploadRate"]
+                logger.debug(f"   Min upload rate: {settings.MIN_UPLOAD_RATE} KB/s")
+            if "maxUploadRate" in new_config:
+                settings.MAX_UPLOAD_RATE = new_config["maxUploadRate"]
+                logger.debug(f"   Max upload rate: {settings.MAX_UPLOAD_RATE} KB/s")
+            if "seedingDurationLimit" in new_config:
+                settings.SEEDING_DURATION_LIMIT = new_config["seedingDurationLimit"]
+                logger.debug(f"   Seeding duration limit: {settings.SEEDING_DURATION_LIMIT}h")
+
+            if "client" in new_config and new_config["client"] != self.client.client_file:
+                try:
+                    self.client = BitTorrentClient(new_config["client"])
+                    logger.info(f"Switched to client: {self.client.name} {self.client.version}")
+                except Exception as e:
+                    logger.error(f"Failed to switch client: {e}")
+        except Exception as settings_error:
+            logger.error(f"Failed to update settings: {settings_error}")
+
+    # ------------------------------------------------------------------
+    # Torrent delegation
+    # ------------------------------------------------------------------
+
     async def load_torrents(self):
-        """Load torrents from directory"""
-        torrents = load_torrents_from_directory(settings.TORRENTS_DIR)
-        
-        for torrent in torrents:
-            if torrent.info_hash not in self.announcers:
-                await self.add_torrent(torrent)
-        
-        print(f"📂 Loaded {len(torrents)} torrent(s)")
-    
+        await self._tm.load_torrents(
+            client=self.client,
+            config=self._config,
+            is_running=self.is_running,
+            start_callback=self._start_announcer_if_needed,
+        )
+
+    def has_torrents(self) -> bool:
+        return self._tm.has_torrents()
+
     async def add_torrent(self, torrent: Torrent):
-        """Add a torrent to seed"""
-        if torrent.info_hash in self.announcers:
-            return
-        
-        if not self.client:
-            raise ValueError("Client not initialized")
-        
-        announcer = TrackerAnnouncer(torrent, self.client)
-        self.announcers[torrent.info_hash] = announcer
-        
-        # Start if service is running
-        if self.is_running:
-            await self._start_announcer_if_needed(announcer)
-        
-        # Log torrent added
-        history_service.add_entry(
-            EventType.TORRENT_ADDED,
-            f"Added torrent: {torrent.name}",
-            {"info_hash": torrent.info_hash, "size": torrent.size}
+        await self._tm.add_torrent(
+            torrent,
+            client=self.client,
+            config=self._config,
+            is_running=self.is_running,
+            start_callback=self._start_announcer_if_needed,
         )
-        
-        # Notify via WebSocket
-        await websocket_manager.broadcast({
-            "type": "torrent_added",
-            "data": self._get_torrent_info(torrent.info_hash)
-        })
-        
-        print(f"➕ Added torrent: {torrent.name}")
-    
+
     async def remove_torrent(self, info_hash: str):
-        """Remove a torrent"""
-        if info_hash not in self.announcers:
-            return
-        
-        announcer = self.announcers[info_hash]
-        
-        # Stop announcer
-        if announcer.is_running:
-            await announcer.stop()
-        
-        # Remove from dict
-        del self.announcers[info_hash]
-        
-        # Log torrent removed
-        history_service.add_entry(
-            EventType.TORRENT_REMOVED,
-            f"Removed torrent: {announcer.torrent.name}",
-            {"info_hash": info_hash}
-        )
-        
-        # Delete torrent file
-        torrent_file = settings.TORRENTS_DIR / f"{info_hash}.torrent"
-        if torrent_file.exists():
-            torrent_file.unlink()
-        
-        # Notify via WebSocket
-        await websocket_manager.broadcast({
-            "type": "torrent_removed",
-            "data": {"info_hash": info_hash}
-        })
-        
-        print(f"➖ Removed torrent: {info_hash[:8]}...")
-    
+        await self._tm.remove_torrent(info_hash)
+
+    def get_torrents(self) -> List[Dict]:
+        return self._tm.get_torrents()
+
+    # ------------------------------------------------------------------
+    # Start / Stop
+    # ------------------------------------------------------------------
+
     async def start(self):
-        """Start seeding"""
-        if self.is_running:
-            return
-        
-        self.is_running = True
-        self.started_at = datetime.utcnow()
-        
-        # Log system start
+        """Start seeding with race condition protection"""
+        async with self._lock:
+            if self.is_running:
+                logger.warning("Seeding already running")
+                return
+            logger.info("Starting seeding service...")
+            self.is_running = True
+            self.started_at = datetime.now(timezone.utc)
+
         history_service.add_entry(
             EventType.SYSTEM_START,
             "Seeding started",
-            {"torrents_count": len(self.announcers)}
+            {"torrents_count": len(self.announcers)},
         )
-        
-        # Start announcers based on simultaneousSeed config
+
         simultaneous_seed = self._config.get("simultaneousSeed", settings.SIMULTANEOUS_SEED)
         announcers_to_start = list(self.announcers.values())[:simultaneous_seed]
-        
+
+        logger.info(f"   Starting {len(announcers_to_start)}/{len(self.announcers)} torrent(s)")
+        logger.info(f"   Simultaneous seed limit: {simultaneous_seed}")
+        logger.info(f"   Upload rate: {settings.MIN_UPLOAD_RATE}-{settings.MAX_UPLOAD_RATE} KB/s")
+
         for announcer in announcers_to_start:
             await announcer.start()
-        
-        # Start monitor task
+
         self._monitor_task = asyncio.create_task(self._monitor_loop())
-        
-        # Notify via WebSocket
-        await websocket_manager.broadcast({
-            "type": "seeding_started",
-            "data": {"started_at": self.started_at.isoformat()}
-        })
-        
-        print(f"▶️  Started seeding {len(announcers_to_start)} torrent(s)")
-    
+        logger.info("   Monitor task started (updates every 3s)")
+
+        if not hasattr(self, "_resource_optimizer_task"):
+            self._resource_optimizer_task = asyncio.create_task(resource_optimizer.periodic_optimization())
+            logger.info("   Resource optimizer started")
+
+        await websocket_manager.broadcast({"type": "seeding_started", "data": {"started_at": self.started_at.isoformat()}})
+        logger.info(f"Seeding started successfully ({len(announcers_to_start)} active)")
+
     async def stop(self):
         """Stop seeding"""
         if not self.is_running:
+            logger.warning("Seeding already stopped")
             return
-        
+
+        logger.info("Stopping seeding service...")
         self.is_running = False
-        
-        # Log system stop
-        history_service.add_entry(
-            EventType.SYSTEM_STOP,
-            "Seeding stopped"
-        )
-        
-        # Stop monitor task
+
+        history_service.add_entry(EventType.SYSTEM_STOP, "Seeding stopped")
+
         if self._monitor_task:
+            logger.debug("   Stopping monitor task...")
             self._monitor_task.cancel()
             try:
                 await self._monitor_task
             except asyncio.CancelledError:
                 pass
-        
-        # Stop all announcers
+
+        if hasattr(self, "_resource_optimizer_task") and self._resource_optimizer_task:
+            logger.debug("   Stopping resource optimizer...")
+            self._resource_optimizer_task.cancel()
+            try:
+                await self._resource_optimizer_task
+            except asyncio.CancelledError:
+                pass
+
+        if self.file_watcher:
+            logger.debug("   Stopping file watcher...")
+            await self.file_watcher.stop()
+
+        active_count = sum(1 for a in self.announcers.values() if a.is_running)
+        logger.info(f"   Stopping {active_count} active announcer(s)...")
         tasks = [announcer.stop() for announcer in self.announcers.values()]
         await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Notify via WebSocket
-        await websocket_manager.broadcast({
-            "type": "seeding_stopped",
-            "data": {}
-        })
-        
-        print("⏸️  Stopped seeding")
-    
-    async def _start_announcer_if_needed(self, announcer: TrackerAnnouncer):
-        """Start announcer if we have capacity"""
-        simultaneous_seed = self._config.get("simultaneousSeed", settings.SIMULTANEOUS_SEED)
-        running_count = sum(1 for a in self.announcers.values() if a.is_running)
-        
-        if running_count < simultaneous_seed:
-            await announcer.start()
-    
-    async def _monitor_loop(self):
-        """Monitor torrents and send updates"""
-        try:
-            while self.is_running:
-                await asyncio.sleep(5)  # Update every 5 seconds
-                
-                # Send stats update
-                await websocket_manager.broadcast({
-                    "type": "stats_update",
-                    "data": self.get_stats()
-                })
-                
-                # Check ratio targets
-                await self._check_ratio_targets()
-                
-                # Check for new torrents
-                await self.load_torrents()
-                
-        except asyncio.CancelledError:
-            pass
-    
-    async def _check_ratio_targets(self):
-        """Check if any torrents reached ratio target or duration limit"""
-        ratio_target = self._config.get("uploadRatioTarget", -1.0)
-        duration_limit = self._config.get("seedingDurationLimit", -1.0)
-        keep_zero_leechers = self._config.get("keepTorrentWithZeroLeechers", True)
-        
-        to_remove = []
-        now = datetime.utcnow()
-        
-        for info_hash, announcer in self.announcers.items():
-            stats = announcer.get_stats()
-            torrent = announcer.torrent
-            
-            # Check ratio target (if enabled)
-            if ratio_target > 0 and stats["ratio"] >= ratio_target:
-                history_service.add_entry(
-                    EventType.TORRENT_REMOVED,
-                    f"Ratio target reached for {torrent.name}",
-                    {"info_hash": info_hash, "ratio": stats["ratio"], "target": ratio_target}
-                )
-                to_remove.append(info_hash)
-                continue
-            
-            # Check duration limit (if enabled) - in hours
-            if duration_limit > 0:
-                seeding_duration = (now - torrent.added_at).total_seconds() / 3600  # Convert to hours
-                if seeding_duration >= duration_limit:
-                    history_service.add_entry(
-                        EventType.TORRENT_REMOVED,
-                        f"Duration limit reached for {torrent.name}",
-                        {"info_hash": info_hash, "duration_hours": seeding_duration, "limit": duration_limit}
-                    )
-                    to_remove.append(info_hash)
-                    continue
-            
-            # Check zero peers
-            if not keep_zero_leechers and stats["seeders"] == 0 and stats["leechers"] == 0:
-                to_remove.append(info_hash)
-        
-        # Remove torrents (archive them)
-        for info_hash in to_remove:
-            await self._archive_torrent(info_hash)
-    
-    async def _archive_torrent(self, info_hash: str):
-        """Archive a torrent (move to archived folder instead of deleting)"""
-        if info_hash not in self.announcers:
-            return
-        
-        announcer = self.announcers[info_hash]
-        torrent = announcer.torrent
-        
-        # Stop announcer
-        if announcer.is_running:
-            await announcer.stop()
-        
-        # Remove from dict
-        del self.announcers[info_hash]
-        
-        # Move torrent file to archived folder
-        archived_dir = settings.TORRENTS_DIR / "archived"
-        archived_dir.mkdir(exist_ok=True)
-        
-        if torrent.path.exists():
-            archived_path = archived_dir / torrent.path.name
-            torrent.path.rename(archived_path)
-            print(f"📦 Archived torrent: {torrent.name}")
-        
-        # Notify via WebSocket
-        await websocket_manager.broadcast({
-            "type": "torrent_archived",
-            "data": {"info_hash": info_hash, "name": torrent.name}
-        })
-    
-    def get_config(self) -> Dict:
-        """Get current configuration"""
-        return self._config.copy()
-    
-    async def update_config(self, new_config: Dict):
-        """Update configuration"""
-        self._config.update(new_config)
-        await self.save_config()
-        
-        # Log config update
-        history_service.add_entry(
-            EventType.CONFIG_UPDATED,
-            "Configuration updated",
-            new_config
+
+        await websocket_manager.broadcast(
+            {
+                "type": "seeding_stopped",
+                "data": {
+                    "startedAt": self.started_at.isoformat(),
+                    "activeTorrents": len([a for a in self.announcers.values() if a.is_running]),
+                },
+            }
         )
-        
-        # Update settings
-        if "minUploadRate" in new_config:
-            settings.MIN_UPLOAD_RATE = new_config["minUploadRate"]
-        if "maxUploadRate" in new_config:
-            settings.MAX_UPLOAD_RATE = new_config["maxUploadRate"]
-        if "seedingDurationLimit" in new_config:
-            settings.SEEDING_DURATION_LIMIT = new_config["seedingDurationLimit"]
-        
-        # Reload client if changed
-        if "client" in new_config and new_config["client"] != self.client.client_file:
-            try:
-                self.client = BitTorrentClient(new_config["client"])
-                print(f"📱 Switched to client: {self.client.name} {self.client.version}")
-            except Exception as e:
-                print(f"⚠️  Failed to switch client: {e}")
-    
-    def get_torrents(self) -> List[Dict]:
-        """Get all torrents info"""
-        return [
-            self._get_torrent_info(info_hash)
-            for info_hash in self.announcers.keys()
-        ]
-    
-    def _get_torrent_info(self, info_hash: str) -> Dict:
-        """Get single torrent info"""
-        announcer = self.announcers.get(info_hash)
-        if not announcer:
-            return {}
-        
-        stats = announcer.get_stats()
-        torrent = announcer.torrent
-        
-        return {
-            "id": info_hash,
-            "name": torrent.name,
-            "size": torrent.size,
-            "uploaded": stats["uploaded"],
-            "uploadSpeed": stats["uploadSpeed"],
-            "ratio": stats["ratio"],
-            "seeders": stats["seeders"],
-            "leechers": stats["leechers"],
-            "state": "seeding" if announcer.is_running else "stopped",
-            "addedAt": torrent.added_at.isoformat(),
-            "lastAnnounce": stats["lastAnnounce"].isoformat() if stats["lastAnnounce"] else None,
-            "nextAnnounce": stats["nextAnnounce"].isoformat() if stats["nextAnnounce"] else None,
-            "tracker": torrent.primary_tracker
-        }
-    
+        await websocket_manager.broadcast({"type": "torrents_update", "data": {"torrents": self.get_torrents()}})
+        logger.info("Seeding stopped successfully")
+
+    # ------------------------------------------------------------------
+    # Stats
+    # ------------------------------------------------------------------
+
     def get_stats(self) -> Dict:
-        """Get service statistics"""
-        total_uploaded = sum(
-            a.uploaded for a in self.announcers.values()
-        )
-        total_speed = sum(
-            a.upload_speed for a in self.announcers.values() if a.is_running
-        )
-        active_count = sum(
-            1 for a in self.announcers.values() if a.is_running
-        )
-        
+        total_uploaded = sum(a.uploaded for a in self.announcers.values())
+        total_speed = sum(a.upload_speed for a in self.announcers.values() if a.is_running)
+        active_count = sum(1 for a in self.announcers.values() if a.is_running)
+
         uptime = None
         if self.started_at:
-            uptime = int((datetime.utcnow() - self.started_at).total_seconds())
-        
+            uptime = int((datetime.now(timezone.utc) - self.started_at).total_seconds())
+
         return {
             "isRunning": self.is_running,
             "activeTorrents": active_count,
             "totalTorrents": len(self.announcers),
             "totalUploaded": total_uploaded,
             "totalDownloaded": 0,
-            "uploadSpeed": total_speed,
+            "uploadSpeed": int(total_speed),
             "startedAt": self.started_at.isoformat() if self.started_at else None,
-            "uptime": uptime
+            "uptime": uptime,
         }
+
+    def get_stats_cached(self) -> Dict:
+        cached_stats = cache_manager.get_aggregated_stats("global_stats")
+        if cached_stats:
+            logger.debug("Stats loaded from cache")
+            return cached_stats
+        stats = self.get_stats()
+        cache_manager.set_aggregated_stats("global_stats", stats)
+        logger.debug("Stats computed and cached")
+        return stats
+
+    def get_torrents_cached(self) -> List[Dict]:
+        cached_torrents = cache_manager.get_aggregated_stats("torrents_list")
+        if cached_torrents:
+            logger.debug("Torrents list loaded from cache")
+            return cached_torrents
+        torrents = self.get_torrents()
+        cache_manager.set_aggregated_stats("torrents_list", torrents)
+        logger.debug("Torrents list computed and cached")
+        return torrents
+
+    def _get_torrent_info(self, info_hash: str) -> Dict:
+        """Proxy kept for any external callers"""
+        return self._tm.get_torrent_info(info_hash)
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _find_best_fallback_client(missing_client: str, available_clients: list) -> str:
+        """Find the best fallback client when the configured one is missing"""
+        if not available_clients:
+            raise RuntimeError("No available clients for fallback")
+
+        try:
+            missing_parts = missing_client.replace(".client", "").split("-")
+            if len(missing_parts) >= 2:
+                missing_name = missing_parts[0]
+
+                same_client_candidates = [c for c in available_clients if c.startswith(missing_name)]
+                if same_client_candidates:
+                    same_client_candidates.sort(reverse=True)
+                    return same_client_candidates[0]
+
+                preferred_order = ["qbittorrent", "deluge", "transmission"]
+                for preferred in preferred_order:
+                    candidates = [c for c in available_clients if c.startswith(preferred)]
+                    if candidates:
+                        candidates.sort(reverse=True)
+                        return candidates[0]
+        except Exception as e:
+            logger.debug(f"Error parsing client name '{missing_client}': {e}")
+
+        available_clients.sort(reverse=True)
+        return available_clients[0]
+
+    async def _start_announcer_if_needed(self, announcer: TrackerAnnouncer):
+        simultaneous_seed = self._config.get("simultaneousSeed", settings.SIMULTANEOUS_SEED)
+        running_count = sum(1 for a in self.announcers.values() if a.is_running)
+        if running_count < simultaneous_seed:
+            await announcer.start()
+
+    # ------------------------------------------------------------------
+    # Monitor loop
+    # ------------------------------------------------------------------
+
+    async def _monitor_loop(self):
+        """Monitor torrents and send updates - real-time"""
+        logger.info("Monitor loop started!")
+        try:
+            update_count = 0
+            while self.is_running:
+                await asyncio.sleep(3)
+                update_count += 1
+
+                try:
+                    for announcer in self.announcers.values():
+                        if announcer.is_running:
+                            try:
+                                announcer._update_stats_for_display()
+                            except Exception as e:
+                                logger.error(f"Error updating stats for {announcer.torrent.name}: {e}")
+
+                    stats = self.get_stats()
+                    torrents = self.get_torrents()
+
+                    logger.info(
+                        f"Monitor #{update_count}: {stats['activeTorrents']} active, "
+                        f"speed={stats['uploadSpeed'] / 1024:.1f} KB/s, "
+                        f"uploaded={stats['totalUploaded'] / (1024 * 1024):.2f} MB"
+                    )
+
+                    await websocket_manager.broadcast({"type": "stats_update", "data": stats})
+                    await websocket_manager.broadcast({"type": "torrents_update", "data": {"torrents": torrents}})
+
+                    if update_count % 5 == 0:
+                        for torrent in torrents:
+                            if torrent.get("isRunning"):
+                                logger.info(
+                                    f"   {torrent['name'][:30]}: "
+                                    f"speed={torrent['uploadSpeed'] / 1024:.1f}KB/s, "
+                                    f"uploaded={torrent['uploaded'] / (1024 * 1024):.2f}MB, "
+                                    f"ratio={torrent['ratio']:.3f}, "
+                                    f"time={torrent['seedingTime']}s"
+                                )
+
+                    await self._tm.check_ratio_targets(self._config)
+                    cache_manager.periodic_cleanup()
+                    await self.load_torrents()
+
+                except Exception as e:
+                    logger.error(f"Monitor loop iteration error: {e}", exc_info=True)
+
+        except asyncio.CancelledError:
+            logger.info("Monitor loop cancelled")
+        except Exception as e:
+            logger.error(f"Monitor loop fatal error: {e}", exc_info=True)
+
+    # ------------------------------------------------------------------
+    # File watcher
+    # ------------------------------------------------------------------
+
+    async def _init_file_watcher(self):
+        if not FILE_WATCHER_AVAILABLE:
+            logger.info("File watcher disabled - watchdog not available")
+            return
+        try:
+            self.file_watcher = FileWatcherService(settings.TORRENTS_DIR, self._auto_reload_torrents)
+            await self.file_watcher.start()
+            logger.info("File watcher initialized - new torrents will auto-load")
+        except Exception as e:
+            logger.warning(f"Failed to initialize file watcher: {e}")
+            self.file_watcher = None
+
+    async def _auto_reload_torrents(self):
+        try:
+            logger.info("Auto-reloading torrents due to file system change...")
+            old_count = len(self.announcers)
+            await self.load_torrents()
+            new_count = len(self.announcers)
+
+            await websocket_manager.broadcast({"type": "torrents_update", "data": {"torrents": self.get_torrents()}})
+
+            message = f"Auto-reload: {old_count} -> {new_count} torrents"
+            logger.info(message)
+            await websocket_manager.broadcast({"type": "toast", "data": {"message": message, "type": "info"}})
+        except Exception as e:
+            logger.error(f"Auto-reload failed: {e}")
+            await websocket_manager.broadcast({"type": "toast", "data": {"message": f"Auto-reload failed: {e}", "type": "error"}})
 
 
 # Global service instance

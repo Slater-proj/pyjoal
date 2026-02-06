@@ -9,7 +9,7 @@ import random
 import logging
 import time
 from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import httpx
 
 from app.core.bittorrent_client import BitTorrentClient
@@ -204,7 +204,7 @@ class TrackerAnnouncer:
         logger.debug(f"   Port: {self.port}")
         
         self.is_running = True
-        self._seeding_started_at = datetime.utcnow()
+        self._seeding_started_at = datetime.now(timezone.utc)
         
         if self._initial_seeding:
             logger.debug("   📋 Sending 'completed' event - torrent finished downloading")
@@ -228,7 +228,7 @@ class TrackerAnnouncer:
         logger.debug(f"   Final ratio: {self.uploaded / self.torrent.size if self.torrent.size > 0 else 0:.3f}")
         
         if self._seeding_started_at:
-            elapsed = (datetime.utcnow() - self._seeding_started_at).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - self._seeding_started_at).total_seconds()
             self.seeding_time += int(elapsed)
             self._seeding_started_at = None
         
@@ -261,7 +261,7 @@ class TrackerAnnouncer:
                 
                 if self._in_backoff and self.last_retry_attempt:
                     backoff_time = self._calculate_backoff_delay()
-                    time_since_last_retry = (datetime.utcnow() - self.last_retry_attempt).total_seconds()
+                    time_since_last_retry = (datetime.now(timezone.utc) - self.last_retry_attempt).total_seconds()
                     if time_since_last_retry < backoff_time:
                         remaining_backoff = int(backoff_time - time_since_last_retry)
                         actual_interval = max(actual_interval, remaining_backoff)
@@ -405,7 +405,7 @@ class TrackerAnnouncer:
                 
                 self._parse_announce_response(response.content)
                 
-                self.last_announce = datetime.utcnow()
+                self.last_announce = datetime.now(timezone.utc)
                 jitter = random.randint(-self.announce_jitter, self.announce_jitter)
                 self.next_announce = self.last_announce + timedelta(
                     seconds=self.announce_interval + jitter
@@ -479,7 +479,7 @@ class TrackerAnnouncer:
                 else:
                     backoff_delay = self._calculate_backoff_delay()
                     self._in_backoff = True
-                    self.last_retry_attempt = datetime.utcnow()
+                    self.last_retry_attempt = datetime.now(timezone.utc)
                     logger.debug(f"🛡️ Announce attempt {attempt + 1} failed, retrying in {backoff_delay}s: {error_msg}")
                     await asyncio.sleep(backoff_delay)
 
@@ -526,7 +526,7 @@ class TrackerAnnouncer:
             self._parse_announce_response(response.content)
             self._mark_tracker_success(tracker_url)
             
-            self.last_announce = datetime.utcnow()
+            self.last_announce = datetime.now(timezone.utc)
             jitter = random.randint(-self.announce_jitter, self.announce_jitter)
             self.next_announce = self.last_announce + timedelta(
                 seconds=self.announce_interval + jitter
@@ -580,7 +580,7 @@ class TrackerAnnouncer:
             
             self._mark_tracker_success(tracker_url)
             
-            self.last_announce = datetime.utcnow()
+            self.last_announce = datetime.now(timezone.utc)
             jitter = random.randint(-self.announce_jitter, self.announce_jitter)
             self.next_announce = self.last_announce + timedelta(
                 seconds=self.announce_interval + jitter
@@ -705,14 +705,14 @@ class TrackerAnnouncer:
         """Record error for display in UI."""
         self.last_error = error_message
         self.error_count += 1
-        self.last_error_time = datetime.utcnow()
+        self.last_error_time = datetime.now(timezone.utc)
         logger.debug(f"Error recorded for {self.torrent.name}: {error_message}")
 
     def _record_error_silent(self, error_message: str):
         """Record error silently (only after all retries exhausted)."""
         self.last_error = error_message
         self.error_count += 1
-        self.last_error_time = datetime.utcnow()
+        self.last_error_time = datetime.now(timezone.utc)
         logger.debug(f"Silent error recorded for {self.torrent.name}: {error_message}")
     
     def _calculate_backoff_delay(self) -> int:
@@ -732,7 +732,7 @@ class TrackerAnnouncer:
         current_seeding_time = max(0, self.seeding_time)
         
         if self.is_running and self._seeding_started_at:
-            session_duration = (datetime.utcnow() - self._seeding_started_at).total_seconds()
+            session_duration = (datetime.now(timezone.utc) - self._seeding_started_at).total_seconds()
             session_duration = max(0, int(session_duration))
             current_seeding_time += session_duration
         
