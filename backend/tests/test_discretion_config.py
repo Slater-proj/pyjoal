@@ -48,17 +48,17 @@ def test_discretion_settings_validation():
     
     # Test announce interval bounds
     with pytest.raises(ValueError):
-        ConfigSchema(**{**base_config, "announceInterval": 10})  # Too low
+        ConfigSchema(**{**base_config, "announceInterval": 10})  # Too low (min=60)
     
     with pytest.raises(ValueError):
-        ConfigSchema(**{**base_config, "announceInterval": 400})  # Too high
+        ConfigSchema(**{**base_config, "announceInterval": 8000})  # Too high (max=7200)
     
     # Test jitter bounds
     with pytest.raises(ValueError):
         ConfigSchema(**{**base_config, "announceJitter": -1})  # Negative
     
     with pytest.raises(ValueError):
-        ConfigSchema(**{**base_config, "announceJitter": 200})  # Too high
+        ConfigSchema(**{**base_config, "announceJitter": 700})  # Too high (max=600)
     
     # Test stats update interval bounds
     with pytest.raises(ValueError):
@@ -90,9 +90,9 @@ def test_discretion_settings_defaults():
     config = ConfigSchema(**config_data)
     
     # Check that defaults are applied
-    assert config.announceInterval == 30
-    assert config.announceJitter == 30
-    assert config.minStatsUpdateInterval == 3
+    assert config.announceInterval == 1800
+    assert config.announceJitter == 120
+    assert config.minStatsUpdateInterval == 2
     assert config.enableSpeedVariation == True
     assert config.speedVariationPercent == 20
 

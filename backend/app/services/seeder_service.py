@@ -100,7 +100,8 @@ class SeederService:
         persistence_service.load()
         notification_service.load()
         await self._cfg.load()
-        logger.info(f"   Configuration loaded: {self._config}")
+        logger.debug(f"   Configuration loaded: {self._config}")
+        logger.info(f"   Config: client={self._config.get('client')}, seeds={self._config.get('simultaneousSeed')}, rate={self._config.get('minUploadRate')}-{self._config.get('maxUploadRate')} KB/s")
 
         available_clients = list_available_clients()
         logger.info(f"   Available clients: {', '.join(available_clients) if available_clients else 'NONE'}")
@@ -154,9 +155,14 @@ class SeederService:
 
     async def update_config(self, new_config: Dict):
         """Update configuration with validation and live reload"""
-        logger.info(f"Updating configuration: {new_config}")
-
         backup_config = self._config.copy()
+        # Log only the fields that actually changed
+        changed = {k: (backup_config.get(k), v) for k, v in new_config.items() if backup_config.get(k) != v}
+        if changed:
+            summary = ", ".join(f"{k}: {old}→{new}" for k, (old, new) in changed.items())
+            logger.info(f"🔧 Config update — changed fields: {summary}")
+        else:
+            logger.info("🔧 Config update requested (no field changes)")
         try:
             self._cfg.validate(new_config)
             self._cfg.update_dict(new_config)
@@ -170,18 +176,42 @@ class SeederService:
             raise save_error
 
         try:
-            if "minUploadRate" in new_config:
-                settings.MIN_UPLOAD_RATE = new_config["minUploadRate"]
-            if "maxUploadRate" in new_config:
-                settings.MAX_UPLOAD_RATE = new_config["maxUploadRate"]
-            if "seedingDurationLimit" in new_config:
-                settings.SEEDING_DURATION_LIMIT = new_config["seedingDurationLimit"]
-            if "peerSpeedTiersEnabled" in new_config:
-                settings.PEER_SPEED_TIERS_ENABLED = new_config["peerSpeedTiersEnabled"]
-            if "enableSpeedVariation" in new_config:
-                settings.ENABLE_SPEED_VARIATION = new_config["enableSpeedVariation"]
-            if "seedingOnlyMode" in new_config:
-                settings.SEEDING_ONLY_MODE = new_config["seedingOnlyMode"]
+            # Propagate ALL config fields to the global settings singleton
+            # so that any code reading settings.XXX directly gets fresh values.
+            _settings_map = {
+                "minUploadRate": "MIN_UPLOAD_RATE",
+                "maxUploadRate": "MAX_UPLOAD_RATE",
+                "simultaneousSeed": "SIMULTANEOUS_SEED",
+                "keepTorrentWithZeroLeechers": "KEEP_TORRENT_WITH_ZERO_LEECHERS",
+                "uploadRatioTarget": "UPLOAD_RATIO_TARGET",
+                "seedingDurationLimit": "SEEDING_DURATION_LIMIT",
+                "announceInterval": "ANNOUNCE_INTERVAL",
+                "announceJitter": "ANNOUNCE_JITTER",
+                "minStatsUpdateInterval": "MIN_STATS_UPDATE_INTERVAL",
+                "enableSpeedVariation": "ENABLE_SPEED_VARIATION",
+                "speedVariationPercent": "SPEED_VARIATION_PERCENT",
+                "seedingOnlyMode": "SEEDING_ONLY_MODE",
+                "pauseDurationMin": "PAUSE_DURATION_MIN",
+                "pauseDurationMax": "PAUSE_DURATION_MAX",
+                "reducedSpeedDurationMin": "REDUCED_SPEED_DURATION_MIN",
+                "reducedSpeedDurationMax": "REDUCED_SPEED_DURATION_MAX",
+                "stateChangeIntervalMin": "STATE_CHANGE_INTERVAL_MIN",
+                "stateChangeIntervalMax": "STATE_CHANGE_INTERVAL_MAX",
+                "reducedSpeedKbps": "REDUCED_SPEED_KBPS",
+                "peerSpeedTiersEnabled": "PEER_SPEED_TIERS_ENABLED",
+                "peerTier1MaxPeers": "PEER_TIER1_MAX_PEERS",
+                "peerTier1SpeedPercent": "PEER_TIER1_SPEED_PERCENT",
+                "peerTier2MaxPeers": "PEER_TIER2_MAX_PEERS",
+                "peerTier2SpeedPercent": "PEER_TIER2_SPEED_PERCENT",
+                "peerTier3MaxPeers": "PEER_TIER3_MAX_PEERS",
+                "peerTier3SpeedPercent": "PEER_TIER3_SPEED_PERCENT",
+                "peerTier4MaxPeers": "PEER_TIER4_MAX_PEERS",
+                "peerTier4SpeedPercent": "PEER_TIER4_SPEED_PERCENT",
+                "peerTier5SpeedPercent": "PEER_TIER5_SPEED_PERCENT",
+            }
+            for config_key, settings_attr in _settings_map.items():
+                if config_key in new_config:
+                    setattr(settings, settings_attr, new_config[config_key])
 
             if "client" in new_config and new_config["client"] != self.client.client_file:
                 try:
@@ -236,8 +266,12 @@ class SeederService:
                 f"🔄 Config propagated to {count} active announcer(s): "
                 f"peer-tiers={tiers_state}, "
                 f"interval={discretion_config['announce_interval']}s, "
-                f"speed-variation={'ON' if discretion_config['enable_speed_variation'] else 'OFF'}"
+                f"speed-variation={'ON' if discretion_config['enable_speed_variation'] else 'OFF'}, "
+                f"seeding-only={'ON' if discretion_config['seedingOnlyMode'] else 'OFF'}, "
+                f"reduced-speed={discretion_config['reducedSpeedKbps']}KB/s"
             )
+        else:
+            logger.debug("🔄 Config propagation: no active announcers")
 
     # ------------------------------------------------------------------
     # Torrent delegation

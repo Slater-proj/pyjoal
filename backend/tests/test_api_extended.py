@@ -37,7 +37,7 @@ class TestConfigAPI:
             "minUploadRate": 50, "maxUploadRate": 500, "simultaneousSeed": 3,
             "client": "qbittorrent-5.1.4.client", "keepTorrentWithZeroLeechers": True,
             "uploadRatioTarget": -1.0, "seedingDurationLimit": -1.0,
-            "announceInterval": 30, "announceJitter": 30, "minStatsUpdateInterval": 3,
+            "announceInterval": 1800, "announceJitter": 120, "minStatsUpdateInterval": 2,
             "enableSpeedVariation": True, "speedVariationPercent": 20,
             "seedingOnlyMode": True,
             "pauseDurationMin": 30, "pauseDurationMax": 180,

@@ -96,6 +96,8 @@ Created automatically on first launch, editable via the interface:
 }
 ```
 
+> All additional fields (peer speed tiers, discretion timing, announce intervals, etc.) are auto-populated with defaults and configurable from the Settings UI.
+
 ## 🎭 Stealth & Anti-detection
 
 - **Temporal desynchronization** - Each torrent has its own cycle with random jitter

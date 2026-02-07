@@ -299,10 +299,6 @@ class TrackerAnnouncer:
     # Stats delegation
     # ================================================================
     
-    def _update_stats(self):
-        """Update upload stats with realistic behavior based on mode."""
-        self.stats.update_stats(self.client, self.is_running)
-    
     def _update_stats_for_display(self):
         """Update stats for UI display."""
         self.stats.update_stats_for_display(self.client, self.is_running, self.seeders, self.leechers)
@@ -430,7 +426,7 @@ class TrackerAnnouncer:
         proxy_kwargs = {}
         if settings.HTTP_PROXY_HOST and settings.HTTP_PROXY_PORT:
             proxy_url = f"http://{settings.HTTP_PROXY_HOST}:{settings.HTTP_PROXY_PORT}"
-            proxy_kwargs['proxies'] = {"http://": proxy_url, "https://": proxy_url}
+            proxy_kwargs['proxy'] = proxy_url
         
         async with httpx.AsyncClient(timeout=timeout, headers=headers, verify=False, follow_redirects=True, max_redirects=5, **proxy_kwargs) as http_client:
             logger.debug(f"🎭 HTTP Announce to {tracker_url}")
@@ -453,8 +449,7 @@ class TrackerAnnouncer:
                 seconds=self.announce_interval + jitter
             )
             
-            logger.debug(f"✅ HTTP Announce successful ({response_time:.0f}ms) for {self.torrent.name[:40]}")
-            logger.debug(f"   Peers: {self.seeders}S/{self.leechers}L | Uploaded: {self.uploaded / (1024**2):.2f} MB")
+            logger.info(f"✅ HTTP Announce OK ({response_time:.0f}ms) {self.torrent.name[:40]} — {self.seeders}S/{self.leechers}L | {self.uploaded / (1024**2):.1f}MB up")
             
             history_service.add_entry(
                 EventType.ANNOUNCE_SUCCESS,
@@ -507,8 +502,7 @@ class TrackerAnnouncer:
                 seconds=self.announce_interval + jitter
             )
             
-            logger.debug(f"✅ UDP Announce successful ({response_time:.0f}ms) for {self.torrent.name[:40]}")
-            logger.debug(f"   Peers: {self.seeders}S/{self.leechers}L | Uploaded: {self.uploaded / (1024**2):.2f} MB")
+            logger.info(f"✅ UDP Announce OK ({response_time:.0f}ms) {self.torrent.name[:40]} — {self.seeders}S/{self.leechers}L | {self.uploaded / (1024**2):.1f}MB up")
             
             history_service.add_entry(
                 EventType.ANNOUNCE_SUCCESS,
@@ -555,7 +549,7 @@ class TrackerAnnouncer:
                 reason = response[b'failure reason']
                 if isinstance(reason, bytes):
                     reason = reason.decode('utf-8', errors='ignore')
-                logger.error(f"❌ Tracker returned failure: {reason}")
+                logger.warning(f"⚠️ Tracker returned failure: {reason}")
                 self._record_error(f"Tracker failure: {reason}")
                 return
             
@@ -618,9 +612,8 @@ class TrackerAnnouncer:
             if b'external ip' in response:
                 ext_ip = response[b'external ip']
                 if isinstance(ext_ip, bytes) and len(ext_ip) == 4:
-                    import socket
-                    ip_str = socket.inet_ntoa(ext_ip)
-                    logger.debug(f"   Tracker sees our IP as: {ip_str}")
+                    # Privacy: do not log the actual IP address
+                    logger.debug("   Tracker returned external IP (masked for privacy)")
             
             if b'tracker id' in response:
                 self._tracker_id = response[b'tracker id']

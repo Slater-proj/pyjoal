@@ -1,5 +1,38 @@
 # Changelog - PyJOAL
 
+## [1.12.6] - 2025-02-07
+
+### Fixed
+- **Config reset incomplete**: `POST /api/config/reset` only reset 7 out of ~30 fields (missing peer tiers, discretion timings, etc.). Now uses `ConfigManager._default_config()` which resets ALL fields
+- **Config propagation missing fields**: `update_config()` was not propagating several settings (peer tiers, pause durations, speed variation, etc.) to the global settings singleton. Added exhaustive `_settings_map` with all 33 config→settings mappings
+- **Triple upload byte accumulation**: Both `update_stats()` and `update_stats_for_display()` could accumulate bytes simultaneously. Added guard in `update_stats()` to skip when the display path is active
+- **`datetime.utcnow()` deprecated**: Replaced all usages with `datetime.now(timezone.utc)` per Python 3.12+ deprecation
+- **httpx proxy API deprecated**: Updated `proxies=` parameter to modern `proxy=` single-proxy API
+- **Schema default mismatches**: `announceInterval` defaulted to 30s (should be 1800s), `announceJitter` to 30s (should be 120s). Aligned schema defaults and validation bounds with realistic tracker behavior
+- **Inconsistent dead-swarm logic**: `leechers=0` handling differed between `get_activity_based_upload_speed()` and `get_realistic_upload_speed_based_on_swarm()`. Harmonized: background speed only when BOTH seeders≤0 AND leechers=0
+- **`seedingOnlyMode` not passed on torrent add**: `torrent_manager.add_torrent()` discretion_config was missing the `seedingOnlyMode` key. Newly added torrents now receive the correct mode
+- **Speed tier not reset after pause resume**: `update_individual_state()` didn't reset `_current_speed_tier` when resuming from fake pause — tier stayed as 'paused'. Now correctly picks 'high' or 'medium' on resume
+- **Duplicate `seeding_only_mode` assignment**: `StatsSimulator.update_config()` set the field twice. Removed the redundant line
+- **Dead code removed**: `TrackerAnnouncer._update_stats()` was defined but never called. Removed
+
+### Improved — Logging
+- **Config update diff logging**: `update_config()` now logs only the fields that actually changed (e.g. `minUploadRate: 50→100`) instead of dumping the entire config blob
+- **Announce success visibility**: HTTP/UDP announce success messages promoted from DEBUG to INFO so operational health is visible at default log level
+- **IP address privacy**: Removed logging of user's real IP address from tracker `external ip` response field
+- **Tracker failure severity**: Tracker-returned failure reasons (often benign like "torrent not registered") downgraded from ERROR to WARNING
+- **Richer config reload log**: `StatsSimulator.update_config()` now logs all key settings (tiers, variation, seeding-only, speed, pause timings) instead of just 2 fields
+- **Config reset logged**: `POST /api/config/reset` now logs at INFO level before and after the reset
+- **Startup config at DEBUG**: Full config dict on startup moved from INFO to DEBUG; a concise summary logged at INFO instead
+- **Secret token masking**: Token log now shows only first 4 + last 2 characters (was 8+4)
+- **Torrent remove stats**: `remove_torrent()` now logs final uploaded bytes and ratio
+- **Propagation no-op logged**: Config propagation to 0 announcers now logged at DEBUG instead of silently skipping
+
+### Added — Tests
+- 26 new targeted tests for previously uncovered code paths (peer tier speed branches, download stats, activity state management, status info, download phase detection, display stats)
+
+### Coverage
+- Test coverage restored to **80%** (768 passed, 3 skipped)
+
 ## [1.12.5] - 2025-02-07
 
 ### Fixed

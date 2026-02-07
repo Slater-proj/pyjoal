@@ -53,7 +53,7 @@ class TorrentManager:
         start_callback=None,
     ):
         """Load torrents from directory with validation"""
-        logger.debug(f"📂 Loading torrents from: {settings.TORRENTS_DIR}")
+        logger.info(f"📂 Loading torrents from: {settings.TORRENTS_DIR}")
 
         torrents: List[Torrent] = []
         torrent_files = list(settings.TORRENTS_DIR.glob("*.torrent"))
@@ -196,6 +196,8 @@ class TorrentManager:
                 "stateChangeIntervalMin": config.get("stateChangeIntervalMin", settings.STATE_CHANGE_INTERVAL_MIN),
                 "stateChangeIntervalMax": config.get("stateChangeIntervalMax", settings.STATE_CHANGE_INTERVAL_MAX),
                 "reducedSpeedKbps": config.get("reducedSpeedKbps", settings.REDUCED_SPEED_KBPS),
+                # Torrent Behavior Mode
+                "seedingOnlyMode": config.get("seedingOnlyMode", settings.SEEDING_ONLY_MODE),
                 # Peer speed tiers
                 "peer_speed_tiers_enabled": config.get("peerSpeedTiersEnabled", settings.PEER_SPEED_TIERS_ENABLED),
                 "peer_tier1_max_peers": config.get("peerTier1MaxPeers", settings.PEER_TIER1_MAX_PEERS),
@@ -247,7 +249,11 @@ class TorrentManager:
             return
 
         announcer = self.announcers[info_hash]
-        logger.info(f"➖ Removing torrent: {announcer.torrent.name}")
+        ratio = announcer.stats.uploaded / max(announcer.torrent.size, 1)
+        logger.info(
+            f"➖ Removing torrent: {announcer.torrent.name[:50]} "
+            f"(uploaded={announcer.stats.uploaded / (1024**2):.1f}MB, ratio={ratio:.2f})"
+        )
 
         if announcer.is_running:
             logger.debug("   Stopping announcer...")

@@ -151,7 +151,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"✅ PyJOAL v{APP_VERSION} started successfully on port {settings.PORT}")
     logger.info(f"🌐 UI available at: http://localhost:{settings.PORT}/{settings.UI_PATH_PREFIX}/ui/")
     logger.info(f"📚 API docs at: http://localhost:{settings.PORT}/docs")
-    logger.info(f"🔐 Secret token: {settings.SECRET_TOKEN[:8]}...{settings.SECRET_TOKEN[-4:]} (masked)")
+    token = settings.SECRET_TOKEN
+    masked = f"{token[:4]}{'*' * max(0, len(token) - 6)}{token[-2:]}" if len(token) > 8 else "***"
+    logger.info(f"🔐 Secret token: {masked} (masked, {len(token)} chars)")
     logger.info("=" * 80)
     
     yield

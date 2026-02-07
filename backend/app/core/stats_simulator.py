@@ -129,13 +129,20 @@ class StatsSimulator:
         self.peer_tier4_max_peers = config.get("peer_tier4_max_peers", settings.PEER_TIER4_MAX_PEERS)
         self.peer_tier4_speed_percent = config.get("peer_tier4_speed_percent", settings.PEER_TIER4_SPEED_PERCENT)
         self.peer_tier5_speed_percent = config.get("peer_tier5_speed_percent", settings.PEER_TIER5_SPEED_PERCENT)
-        self.seeding_only_mode = config.get("seedingOnlyMode", settings.SEEDING_ONLY_MODE)
 
         # Reset speed autocorrelation so the new config takes effect immediately
         # instead of being smoothed over 10+ iterations (30+ seconds)
         self._previous_speed = None
 
-        logger.info(f"🔄 Config reloaded for {self.torrent_name[:30]}: tiers={'ON' if self.peer_speed_tiers_enabled else 'OFF'}, variation={'ON' if self.enable_speed_variation else 'OFF'}")
+        logger.info(
+            f"🔄 Config reloaded for {self.torrent_name[:30]}: "
+            f"tiers={'ON' if self.peer_speed_tiers_enabled else 'OFF'}, "
+            f"variation={'ON' if self.enable_speed_variation else 'OFF'}, "
+            f"seeding-only={'ON' if self.seeding_only_mode else 'OFF'}, "
+            f"reduced={self.reduced_speed_kbps}KB/s, "
+            f"pause={self.pause_duration_min}-{self.pause_duration_max}min, "
+            f"state-change={self.state_change_interval_min}-{self.state_change_interval_max}h"
+        )
 
     def simulate_natural_seeding_start(self):
         """Simulate realistic seeding start behavior - torrent already downloaded."""
@@ -203,6 +210,13 @@ class StatsSimulator:
     def update_stats(self, client, is_running: bool, seeders: int = -1, leechers: int = -1):
         """Update upload stats with realistic behavior based on mode.
         
+        IMPORTANT: This method accumulates uploaded bytes.  It must NOT be
+        called concurrently with update_stats_for_display() which also
+        accumulates bytes.  The monitor loop uses update_stats_for_display;
+        the announce loop uses update_stats_with_stealth (which does NOT
+        accumulate bytes).  This method is only a fallback / standalone
+        path and is currently unused in the normal flow.
+        
         Args:
             client: BitTorrentClient instance (for rate ranges)
             is_running: Whether the announcer is currently running
@@ -210,6 +224,11 @@ class StatsSimulator:
             leechers: Number of leechers from tracker (-1 = unknown)
         """
         if not is_running:
+            return
+        
+        # Guard: if the display path is already active, skip to avoid
+        # double-counting uploaded bytes.
+        if self._display_update_time is not None:
             return
         
         current_time = time.time()
@@ -517,18 +536,20 @@ class StatsSimulator:
     def get_realistic_upload_speed_based_on_swarm(self, client, seeders: int, leechers: int) -> int:
         """Calculate realistic upload speed based on swarm activity.
         
-        Uses minimal background speed when leechers == 0 (tracker data is stale).
+        Uses minimal background speed only when the swarm is truly dead
+        (leechers == 0 AND seeders <= 0).  When seeders > 0 but leechers == 0
+        we proceed normally because tracker peer lists are stale (15-30 min).
         """
         from app.services.seeder_service import seeder_service
         dynamic_config = seeder_service._config if seeder_service else None
         min_rate, max_rate = client.get_upload_rate_range(dynamic_config)
 
-        # When leechers == 0: minimal background speed (stale tracker data is common)
-        if leechers == 0:
+        # Dead swarm: both leechers and seeders are 0 → minimal background speed
+        if leechers == 0 and seeders <= 0:
             background_speed = max(1024, int(min_rate * 0.05))
             variation = random.randint(-512, 512)
             speed = max(512, background_speed + variation)
-            logger.debug(f"🛡️ {self.torrent_name[:20]}: 0 leechers → background speed={speed/1024:.1f} KB/s")
+            logger.debug(f"\ud83d\udee1\ufe0f {self.torrent_name[:20]}: dead swarm (0S/0L) \u2192 background speed={speed/1024:.1f} KB/s")
             return int(speed)
         
         total_peers = seeders + leechers
@@ -571,9 +592,10 @@ class StatsSimulator:
             if self._pause_until and now >= self._pause_until:
                 self._is_in_fake_pause = False
                 self._pause_until = None
+                self._current_speed_tier = random.choice(['high', 'medium'])
                 hours_until_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
                 self._next_pause_time = now + timedelta(hours=hours_until_change)
-                logger.debug(f"▶️ {self.torrent_name[:25]} resuming from pause, next state change in {hours_until_change}h")
+                logger.debug(f"▶️ {self.torrent_name[:25]} resuming from pause → {self._current_speed_tier}, next state change in {hours_until_change}h")
         else:
             if self._next_pause_time and now >= self._next_pause_time:
                 roll = random.random()
