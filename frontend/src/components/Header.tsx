@@ -16,9 +16,12 @@ export default function Header({ appVersion }: HeaderProps) {
 
   // Simple health check
   useEffect(() => {
+    const token = (window as any).__PYJOAL_TOKEN__ || ''
+    const authHeaders = { 'X-API-Token': token }
+
     const checkHealth = async () => {
       try {
-        const response = await fetch('/api/system/health/status')
+        const response = await fetch('/api/system/health/status', { headers: authHeaders })
         if (response.ok) {
           const data = await response.json()
           setHealthStatus(data.icon || '🟢')
@@ -27,7 +30,7 @@ export default function Header({ appVersion }: HeaderProps) {
         }
         
         // Fetch detailed health info for tooltip
-        const detailResponse = await fetch('/api/system/health/detailed')
+        const detailResponse = await fetch('/api/system/health/detailed', { headers: authHeaders })
         if (detailResponse.ok) {
           const detailData = await detailResponse.json()
           setHealthDetails(detailData)
@@ -35,7 +38,7 @@ export default function Header({ appVersion }: HeaderProps) {
         
         // Check version info (cached daily)
         try {
-          const versionResponse = await fetch('/api/system/version/check')
+          const versionResponse = await fetch('/api/system/version/check', { headers: authHeaders })
           if (versionResponse.ok) {
             const versionData = await versionResponse.json()
             setVersionInfo(versionData)

@@ -36,7 +36,7 @@ class ConfigSchema(BaseModel):
     seedingDurationLimit: float = Field(default=-1.0, description="Seeding duration limit in hours (-1 = no limit)")
     
     # Discretion & Timing Settings
-    announceInterval: int = Field(default=1800, ge=60, le=7200, description="Base announce interval (seconds)")
+    announceInterval: int = Field(default=1800, ge=30, le=7200, description="Base announce interval (seconds)")
     announceJitter: int = Field(default=120, ge=0, le=600, description="Random jitter for announces (seconds)")
     minStatsUpdateInterval: int = Field(default=2, ge=1, le=30, description="Minimum interval between stats updates (seconds)")
     enableSpeedVariation: bool = Field(default=True, description="Enable realistic speed variations")

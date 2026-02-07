@@ -16,10 +16,11 @@ function App() {
   const { connectWebSocket, fetchConfig, fetchTorrents, fetchStats, fetchClients, toasts, removeToast, loadingStatus } = useStore()
 
   useEffect(() => {
-    // Fetch app version
-    fetch('/api/version')
+    // Fetch app version (with auth token)
+    const token = (window as any).__PYJOAL_TOKEN__ || ''
+    fetch('/api/version', { headers: { 'X-API-Token': token } })
       .then(res => res.json())
-      .then(data => setAppVersion(data.version))
+      .then(data => setAppVersion(data.version || 'dev'))
       .catch(() => setAppVersion('dev'))
 
     // Initial data fetch

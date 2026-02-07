@@ -457,7 +457,7 @@ export default function SettingsPage() {
                   <div className="group relative">
                     <HelpCircle className="w-4 h-4 text-slate-500 cursor-help" />
                     <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg">
-                      Base time between announces (60-7200s)
+                      Base time between announces (30-7200s)
                     </div>
                   </div>
                 </label>
@@ -470,16 +470,16 @@ export default function SettingsPage() {
                       handleChange('announceInterval', '')
                     } else {
                       const parsed = parseInt(value)
-                      handleChange('announceInterval', isNaN(parsed) ? 1800 : Math.max(60, Math.min(7200, parsed)))
+                      handleChange('announceInterval', isNaN(parsed) ? 1800 : Math.max(30, Math.min(7200, parsed)))
                     }
                   }}
                   onBlur={(e) => {
-                    if (e.target.value === '' || parseInt(e.target.value) < 60) {
+                    if (e.target.value === '' || parseInt(e.target.value) < 30) {
                       handleChange('announceInterval', 1800)
                     }
                   }}
                   className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  min="60"
+                  min="30"
                   max="7200"
                   placeholder="1800"
                 />
