@@ -88,7 +88,7 @@ describe('Header', () => {
     
     // Wait for health data to load
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith('/api/system/health/status')
+      expect(mockFetch).toHaveBeenCalledWith('/api/system/health/status', expect.objectContaining({ headers: expect.any(Object) }))
     })
 
     const healthElement = screen.getByText('Health').closest('div')
@@ -130,7 +130,7 @@ describe('Header', () => {
     
     // Wait for APIs to be called
     await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalledWith('/api/system/version/check')
+      expect(mockFetch).toHaveBeenCalledWith('/api/system/version/check', expect.objectContaining({ headers: expect.any(Object) }))
     })
 
     const healthElement = screen.getByText('Health').closest('div')
