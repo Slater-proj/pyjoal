@@ -161,6 +161,9 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 Shutting down PyJOAL...")
     await websocket_manager.stop_log_broadcasting()
     await seeder_service.stop()
+    # Persist history before exit
+    from app.services.history_service import history_service
+    history_service.save()
     logger.info("✅ Shutdown complete")
     logger.info("=" * 80)
 
@@ -371,6 +374,24 @@ if frontend_build_path.exists():
         if favicon_path.exists():
             return FileResponse(favicon_path, media_type="image/svg+xml")
         raise HTTPException(status_code=404, detail="Favicon not found")
+
+    @app.get("/favicon.ico")
+    @app.get(f"/{settings.UI_PATH_PREFIX}/favicon.ico")
+    async def serve_favicon_ico():
+        """Serve favicon ICO"""
+        ico_path = frontend_build_path / "favicon.ico"
+        if ico_path.exists():
+            return FileResponse(ico_path, media_type="image/x-icon")
+        raise HTTPException(status_code=404, detail="Favicon not found")
+
+    @app.get("/apple-touch-icon.png")
+    @app.get(f"/{settings.UI_PATH_PREFIX}/apple-touch-icon.png")
+    async def serve_apple_touch_icon():
+        """Serve Apple touch icon"""
+        icon_path = frontend_build_path / "apple-touch-icon.png"
+        if icon_path.exists():
+            return FileResponse(icon_path, media_type="image/png")
+        raise HTTPException(status_code=404, detail="Icon not found")
     
     # Mount all assets with prefix support
     if (frontend_build_path / "assets").exists():

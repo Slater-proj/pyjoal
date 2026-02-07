@@ -3,14 +3,17 @@ Tests for history service
 """
 import pytest
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from app.services.history_service import HistoryService, EventType
 
 
 @pytest.fixture
-def history_service():
-    """Create fresh history service for each test"""
-    return HistoryService()
+def history_service(tmp_path):
+    """Create fresh history service for each test (isolated temp dir)"""
+    with patch("app.services.history_service.settings") as mock_settings:
+        mock_settings.CONFIG_DIR = tmp_path
+        return HistoryService()
 
 
 def test_add_entry(history_service):

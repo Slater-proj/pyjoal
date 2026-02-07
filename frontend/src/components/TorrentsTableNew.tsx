@@ -448,10 +448,10 @@ export default function TorrentsTable() {
                     {isActive ? (
                       <div className="flex items-center justify-center gap-1">
                         <span className="bg-green-500/20 text-green-300 px-1 py-0.5 rounded text-xs font-bold" title="Seeders">
-                          {torrent.seeders}S
+                          {torrent.seeders < 0 ? '?' : torrent.seeders}S
                         </span>
                         <span className="bg-blue-500/20 text-blue-300 px-1 py-0.5 rounded text-xs font-bold" title="Leechers">
-                          {torrent.leechers}L
+                          {torrent.leechers < 0 ? '?' : torrent.leechers}L
                         </span>
                       </div>
                     ) : (

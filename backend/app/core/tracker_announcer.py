@@ -55,9 +55,9 @@ class TrackerAnnouncer:
         else:
             self.stats.simulate_natural_download_start()
         
-        # Peers info (updated from tracker responses)
-        self.seeders: int = 0
-        self.leechers: int = 0
+        # Peers info (updated from tracker responses, -1 = not yet known)
+        self.seeders: int = -1
+        self.leechers: int = -1
         
         # Timing
         self.last_announce: Optional[datetime] = None

@@ -1,11 +1,19 @@
 """
 History Service
-Tracks and stores history of announces, torrents, and system events
+Tracks and stores history of announces, torrents, and system events.
+Persists to disk so history survives container restarts.
 """
+import json
+import logging
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta, timezone
 from collections import deque
 from enum import Enum
+from pathlib import Path
+
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class EventType(str, Enum):
@@ -48,6 +56,45 @@ class HistoryService:
         self.max_entries = max_entries
         self.entries: deque = deque(maxlen=max_entries)
         self.stats_by_hour: Dict[str, Dict] = {}
+        self._file_path: Path = settings.CONFIG_DIR / "history.json"
+        self._dirty: bool = False
+        self._save_counter: int = 0
+        self._load()
+
+    def _load(self):
+        """Load persisted history from disk."""
+        if not self._file_path.exists():
+            return
+        try:
+            with open(self._file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for raw in data.get("entries", []):
+                entry = HistoryEntry(
+                    EventType(raw["eventType"]),
+                    raw["message"],
+                    raw.get("data"),
+                )
+                entry.timestamp = datetime.fromisoformat(raw["timestamp"])
+                self.entries.append(entry)
+            self.stats_by_hour = data.get("stats_by_hour", {})
+            logger.info(f"📂 Loaded {len(self.entries)} history entries from disk")
+        except Exception as e:
+            logger.error(f"❌ Failed to load history: {e}")
+
+    def save(self):
+        """Write current history to disk."""
+        try:
+            data = {
+                "entries": [e.to_dict() for e in self.entries],
+                "stats_by_hour": self.stats_by_hour,
+            }
+            tmp = self._file_path.with_suffix(".tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+            tmp.replace(self._file_path)
+            self._dirty = False
+        except Exception as e:
+            logger.error(f"❌ Failed to save history: {e}")
     
     def add_entry(self, event_type: EventType, message: str, data: Optional[Dict] = None):
         """Add an entry to history"""
@@ -69,6 +116,12 @@ class HistoryService:
                 self.stats_by_hour[hour_key]["uploaded"] += data["uploaded"]
         elif event_type == EventType.ANNOUNCE_FAILED:
             self.stats_by_hour[hour_key]["failed_announces"] += 1
+
+        # Auto-save every 10 entries
+        self._save_counter += 1
+        if self._save_counter >= 10:
+            self._save_counter = 0
+            self.save()
     
     def get_entries(
         self, 
@@ -145,6 +198,7 @@ class HistoryService:
         """Clear all history"""
         self.entries.clear()
         self.stats_by_hour.clear()
+        self.save()
 
 
 # Global history service instance

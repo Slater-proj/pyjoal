@@ -172,13 +172,16 @@ class SeederService:
         try:
             if "minUploadRate" in new_config:
                 settings.MIN_UPLOAD_RATE = new_config["minUploadRate"]
-                logger.debug(f"   Min upload rate: {settings.MIN_UPLOAD_RATE} KB/s")
             if "maxUploadRate" in new_config:
                 settings.MAX_UPLOAD_RATE = new_config["maxUploadRate"]
-                logger.debug(f"   Max upload rate: {settings.MAX_UPLOAD_RATE} KB/s")
             if "seedingDurationLimit" in new_config:
                 settings.SEEDING_DURATION_LIMIT = new_config["seedingDurationLimit"]
-                logger.debug(f"   Seeding duration limit: {settings.SEEDING_DURATION_LIMIT}h")
+            if "peerSpeedTiersEnabled" in new_config:
+                settings.PEER_SPEED_TIERS_ENABLED = new_config["peerSpeedTiersEnabled"]
+            if "enableSpeedVariation" in new_config:
+                settings.ENABLE_SPEED_VARIATION = new_config["enableSpeedVariation"]
+            if "seedingOnlyMode" in new_config:
+                settings.SEEDING_ONLY_MODE = new_config["seedingOnlyMode"]
 
             if "client" in new_config and new_config["client"] != self.client.client_file:
                 try:
@@ -186,8 +189,55 @@ class SeederService:
                     logger.info(f"Switched to client: {self.client.name} {self.client.version}")
                 except Exception as e:
                     logger.error(f"Failed to switch client: {e}")
+
+            # Propagate config to all active announcers/StatsSimulators
+            self._propagate_config_to_announcers()
         except Exception as settings_error:
             logger.error(f"Failed to update settings: {settings_error}")
+
+    def _propagate_config_to_announcers(self):
+        """Push current config into every running announcer's StatsSimulator."""
+        config = self._config
+        discretion_config = {
+            "announce_interval": config.get("announceInterval", settings.ANNOUNCE_INTERVAL),
+            "announce_jitter": config.get("announceJitter", settings.ANNOUNCE_JITTER),
+            "min_stats_update_interval": config.get("minStatsUpdateInterval", settings.MIN_STATS_UPDATE_INTERVAL),
+            "enable_speed_variation": config.get("enableSpeedVariation", settings.ENABLE_SPEED_VARIATION),
+            "speed_variation_percent": config.get("speedVariationPercent", settings.SPEED_VARIATION_PERCENT),
+            "seedingOnlyMode": config.get("seedingOnlyMode", settings.SEEDING_ONLY_MODE),
+            "pauseDurationMin": config.get("pauseDurationMin", settings.PAUSE_DURATION_MIN),
+            "pauseDurationMax": config.get("pauseDurationMax", settings.PAUSE_DURATION_MAX),
+            "reducedSpeedDurationMin": config.get("reducedSpeedDurationMin", settings.REDUCED_SPEED_DURATION_MIN),
+            "reducedSpeedDurationMax": config.get("reducedSpeedDurationMax", settings.REDUCED_SPEED_DURATION_MAX),
+            "stateChangeIntervalMin": config.get("stateChangeIntervalMin", settings.STATE_CHANGE_INTERVAL_MIN),
+            "stateChangeIntervalMax": config.get("stateChangeIntervalMax", settings.STATE_CHANGE_INTERVAL_MAX),
+            "reducedSpeedKbps": config.get("reducedSpeedKbps", settings.REDUCED_SPEED_KBPS),
+            "peer_speed_tiers_enabled": config.get("peerSpeedTiersEnabled", settings.PEER_SPEED_TIERS_ENABLED),
+            "peer_tier1_max_peers": config.get("peerTier1MaxPeers", settings.PEER_TIER1_MAX_PEERS),
+            "peer_tier1_speed_percent": config.get("peerTier1SpeedPercent", settings.PEER_TIER1_SPEED_PERCENT),
+            "peer_tier2_max_peers": config.get("peerTier2MaxPeers", settings.PEER_TIER2_MAX_PEERS),
+            "peer_tier2_speed_percent": config.get("peerTier2SpeedPercent", settings.PEER_TIER2_SPEED_PERCENT),
+            "peer_tier3_max_peers": config.get("peerTier3MaxPeers", settings.PEER_TIER3_MAX_PEERS),
+            "peer_tier3_speed_percent": config.get("peerTier3SpeedPercent", settings.PEER_TIER3_SPEED_PERCENT),
+            "peer_tier4_max_peers": config.get("peerTier4MaxPeers", settings.PEER_TIER4_MAX_PEERS),
+            "peer_tier4_speed_percent": config.get("peerTier4SpeedPercent", settings.PEER_TIER4_SPEED_PERCENT),
+            "peer_tier5_speed_percent": config.get("peerTier5SpeedPercent", settings.PEER_TIER5_SPEED_PERCENT),
+        }
+        count = 0
+        for announcer in self.announcers.values():
+            announcer.announce_interval = discretion_config["announce_interval"]
+            announcer.announce_jitter = discretion_config["announce_jitter"]
+            announcer.discretion_config = discretion_config
+            announcer.stats.update_config(discretion_config)
+            count += 1
+        tiers_state = 'ON' if discretion_config['peer_speed_tiers_enabled'] else 'OFF'
+        if count:
+            logger.info(
+                f"🔄 Config propagated to {count} active announcer(s): "
+                f"peer-tiers={tiers_state}, "
+                f"interval={discretion_config['announce_interval']}s, "
+                f"speed-variation={'ON' if discretion_config['enable_speed_variation'] else 'OFF'}"
+            )
 
     # ------------------------------------------------------------------
     # Torrent delegation
@@ -534,8 +584,8 @@ class SeederService:
                                     f"time={torrent['seedingTime']}s"
                                 )
 
-                    # INFO-level speed summary every ~60s
-                    if update_count % 20 == 0:
+                    # INFO-level speed summary every ~30s
+                    if update_count % 10 == 0:
                         active_torrents = [t for t in torrents if t.get("isRunning")]
                         if active_torrents:
                             total_speed = stats['uploadSpeed'] / 1024

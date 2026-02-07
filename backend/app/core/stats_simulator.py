@@ -105,7 +105,38 @@ class StatsSimulator:
     # ================================================================
     # Initialization methods
     # ================================================================
-    
+
+    def update_config(self, config: Dict):
+        """Hot-reload configuration without resetting runtime state."""
+        self.min_stats_update_interval = config.get("min_stats_update_interval", settings.MIN_STATS_UPDATE_INTERVAL)
+        self.enable_speed_variation = config.get("enable_speed_variation", settings.ENABLE_SPEED_VARIATION)
+        self.speed_variation_percent = config.get("speed_variation_percent", settings.SPEED_VARIATION_PERCENT)
+        self.seeding_only_mode = config.get("seedingOnlyMode", settings.SEEDING_ONLY_MODE)
+        self.pause_duration_min = config.get("pauseDurationMin", settings.PAUSE_DURATION_MIN)
+        self.pause_duration_max = config.get("pauseDurationMax", settings.PAUSE_DURATION_MAX)
+        self.reduced_speed_duration_min = config.get("reducedSpeedDurationMin", settings.REDUCED_SPEED_DURATION_MIN)
+        self.reduced_speed_duration_max = config.get("reducedSpeedDurationMax", settings.REDUCED_SPEED_DURATION_MAX)
+        self.state_change_interval_min = config.get("stateChangeIntervalMin", settings.STATE_CHANGE_INTERVAL_MIN)
+        self.state_change_interval_max = config.get("stateChangeIntervalMax", settings.STATE_CHANGE_INTERVAL_MAX)
+        self.reduced_speed_kbps = config.get("reducedSpeedKbps", settings.REDUCED_SPEED_KBPS)
+        self.peer_speed_tiers_enabled = config.get("peer_speed_tiers_enabled", settings.PEER_SPEED_TIERS_ENABLED)
+        self.peer_tier1_max_peers = config.get("peer_tier1_max_peers", settings.PEER_TIER1_MAX_PEERS)
+        self.peer_tier1_speed_percent = config.get("peer_tier1_speed_percent", settings.PEER_TIER1_SPEED_PERCENT)
+        self.peer_tier2_max_peers = config.get("peer_tier2_max_peers", settings.PEER_TIER2_MAX_PEERS)
+        self.peer_tier2_speed_percent = config.get("peer_tier2_speed_percent", settings.PEER_TIER2_SPEED_PERCENT)
+        self.peer_tier3_max_peers = config.get("peer_tier3_max_peers", settings.PEER_TIER3_MAX_PEERS)
+        self.peer_tier3_speed_percent = config.get("peer_tier3_speed_percent", settings.PEER_TIER3_SPEED_PERCENT)
+        self.peer_tier4_max_peers = config.get("peer_tier4_max_peers", settings.PEER_TIER4_MAX_PEERS)
+        self.peer_tier4_speed_percent = config.get("peer_tier4_speed_percent", settings.PEER_TIER4_SPEED_PERCENT)
+        self.peer_tier5_speed_percent = config.get("peer_tier5_speed_percent", settings.PEER_TIER5_SPEED_PERCENT)
+        self.seeding_only_mode = config.get("seedingOnlyMode", settings.SEEDING_ONLY_MODE)
+
+        # Reset speed autocorrelation so the new config takes effect immediately
+        # instead of being smoothed over 10+ iterations (30+ seconds)
+        self._previous_speed = None
+
+        logger.info(f"🔄 Config reloaded for {self.torrent_name[:30]}: tiers={'ON' if self.peer_speed_tiers_enabled else 'OFF'}, variation={'ON' if self.enable_speed_variation else 'OFF'}")
+
     def simulate_natural_seeding_start(self):
         """Simulate realistic seeding start behavior - torrent already downloaded."""
         self.downloaded = self.torrent_size

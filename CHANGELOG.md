@@ -1,5 +1,14 @@
 # Changelog - PyJOAL
 
+## [1.12.5] - 2025-02-07
+
+### Fixed
+- **Config not applied to active torrents**: Saving settings (announce interval, speed tiers, discretion mode, etc.) only updated the config file — already-running announcers kept using cached values. New `update_config()` method on `StatsSimulator` + propagation loop in `SeederService` now hot-reloads all ~20 config parameters to every active torrent without restarting. Speed autocorrelation (`_previous_speed`) is reset on config change so new speeds take effect immediately instead of fading in over 30+ seconds
+- **Seeders/leechers display before first announce**: All torrents showed `0S / 0L` until the first tracker response, which was confusing. Changed initial value to `-1` (unknown) and display `?S / ?L` in the UI until real data arrives
+- **Event history lost on restart**: History was purely in-memory (`deque`). Added JSON persistence to `CONFIG_DIR/history.json` with auto-save every 10 entries + atomic write on shutdown. History now survives container restarts
+- **Log console sparse activity**: After v1.12.4 moved per-torrent logs to DEBUG, the INFO speed summary only appeared every ~60s. Reduced interval to ~30s so the log console always shows recent activity
+- **Favicon.ico not served**: Only `/favicon.svg` had an explicit route. Added `/favicon.ico` and `/apple-touch-icon.png` endpoints (with `UI_PATH_PREFIX` variants)
+
 ## [1.12.4] - 2025-02-07
 
 ### Fixed
