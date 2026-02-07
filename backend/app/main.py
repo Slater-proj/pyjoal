@@ -3,10 +3,10 @@ PyJOAL - Main Application Entry Point
 FastAPI application with WebSocket support for BitTorrent ratio client
 """
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 import asyncio
 import os
 import sys
@@ -348,6 +348,23 @@ logger.debug(f"📁 Frontend exists: {frontend_build_path.exists()}")
 
 if frontend_build_path.exists():
     logger.info(f"✅ Mounting frontend from: {frontend_build_path}")
+    
+    # Redirect root to UI
+    @app.get("/")
+    async def redirect_root():
+        """Redirect root to UI"""
+        prefix = f"/{settings.UI_PATH_PREFIX}" if settings.UI_PATH_PREFIX and settings.UI_PATH_PREFIX != "/" else ""
+        return RedirectResponse(url=f"{prefix}/ui/")
+    
+    # Serve favicon
+    @app.get("/favicon.svg")
+    @app.get(f"/{settings.UI_PATH_PREFIX}/favicon.svg")
+    async def serve_favicon():
+        """Serve favicon"""
+        favicon_path = frontend_build_path / "favicon.svg"
+        if favicon_path.exists():
+            return FileResponse(favicon_path, media_type="image/svg+xml")
+        raise HTTPException(status_code=404, detail="Favicon not found")
     
     # Mount all assets with prefix support
     if (frontend_build_path / "assets").exists():

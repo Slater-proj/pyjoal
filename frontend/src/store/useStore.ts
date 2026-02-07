@@ -317,10 +317,15 @@ export const useStore = create<Store>((set, get) => ({
             break;
 
           case "loading_status":
-            if (message.data?.status === 'ready') {
+            if (message.data?.status === 'ready' || message.data?.status === 'error') {
+              // Clear loading status on both ready and error (error will show toast)
               set({ loadingStatus: null });
               get().fetchTorrents();
               get().fetchStats();
+              // Show error toast if applicable
+              if (message.data?.status === 'error' && message.data?.message) {
+                get().addToast(`Startup error: ${message.data.message}`, 'error');
+              }
             } else {
               set({ loadingStatus: message.data?.status || 'loading' });
             }

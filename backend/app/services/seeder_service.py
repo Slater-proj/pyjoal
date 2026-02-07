@@ -418,6 +418,26 @@ class SeederService:
     # Monitor loop
     # ------------------------------------------------------------------
 
+    async def _ensure_simultaneous_seed_limit(self):
+        """Start inactive torrents if we're below the simultaneous seed limit"""
+        if not self.is_running:
+            return
+        
+        simultaneous_seed = self._config.get("simultaneousSeed", settings.SIMULTANEOUS_SEED)
+        active_count = sum(1 for ann in self.announcers.values() if ann.is_running)
+        inactive_announcers = [ann for ann in self.announcers.values() if not ann.is_running]
+        
+        if active_count < simultaneous_seed and inactive_announcers:
+            to_start = min(simultaneous_seed - active_count, len(inactive_announcers))
+            logger.info(f"🚀 Starting {to_start} inactive torrent(s) to reach limit ({active_count}/{simultaneous_seed})")
+            
+            for announcer in inactive_announcers[:to_start]:
+                try:
+                    await announcer.start()
+                    logger.debug(f"   ✅ Started {announcer.torrent.name[:40]}")
+                except Exception as e:
+                    logger.error(f"   ❌ Failed to start {announcer.torrent.name[:40]}: {e}")
+
     async def _monitor_loop(self):
         """Monitor torrents and send updates - real-time"""
         logger.info("Monitor loop started!")
@@ -460,9 +480,13 @@ class SeederService:
                                     f"time={torrent['seedingTime']}s"
                                 )
 
-                    await self._tm.check_ratio_targets(self._config)
+                    # Check ratio targets every 60s instead of every 3s
+                    if update_count % 20 == 0:
+                        await self._tm.check_ratio_targets(self._config)
+                        # Ensure we're seeding up to the limit after archiving
+                        await self._ensure_simultaneous_seed_limit()
+
                     cache_manager.periodic_cleanup()
-                    await self.load_torrents()
 
                     # Persist stats every ~30s (every 10 iterations)
                     if update_count % 10 == 0:

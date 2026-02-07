@@ -1,5 +1,19 @@
 # Changelog - PyJOAL
 
+## [1.12.2] - 2025-02-07
+
+### Fixed — Critical
+- **Mass torrent archiving at startup**: Monitor loop called `check_ratio_targets()` every 3s before first announce completed, causing all torrents with `seeders=0, leechers=0` and seeding time > 5 min to be archived. Fixed by: (1) Only checking zero peers after first announce (`last_announce is not None`), (2) Reduced check frequency from every 3s to every 60s (every 20 iterations)
+- **Torrents never starting after archiving**: After torrents were archived and new ones added, they weren't started because the monitor loop didn't ensure simultaneous seed limit. Added `_ensure_simultaneous_seed_limit()` called every 60s to start inactive torrents up to the limit
+
+### Fixed — High
+- **Favicon and logo broken**: Root `/` returned 404 instead of redirecting to `/ui/`, and `/favicon.svg` wasn't served. Added root → UI redirect and `/favicon.svg` endpoint
+- **Infinite "Loading torrents..." message**: Frontend never received WebSocket `loading_status: "ready"` or `"error"` events to clear the banner. Frontend now clears on both states and shows error toast if needed
+
+### Fixed — Medium
+- **Monitor loop excessive load**: Removed unnecessary `await self.load_torrents()` call from monitor loop (ran every 3s). File watcher handles new torrents automatically
+- **Startup notification spam**: Removed toast broadcasts from `check_ratio_targets()` and torrent load failures during the initial startup phase to avoid flooding the UI
+
 ## [1.12.1] - 2025-02-07
 
 ### Fixed — Critical
