@@ -39,8 +39,8 @@ describe('API Service', () => {
     }
     
     // If this compiles without TypeScript errors, the interface is correct
-    expect(mockConfig.announceInterval).toBe(30)
-    expect(mockConfig.announceJitter).toBe(30)
+    expect(mockConfig.announceInterval).toBe(1800)
+    expect(mockConfig.announceJitter).toBe(120)
     expect(mockConfig.minStatsUpdateInterval).toBe(3)
     expect(mockConfig.enableSpeedVariation).toBe(true)
     expect(mockConfig.speedVariationPercent).toBe(20)
