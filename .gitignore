@@ -50,3 +50,4 @@ _*.sh
 # Torrent files (runtime data)
 torrents/*.torrent
 torrents/archived/
+config/torrent_stats.json
