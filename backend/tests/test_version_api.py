@@ -5,6 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, mock_open
 from pathlib import Path
+import os
+
+os.environ.setdefault("SECRET_TOKEN", "test-secret-token")
 
 from app.main import app
 
@@ -15,14 +18,19 @@ def test_client():
     return TestClient(app)
 
 
-def test_get_version_from_file(test_client):
+@pytest.fixture
+def auth():
+    return {"X-API-Token": "test-secret-token"}
+
+
+def test_get_version_from_file(test_client, auth):
     """Test getting version from VERSION file"""
     mock_version_content = "1.3.4"
     
     with patch("pathlib.Path.exists", return_value=True), \
          patch("pathlib.Path.read_text", return_value=mock_version_content):
         
-        response = test_client.get("/api/version")
+        response = test_client.get("/api/version", headers=auth)
         
         assert response.status_code == 200
         data = response.json()
@@ -31,7 +39,7 @@ def test_get_version_from_file(test_client):
         assert data["description"] == "Python BitTorrent Ratio Client"
 
 
-def test_get_version_file_not_exists(test_client):
+def test_get_version_file_not_exists(test_client, auth):
     """Test fallback when VERSION file doesn't exist"""
     with patch("pathlib.Path.exists", return_value=False), \
          patch("subprocess.run") as mock_subprocess:
@@ -40,14 +48,14 @@ def test_get_version_file_not_exists(test_client):
         mock_subprocess.return_value.returncode = 0
         mock_subprocess.return_value.stdout = "v2.0.0"
         
-        response = test_client.get("/api/version")
+        response = test_client.get("/api/version", headers=auth)
         
         assert response.status_code == 200
         data = response.json()
         assert data["version"] == "2.0.0"  # Should strip 'v' prefix
 
 
-def test_get_version_fallback_to_dev(test_client):
+def test_get_version_fallback_to_dev(test_client, auth):
     """Test fallback to dev when all methods fail"""
     with patch("pathlib.Path.exists", return_value=False), \
          patch("subprocess.run") as mock_subprocess:
@@ -55,27 +63,27 @@ def test_get_version_fallback_to_dev(test_client):
         # Mock git command failure
         mock_subprocess.return_value.returncode = 1
         
-        response = test_client.get("/api/version")
+        response = test_client.get("/api/version", headers=auth)
         
         assert response.status_code == 200
         data = response.json()
         assert data["version"] == "dev"
 
 
-def test_get_version_exception_handling(test_client):
+def test_get_version_exception_handling(test_client, auth):
     """Test exception handling returns dev"""
     with patch("pathlib.Path.exists", side_effect=Exception("File system error")):
         
-        response = test_client.get("/api/version")
+        response = test_client.get("/api/version", headers=auth)
         
         assert response.status_code == 200
         data = response.json()
         assert data["version"] == "dev"
 
 
-def test_get_version_response_structure(test_client):
+def test_get_version_response_structure(test_client, auth):
     """Test the response has correct structure"""
-    response = test_client.get("/api/version")
+    response = test_client.get("/api/version", headers=auth)
     
     assert response.status_code == 200
     data = response.json()

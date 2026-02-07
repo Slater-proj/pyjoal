@@ -62,8 +62,9 @@ class TestHealthEndpoint:
 
 class TestFrontendServing:
     def test_version_endpoint(self, client):
-        """Version endpoint should always be available"""
-        resp = client.get("/api/version")
+        """Version endpoint should be available with auth"""
+        auth = {"X-API-Token": "test-secret-token"}
+        resp = client.get("/api/version", headers=auth)
         assert resp.status_code == 200
         data = resp.json()
         assert "version" in data

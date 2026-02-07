@@ -4,6 +4,7 @@ Authentication middleware for API endpoints
 from fastapi import Security, HTTPException, status
 from fastapi.security import APIKeyHeader, APIKeyQuery
 from typing import Optional
+import hmac
 
 from app.core.config import settings
 
@@ -28,7 +29,7 @@ async def verify_token(
             detail="Missing authentication token. Provide X-API-Token header or ?token=... query parameter"
         )
     
-    if token != settings.SECRET_TOKEN:
+    if not hmac.compare_digest(token, settings.SECRET_TOKEN):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token"

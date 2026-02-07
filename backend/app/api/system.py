@@ -2,12 +2,14 @@
 System Health API
 Simple health monitoring endpoints for PyJOAL
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any
 import logging
 
+from app.core.auth import verify_token
+
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/system", tags=["system"])
+router = APIRouter(prefix="/api/system", tags=["system"], dependencies=[Depends(verify_token)])
 
 
 @router.get("/health/detailed")

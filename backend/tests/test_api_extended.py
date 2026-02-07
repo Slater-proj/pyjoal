@@ -85,18 +85,18 @@ class TestConfigAPI:
 # ================================================================
 
 class TestCacheAPI:
-    def test_cache_stats(self, client):
-        resp = client.get("/api/cache/stats")
+    def test_cache_stats(self, client, auth):
+        resp = client.get("/api/cache/stats", headers=auth)
         assert resp.status_code == 200
         data = resp.json()
         assert "caches" in data or "global_stats" in data or isinstance(data, dict)
 
-    def test_cache_clear(self, client):
-        resp = client.post("/api/cache/clear")
+    def test_cache_clear(self, client, auth):
+        resp = client.post("/api/cache/clear", headers=auth)
         assert resp.status_code == 200
 
-    def test_cache_cleanup(self, client):
-        resp = client.post("/api/cache/cleanup")
+    def test_cache_cleanup(self, client, auth):
+        resp = client.post("/api/cache/cleanup", headers=auth)
         assert resp.status_code == 200
 
 
@@ -206,12 +206,12 @@ class TestSystemAPI:
         data = resp.json()
         assert data["status"] in ("healthy", "unhealthy")
 
-    def test_system_health_status(self, client):
-        resp = client.get("/api/system/health/status")
+    def test_system_health_status(self, client, auth):
+        resp = client.get("/api/system/health/status", headers=auth)
         assert resp.status_code in (200, 404)
 
-    def test_system_health_detailed(self, client):
-        resp = client.get("/api/system/health/detailed")
+    def test_system_health_detailed(self, client, auth):
+        resp = client.get("/api/system/health/detailed", headers=auth)
         assert resp.status_code in (200, 404)
 
 
@@ -238,8 +238,8 @@ class TestHistoryAPI:
 # ================================================================
 
 class TestVersionAPI:
-    def test_get_version(self, client):
-        resp = client.get("/api/version")
+    def test_get_version(self, client, auth):
+        resp = client.get("/api/version", headers=auth)
         assert resp.status_code == 200
         data = resp.json()
         assert "version" in data

@@ -163,7 +163,7 @@ class HistoryService:
         
         result = []
         for hour_key, stats in sorted(self.stats_by_hour.items(), reverse=True):
-            hour_time = datetime.strptime(hour_key, "%Y-%m-%d %H:00")
+            hour_time = datetime.strptime(hour_key, "%Y-%m-%d %H:00").replace(tzinfo=timezone.utc)
             if hour_time >= cutoff:
                 result.append({
                     "hour": hour_key,

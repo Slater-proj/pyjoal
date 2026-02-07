@@ -34,9 +34,9 @@ def test_health_endpoint(client):
     assert data["app"] == "PyJOAL"
 
 
-def test_version_endpoint(client):
+def test_version_endpoint(client, auth_headers):
     """Test version endpoint"""
-    response = client.get("/api/version")
+    response = client.get("/api/version", headers=auth_headers)
     assert response.status_code == 200
     
     data = response.json()

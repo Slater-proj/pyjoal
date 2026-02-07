@@ -1,8 +1,32 @@
 # Changelog - PyJOAL
 
+## [1.12.7] - 2025-02-07
+
+### Security
+- **Authentication added to 5 unprotected API routers**: `logs`, `errors`, `cache`, `system`, and `version` endpoints were accessible without authentication. All now require `X-API-Token` header
+- **Path traversal in torrent upload**: `file.filename` from multipart upload was used directly as filesystem path, allowing `../../` traversal. Now sanitized with `Path(filename).name`
+- **Constant-time token comparison**: Token validation in `auth.py` and WebSocket endpoint now uses `hmac.compare_digest()` to prevent timing side-channel attacks
+
+### Fixed
+- **Timezone-naive datetime comparison**: `history_service.get_stats_by_hour()` compared naive `strptime` result with timezone-aware `cutoff`, which would raise `TypeError`. Added `.replace(tzinfo=timezone.utc)`
+
+### Added — Tests
+- 36 new coverage tests targeting schemas validators, error/logs/version API endpoints, config manager save errors, resource optimizer, cache error paths, and history API pagination
+- Updated 13 existing tests to pass authentication headers after router hardening
+
+### Coverage
+- Test coverage at **81%** (804 passed, 3 skipped)
+
 ## [1.12.6] - 2025-02-07
 
 ### Fixed
+- **Config save returns 422**: `seedingDurationLimit` validator rejected values > 8760h. Users with large values (e.g. 9999999) could not save any config. Removed the arbitrary upper bound
+- **Config loading ignores new fields**: `config_manager.load()` only loaded what was in `config.json`, so newer fields (peer tiers, timing settings) were missing from the API response. Now merges saved config with defaults, persisting any newly added keys automatically
+- **Peer speed tiers produced wrong speeds**: Peer tier percentages REPLACED the speed-tier calculation (high/medium) with a range starting from `min_rate`, meaning torrents with many peers (T5/100%) could get LOWER speeds than torrents without peer data. Now peer_pct is applied as a MULTIPLIER on the speed-tier speed: `high` + T5(100%) = full high speed, `high` + T1(40%) = 40% of high speed
+- **Peer tiers skipped when leechers=0**: Condition required `leechers > 0`, excluding torrents like `31S 0L` from peer tier scaling. Changed to `seeders >= 0 or leechers >= 0` with `total_peers = max(0, seeders) + max(0, leechers)`
+- **Frontend `[object Object]` error on 422**: Pydantic returns validation `detail` as an array of objects; the frontend assigned it directly to the error message string. Now properly extracts `.msg` from each validation error
+- **Frontend announceInterval range mismatch**: Frontend allowed 15-300s but backend requires 60-7200s. Fixed to match backend constraints (min=60, max=7200, default=1800)
+- **Frontend announceJitter range**: Extended max from 180 to 600 to match backend schema
 - **Config reset incomplete**: `POST /api/config/reset` only reset 7 out of ~30 fields (missing peer tiers, discretion timings, etc.). Now uses `ConfigManager._default_config()` which resets ALL fields
 - **Config propagation missing fields**: `update_config()` was not propagating several settings (peer tiers, pause durations, speed variation, etc.) to the global settings singleton. Added exhaustive `_settings_map` with all 33 config→settings mappings
 - **Triple upload byte accumulation**: Both `update_stats()` and `update_stats_for_display()` could accumulate bytes simultaneously. Added guard in `update_stats()` to skip when the display path is active

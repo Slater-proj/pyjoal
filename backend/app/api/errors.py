@@ -1,12 +1,13 @@
 """
 Error Information API Endpoints
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from typing import Dict
 
 from app.core.error_explanations import get_error_explanation, explain_seeding_with_revoked_rights
+from app.core.auth import verify_token
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(verify_token)])
 
 @router.get("/errors/explain")
 async def explain_error(message: str) -> Dict:

@@ -32,13 +32,22 @@ class ConfigManager:
         self._config.update(new_values)
 
     async def load(self):
-        """Load configuration from file"""
+        """Load configuration from file, merging with defaults for missing keys."""
         config_file = settings.CONFIG_DIR / "config.json"
 
         if config_file.exists():
             logger.debug(f"📝 Loading config from: {config_file}")
             with open(config_file, "r", encoding="utf-8") as f:
-                self._config = json.load(f)
+                saved = json.load(f)
+            # Merge saved values on top of defaults so newly-added keys
+            # always have a value even for older config files.
+            defaults = self._default_config()
+            defaults.update(saved)
+            self._config = defaults
+            missing = set(self._default_config()) - set(saved)
+            if missing:
+                logger.info(f"📋 Config: {len(missing)} new key(s) filled from defaults: {', '.join(sorted(missing))}")
+                await self.save()  # persist the merged config
             logger.debug(f"   Config loaded: {self._config}")
         else:
             logger.info("🆕 Creating default configuration")

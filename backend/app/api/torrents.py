@@ -3,6 +3,7 @@ Torrents API Endpoints
 """
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from typing import List
+from pathlib import Path
 
 from app.models.schemas import TorrentInfo, SuccessResponse
 from app.services.seeder_service import seeder_service
@@ -28,7 +29,12 @@ async def add_torrent(file: UploadFile = File(...)):
     if not file.filename.endswith('.torrent'):
         raise HTTPException(status_code=400, detail="File must be a .torrent file")
     
-    torrent_path = settings.TORRENTS_DIR / file.filename
+    # Sanitize filename to prevent path traversal
+    safe_filename = Path(file.filename).name
+    if not safe_filename or safe_filename != file.filename.replace('\\', '/').split('/')[-1]:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    torrent_path = settings.TORRENTS_DIR / safe_filename
     
     try:
         # Read file content in memory first
@@ -43,7 +49,7 @@ async def add_torrent(file: UploadFile = File(...)):
             )
         
         # Write to temporary location for final parsing
-        temp_path = settings.TORRENTS_DIR / f"temp_{file.filename}"
+        temp_path = settings.TORRENTS_DIR / f"temp_{safe_filename}"
         with open(temp_path, 'wb') as buffer:
             buffer.write(content)
         

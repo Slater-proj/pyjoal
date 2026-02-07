@@ -492,9 +492,13 @@ class StatsSimulator:
         
         speed = random.randint(effective_min, effective_max)
         
-        # Apply peer-based speed tiers if peer data is available and feature enabled
-        if self.peer_speed_tiers_enabled and seeders >= 0 and leechers > 0:
-            total_peers = seeders + leechers
+        # Apply peer-based speed tiers as a MULTIPLIER on the speed-tier speed.
+        # More peers → higher percentage → closer to full speed-tier speed.
+        # Few peers → lower percentage → reduced speed.
+        # This ensures speed tiers (high/medium) set the base range,
+        # and peer count scales within that range.
+        if self.peer_speed_tiers_enabled and (seeders >= 0 or leechers >= 0):
+            total_peers = max(0, seeders) + max(0, leechers)
             if total_peers <= self.peer_tier1_max_peers:
                 peer_pct = self.peer_tier1_speed_percent / 100.0
                 tier_label = "T1"
@@ -510,14 +514,13 @@ class StatsSimulator:
             else:
                 peer_pct = self.peer_tier5_speed_percent / 100.0
                 tier_label = "T5"
-            effective_max_peer = int(min_rate + (max_rate - min_rate) * peer_pct)
-            effective_max_peer = max(min_rate, effective_max_peer)
-            speed = random.randint(min_rate, effective_max_peer)
+            pre_peer_speed = speed
+            speed = max(min_rate, int(speed * peer_pct))
             logger.debug(
                 f"🎯 {self.torrent_name[:20]}: {speed / 1024:.0f} KB/s "
                 f"(speed-tier: {current_tier}, peer-tier: {tier_label} "
                 f"[{total_peers}p → {int(peer_pct * 100)}%], "
-                f"range: {min_rate / 1024:.0f}-{effective_max_peer / 1024:.0f})"
+                f"base={pre_peer_speed / 1024:.0f} × {peer_pct:.0%} = {speed / 1024:.0f})"
             )
         else:
             logger.debug(f"🎯 {self.torrent_name[:20]}: {speed/1024:.0f} KB/s (tier: {current_tier}, range: {effective_min/1024:.0f}-{effective_max/1024:.0f})")
@@ -552,9 +555,12 @@ class StatsSimulator:
             logger.debug(f"\ud83d\udee1\ufe0f {self.torrent_name[:20]}: dead swarm (0S/0L) \u2192 background speed={speed/1024:.1f} KB/s")
             return int(speed)
         
-        total_peers = seeders + leechers
+        total_peers = max(0, seeders) + max(0, leechers)
         
-        # Peer-based speed tiers (if enabled)
+        # Start with full speed range, then scale by peer tier
+        base_speed = random.randint(min_rate, max_rate)
+        
+        # Peer-based speed tiers (if enabled) — applied as multiplier
         if self.peer_speed_tiers_enabled:
             if total_peers <= self.peer_tier1_max_peers:
                 peer_pct = self.peer_tier1_speed_percent / 100.0
@@ -569,9 +575,7 @@ class StatsSimulator:
         else:
             peer_pct = 1.0
         
-        effective_max_peer = int(min_rate + (max_rate - min_rate) * peer_pct)
-        effective_max_peer = max(min_rate, effective_max_peer)
-        realistic_speed = random.randint(min_rate, effective_max_peer)
+        realistic_speed = max(min_rate, int(base_speed * peer_pct))
         return max(1024, min(max_rate, realistic_speed))
     
     # ================================================================

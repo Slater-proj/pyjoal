@@ -36,6 +36,14 @@ export interface Config {
   speedVariationPercent: number;
   // Behavior Mode Settings
   seedingOnlyMode: boolean;
+  // Realistic Behavior Timing
+  pauseDurationMin: number;
+  pauseDurationMax: number;
+  reducedSpeedDurationMin: number;
+  reducedSpeedDurationMax: number;
+  stateChangeIntervalMin: number;
+  stateChangeIntervalMax: number;
+  reducedSpeedKbps: number;
   // Peer-based speed tiers
   peerSpeedTiersEnabled: boolean;
   peerTier1MaxPeers: number;

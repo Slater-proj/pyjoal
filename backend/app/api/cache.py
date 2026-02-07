@@ -2,14 +2,15 @@
 Cache API Endpoints
 Provides cache statistics and management endpoints
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any
 import logging
 
 from app.core.cache_manager import cache_manager
+from app.core.auth import verify_token
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/cache", tags=["cache"])
+router = APIRouter(prefix="/api/cache", tags=["cache"], dependencies=[Depends(verify_token)])
 
 
 @router.get("/stats")

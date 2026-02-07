@@ -130,11 +130,17 @@ class TestConfigManagerLoad:
         (tmp_path / "config.json").write_text(json.dumps(config_data))
 
         cm = ConfigManager()
-        with patch("app.services.config_manager.settings") as mock_settings:
+        fake_defaults = {"minUploadRate": 0, "maxUploadRate": 100, "newField": "default_val"}
+        with patch("app.services.config_manager.settings") as mock_settings, \
+             patch.object(ConfigManager, "_default_config", staticmethod(lambda: fake_defaults)):
             mock_settings.CONFIG_DIR = tmp_path
             await cm.load()
 
-        assert cm.config == config_data
+        # Saved values should override defaults
+        assert cm.config["minUploadRate"] == 50
+        assert cm.config["maxUploadRate"] == 200
+        # New keys from defaults should be filled in
+        assert cm.config["newField"] == "default_val"
 
 
 class TestConfigManagerSave:

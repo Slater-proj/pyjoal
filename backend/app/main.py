@@ -12,6 +12,7 @@ import os
 import sys
 import logging
 import json
+import hmac
 from pathlib import Path
 
 # Read version from VERSION file
@@ -330,7 +331,7 @@ async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates (authenticated via query param)"""
     # Verify token from query parameter (?token=xxx)
     token = websocket.query_params.get("token", "")
-    if token != settings.SECRET_TOKEN:
+    if not hmac.compare_digest(token, settings.SECRET_TOKEN):
         await websocket.close(code=4003, reason="Forbidden")
         return
     

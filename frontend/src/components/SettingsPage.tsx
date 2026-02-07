@@ -55,8 +55,8 @@ export default function SettingsPage() {
     uploadRatioTarget: -1,
     seedingDurationLimit: -1,
     // Discretion & Timing Settings
-    announceInterval: 30,
-    announceJitter: 30,
+    announceInterval: 1800,
+    announceJitter: 120,
     minStatsUpdateInterval: 3,
     enableSpeedVariation: true,
     speedVariationPercent: 20,
@@ -104,9 +104,9 @@ export default function SettingsPage() {
       simultaneousSeed: Number(formData.simultaneousSeed) || 1,
       uploadRatioTarget: formData.uploadRatioTarget === '' || formData.uploadRatioTarget === '-' ? -1 : Number(formData.uploadRatioTarget),
       seedingDurationLimit: formData.seedingDurationLimit === '' || formData.seedingDurationLimit === '-' ? -1 : Number(formData.seedingDurationLimit),
-      announceInterval: Number(formData.announceInterval) || 30,
-      announceJitter: Number(formData.announceJitter) || 30,
-      minStatsUpdateInterval: Number(formData.minStatsUpdateInterval) || 3,
+      announceInterval: Number(formData.announceInterval) || 1800,
+      announceJitter: Number(formData.announceJitter) || 120,
+      minStatsUpdateInterval: Number(formData.minStatsUpdateInterval) || 2,
       speedVariationPercent: Number(formData.speedVariationPercent) || 20,
       // Realistic Behavior Timing
       pauseDurationMin: Number(formData.pauseDurationMin) || 30,
@@ -158,9 +158,6 @@ export default function SettingsPage() {
     }
     if (normalizedData.seedingDurationLimit < -1) {
       errors.push("Seeding duration must be -1 (unlimited) or a positive number")
-    }
-    if (normalizedData.seedingDurationLimit > 8760) {
-      errors.push("Seeding duration cannot exceed 8760 hours (1 year)")
     }
     
     if (errors.length > 0) {
@@ -460,31 +457,31 @@ export default function SettingsPage() {
                   <div className="group relative">
                     <HelpCircle className="w-4 h-4 text-slate-500 cursor-help" />
                     <div className="invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-700 text-slate-300 text-xs rounded-lg whitespace-nowrap z-10 shadow-lg">
-                      Base time between announces (15-300s)
+                      Base time between announces (60-7200s)
                     </div>
                   </div>
                 </label>
                 <input
                   type="number"
-                  value={formData.announceInterval ?? 30}
+                  value={formData.announceInterval ?? 1800}
                   onChange={(e) => {
                     const value = e.target.value
                     if (value === '') {
                       handleChange('announceInterval', '')
                     } else {
                       const parsed = parseInt(value)
-                      handleChange('announceInterval', isNaN(parsed) ? 30 : Math.max(15, Math.min(300, parsed)))
+                      handleChange('announceInterval', isNaN(parsed) ? 1800 : Math.max(60, Math.min(7200, parsed)))
                     }
                   }}
                   onBlur={(e) => {
-                    if (e.target.value === '' || parseInt(e.target.value) < 15) {
-                      handleChange('announceInterval', 30)
+                    if (e.target.value === '' || parseInt(e.target.value) < 60) {
+                      handleChange('announceInterval', 1800)
                     }
                   }}
                   className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  min="15"
-                  max="300"
-                  placeholder="30"
+                  min="60"
+                  max="7200"
+                  placeholder="1800"
                 />
               </div>
 
@@ -501,25 +498,25 @@ export default function SettingsPage() {
                 </label>
                 <input
                   type="number"
-                  value={formData.announceJitter ?? 30}
+                  value={formData.announceJitter ?? 120}
                   onChange={(e) => {
                     const value = e.target.value
                     if (value === '') {
                       handleChange('announceJitter', '')
                     } else {
                       const parsed = parseInt(value)
-                      handleChange('announceJitter', isNaN(parsed) ? 30 : Math.max(0, Math.min(180, parsed)))
+                      handleChange('announceJitter', isNaN(parsed) ? 120 : Math.max(0, Math.min(600, parsed)))
                     }
                   }}
                   onBlur={(e) => {
                     if (e.target.value === '' || parseInt(e.target.value) < 0) {
-                      handleChange('announceJitter', 30)
+                      handleChange('announceJitter', 120)
                     }
                   }}
                   className="w-full px-4 py-2.5 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   min="0"
-                  max="180"
-                  placeholder="30"
+                  max="600"
+                  placeholder="120"
                 />
               </div>
 

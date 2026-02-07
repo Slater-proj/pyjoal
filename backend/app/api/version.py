@@ -1,10 +1,12 @@
 """
 Version API endpoint
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pathlib import Path
 
-router = APIRouter(prefix="/api/version", tags=["version"])
+from app.core.auth import verify_token
+
+router = APIRouter(prefix="/api/version", tags=["version"], dependencies=[Depends(verify_token)])
 
 
 def get_version():

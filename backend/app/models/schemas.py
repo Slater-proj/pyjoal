@@ -105,8 +105,6 @@ class ConfigSchema(BaseModel):
     def validate_duration(cls, v: float) -> float:
         if v < -1:
             raise ValueError("La durée de seed doit être -1 (illimitée) ou un nombre positif")
-        if v > 8760:  # 1 year in hours
-            raise ValueError("La durée de seed ne peut pas dépasser 8760 heures (1 an)")
         return v
 
 

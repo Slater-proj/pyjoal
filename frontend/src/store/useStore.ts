@@ -139,8 +139,15 @@ export const useStore = create<Store>((set, get) => ({
       let userMessage = "Erreur lors de la mise à jour de la configuration";
       
       if (error.response?.data?.detail) {
-        // Server returned a specific error message
-        userMessage = error.response.data.detail;
+        const detail = error.response.data.detail;
+        // Pydantic 422 returns detail as array of validation errors
+        if (Array.isArray(detail)) {
+          userMessage = detail.map((e: any) => e.msg || e.message || JSON.stringify(e)).join('; ');
+        } else if (typeof detail === 'string') {
+          userMessage = detail;
+        } else {
+          userMessage = JSON.stringify(detail);
+        }
       } else if (error.response?.status) {
         // HTTP error codes - translate to user-friendly messages
         switch (error.response.status) {

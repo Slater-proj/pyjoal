@@ -31,8 +31,8 @@ describe('API Service', () => {
       uploadRatioTarget: -1.0,
       seedingDurationLimit: -1.0,
       // Discretion fields - should not cause TypeScript errors
-      announceInterval: 30,
-      announceJitter: 30,
+      announceInterval: 1800,
+      announceJitter: 120,
       minStatsUpdateInterval: 3,
       enableSpeedVariation: true,
       speedVariationPercent: 20
