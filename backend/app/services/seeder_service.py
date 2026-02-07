@@ -254,7 +254,9 @@ class SeederService:
             self._resource_optimizer_task = asyncio.create_task(resource_optimizer.periodic_optimization())
             logger.info("   Resource optimizer started")
 
-        await websocket_manager.broadcast({"type": "seeding_started", "data": {"started_at": self.started_at.isoformat()}})
+        await websocket_manager.broadcast(
+            {"type": "seeding_started", "data": {"started_at": self.started_at.isoformat()}}
+        )
         logger.info(f"Seeding started successfully ({len(announcers_to_start)} active)")
 
         # Send notification
@@ -429,7 +431,10 @@ class SeederService:
         
         if active_count < simultaneous_seed and inactive_announcers:
             to_start = min(simultaneous_seed - active_count, len(inactive_announcers))
-            logger.info(f"🚀 Starting {to_start} inactive torrent(s) to reach limit ({active_count}/{simultaneous_seed})")
+            logger.info(
+                f"🚀 Starting {to_start} inactive torrent(s) to reach limit "
+                f"({active_count}/{simultaneous_seed})"
+            )
             
             for announcer in inactive_announcers[:to_start]:
                 try:
@@ -530,7 +535,9 @@ class SeederService:
             await websocket_manager.broadcast({"type": "toast", "data": {"message": message, "type": "info"}})
         except Exception as e:
             logger.error(f"Auto-reload failed: {e}")
-            await websocket_manager.broadcast({"type": "toast", "data": {"message": f"Auto-reload failed: {e}", "type": "error"}})
+            await websocket_manager.broadcast(
+                {"type": "toast", "data": {"message": f"Auto-reload failed: {e}", "type": "error"}}
+            )
 
 
 # Global service instance

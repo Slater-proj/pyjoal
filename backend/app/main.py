@@ -184,7 +184,9 @@ async def _background_torrent_startup():
         await asyncio.sleep(0.5)
         
         # Notify UI that loading has started
-        await websocket_manager.broadcast({"type": "loading_status", "data": {"status": "loading_torrents", "message": "Loading torrents..."}})
+        await websocket_manager.broadcast(
+            {"type": "loading_status", "data": {"status": "loading_torrents", "message": "Loading torrents..."}}
+        )
         
         await seeder_service.load_torrents()
         
@@ -341,7 +343,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
 # Serve static files for frontend (in production)
 # In Docker: /app/frontend/dist, in dev: ../frontend/dist
-frontend_build_path = Path("/app/frontend/dist") if Path("/app/frontend/dist").exists() else Path(__file__).parent.parent.parent / "frontend" / "dist"
+frontend_build_path = (
+    Path("/app/frontend/dist")
+    if Path("/app/frontend/dist").exists()
+    else Path(__file__).parent.parent.parent / "frontend" / "dist"
+)
 
 logger.debug(f"🔍 Looking for frontend at: {frontend_build_path}")
 logger.debug(f"📁 Frontend exists: {frontend_build_path.exists()}")

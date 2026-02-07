@@ -142,7 +142,10 @@ class TorrentManager:
         failed_count = len(self.failed_torrents)
 
         if failed_count > 0:
-            logger.warning(f"📂 Loaded {len(torrents)}/{total_files} torrent(s) ({new_count} new, {failed_count} failed)")
+            logger.warning(
+                f"📂 Loaded {len(torrents)}/{total_files} torrent(s) "
+                f"({new_count} new, {failed_count} failed)"
+            )
             for filename, error_info in self.failed_torrents.items():
                 logger.debug(f"   ❌ {filename}: {error_info['error']}")
         else:
@@ -312,7 +315,9 @@ class TorrentManager:
         else:
             logger.warning(f"   Torrent file not found: {torrent.path}")
 
-        await websocket_manager.broadcast({"type": "torrent_archived", "data": {"info_hash": info_hash, "name": torrent.name}})
+        await websocket_manager.broadcast(
+            {"type": "torrent_archived", "data": {"info_hash": info_hash, "name": torrent.name}}
+        )
 
         # Send notification with bilan
         await notification_service.notify_torrent_archived(
@@ -336,7 +341,10 @@ class TorrentManager:
         to_remove: List[tuple] = []  # (info_hash, reason)
 
         if ratio_target > 0 or duration_limit > 0:
-            logger.debug(f"🎯 Checking targets: ratio={ratio_target}, duration={duration_limit}h, keep_zero_leechers={keep_zero_leechers}")
+            logger.debug(
+                f"🎯 Checking targets: ratio={ratio_target}, duration={duration_limit}h, "
+                f"keep_zero_leechers={keep_zero_leechers}"
+            )
 
         for info_hash, announcer in self.announcers.items():
             stats = announcer.get_stats()
@@ -363,14 +371,18 @@ class TorrentManager:
                 if seeding_time_hours >= duration_limit:
                     history_service.add_entry(
                         EventType.TORRENT_ARCHIVED,
-                        f"📦 Archived {torrent.name} - duration limit reached ({seeding_time_hours:.1f}h >= {duration_limit}h)",
+                        f"📦 Archived {torrent.name} - duration limit reached "
+                        f"({seeding_time_hours:.1f}h >= {duration_limit}h)",
                         {
                             "info_hash": info_hash,
                             "seeding_hours": seeding_time_hours,
                             "limit": duration_limit,
                             "reason": "duration_limit",
                             "torrent_name": torrent.name,
-                            "reason_detail": f"Seeded for {seeding_time_hours:.1f} hours, limit is {duration_limit} hours",
+                            "reason_detail": (
+                                f"Seeded for {seeding_time_hours:.1f} hours, "
+                                f"limit is {duration_limit} hours"
+                            ),
                         },
                     )
                     to_remove.append((info_hash, "duration_limit"))
@@ -434,7 +446,7 @@ class TorrentManager:
         # Send single grouped toast instead of one per torrent
         if archived_count > 0:
             if archived_count == 1:
-                message = f"🗃️ Archived 1 torrent"
+                message = "🗃️ Archived 1 torrent"
             else:
                 message = f"🗃️ Archived {archived_count} torrents"
             
