@@ -276,6 +276,13 @@ export const useStore = create<Store>((set, get) => ({
 
   // WebSocket
   connectWebSocket: () => {
+    // Close existing connection to prevent duplicates
+    const existingWs = get().ws;
+    if (existingWs) {
+      existingWs.onclose = null; // Prevent reconnect loop from old WS
+      existingWs.close();
+    }
+
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const token = (window as any).__PYJOAL_TOKEN__ || '';
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`);

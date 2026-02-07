@@ -1,5 +1,14 @@
 # Changelog - PyJOAL
 
+## [1.12.4] - 2025-02-07
+
+### Fixed
+- **Client config log spam**: `list_available_clients()` instantiated all 7 `.client` files for validation, each logging at INFO level. Triggered on every `GET /api/clients` call (page loads, WS reconnects, navigation to Settings). Changed to DEBUG level — only the configured client logs at INFO during startup
+- **Duplicate WebSocket connections**: `connectWebSocket()` didn't close the previous WS before creating a new one, causing parallel connections and rapid disconnect/reconnect flapping. Added cleanup of existing WS on reconnect
+
+### Added
+- **Periodic seed speed INFO logs**: Every ~60s the monitor loop now logs a summary of all active torrents' upload speeds, uploaded amounts, and ratios at INFO level. Per-torrent speed details remain at DEBUG level for the 15s interval
+
 ## [1.12.3] - 2025-02-07
 
 ### Fixed — Critical

@@ -534,6 +534,27 @@ class SeederService:
                                     f"time={torrent['seedingTime']}s"
                                 )
 
+                    # INFO-level speed summary every ~60s
+                    if update_count % 20 == 0:
+                        active_torrents = [t for t in torrents if t.get("isRunning")]
+                        if active_torrents:
+                            total_speed = stats['uploadSpeed'] / 1024
+                            total_up = stats['totalUploaded'] / (1024 * 1024)
+                            logger.info(
+                                f"📊 Seed: {len(active_torrents)} active, "
+                                f"total {total_speed:.0f} KB/s, "
+                                f"uploaded {total_up:.1f} MB"
+                            )
+                            for t in active_torrents:
+                                spd = t['uploadSpeed'] / 1024
+                                upl = t['uploaded'] / (1024 * 1024)
+                                logger.info(
+                                    f"  🌱 {t['name'][:40]}: "
+                                    f"{spd:.0f} KB/s, "
+                                    f"↑{upl:.1f} MB, "
+                                    f"ratio {t['ratio']:.2f}"
+                                )
+
                     # Check ratio targets every 60s instead of every 3s
                     if update_count % 20 == 0:
                         await self._tm.check_ratio_targets(self._config)

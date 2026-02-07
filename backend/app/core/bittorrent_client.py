@@ -54,7 +54,7 @@ class BitTorrentClient:
             self._log_validation_error(validation_errors)
             raise ValueError(error_msg)
         
-        logger.info(f"📱 Loaded client config: {self.name} {self.version}")
+        logger.debug(f"📱 Loaded client config: {self.name} {self.version}")
         logger.debug(f"   Key algorithm: {self.config.get('keyGenerator', {}).get('algorithm', {}).get('type', 'UNKNOWN')}")
         logger.debug(f"   PeerId algorithm: {self.config.get('peerIdGenerator', {}).get('algorithm', {}).get('type', 'UNKNOWN')}")
     
