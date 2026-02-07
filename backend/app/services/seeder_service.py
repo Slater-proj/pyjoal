@@ -129,7 +129,7 @@ class SeederService:
             logger.debug(f"   Upload rate range: {settings.MIN_UPLOAD_RATE}-{settings.MAX_UPLOAD_RATE} KB/s")
         except Exception as e:
             logger.critical(f"Failed to load client '{configured_client}': {e}")
-            raise RuntimeError(f"Impossible de charger le client '{configured_client}': {e}")
+            raise RuntimeError(f"Failed to load client '{configured_client}': {e}")
 
         # Torrent loading is deferred to background task for faster startup
         await self._init_file_watcher()

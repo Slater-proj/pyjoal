@@ -45,11 +45,11 @@ class Settings(BaseSettings):
             return None
         return v
     
-    # Announce intervals (defaults, can be overridden in config) - Optimisé pour la réactivité
-    ANNOUNCE_INTERVAL: int = Field(default=15, description="Base announce interval (seconds)")
-    ANNOUNCE_JITTER: int = Field(default=15, description="Random jitter for announces (seconds)")
+    # Announce intervals (defaults, typically overridden by tracker response)
+    ANNOUNCE_INTERVAL: int = Field(default=1800, description="Base announce interval in seconds (30 min, standard BT default)")
+    ANNOUNCE_JITTER: int = Field(default=120, description="Random jitter for announces (seconds)")
     
-    # Discretion Settings - Optimisé pour les mises à jour
+    # Discretion Settings
     MIN_STATS_UPDATE_INTERVAL: int = Field(default=2, description="Minimum interval between stats updates (seconds)")
     ENABLE_SPEED_VARIATION: bool = Field(default=True, description="Enable realistic speed variations")
     SPEED_VARIATION_PERCENT: int = Field(default=20, description="Speed variation percentage (±%)")

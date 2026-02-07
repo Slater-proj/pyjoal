@@ -206,11 +206,6 @@ class TrackerAnnouncer:
         self.is_running = True
         self._seeding_started_at = datetime.now(timezone.utc)
         
-        if self._initial_seeding:
-            logger.debug("   📋 Sending 'completed' event - torrent finished downloading")
-            await self._send_announce_stealth(event="completed")
-            self._initial_seeding = False
-        
         if self.upload_speed == 0:
             self.upload_speed = self.stats.get_activity_based_upload_speed(self.client)
             logger.debug(f"   Initial upload speed: {self.upload_speed / 1024:.2f} KB/s")
@@ -254,7 +249,15 @@ class TrackerAnnouncer:
         """Main announce loop."""
         try:
             logger.info(f"📢 Starting announce loop for: {self.torrent.name}")
-            await self._send_announce(event="started")
+            await self._send_announce_stealth(event="started")
+            
+            # BEP 3: send 'completed' AFTER 'started' when we already have the full
+            # torrent but this is a fresh session (initial_seeding flag).
+            if self._initial_seeding:
+                logger.debug("   📋 Sending 'completed' event (initial seeding)")
+                await self._send_announce_stealth(event="completed")
+                self._initial_seeding = False
+            
             
             while self.is_running:
                 actual_interval = stealth_service.get_natural_announce_interval(
@@ -362,105 +365,6 @@ class TrackerAnnouncer:
     # Announce methods
     # ================================================================
     
-    async def _send_announce(self, event: Optional[str] = None):
-        """Send announce to tracker (legacy HTTP path)."""
-        tracker_url = self.torrent.primary_tracker
-        if not tracker_url:
-            logger.warning(f"No tracker URL for {self.torrent.name}")
-            return
-        
-        event_str = f" ({event})" if event else ""
-        logger.debug(f"📡 Sending announce{event_str} for: {self.torrent.name[:50]}")
-        
-        url = self.client.build_announce_url(
-            tracker_url=tracker_url,
-            info_hash=self.torrent.info_hash_bytes,
-            peer_id=self.peer_id,
-            port=self.port,
-            uploaded=self.uploaded,
-            downloaded=self.downloaded,
-            left=self.left,
-            event=event
-        )
-        
-        logger.debug("📤 Announce parameters:")
-        logger.debug(f"   Tracker: {tracker_url}")
-        logger.debug(f"   Info hash: {self.torrent.info_hash}")
-        logger.debug(f"   Uploaded: {self.uploaded / (1024**2):.2f} MB")
-        if event:
-            logger.debug(f"   Event: {event}")
-        
-        if self._simulate_occasional_network_errors():
-            return
-            
-        try:
-            proxies = None
-            if settings.HTTP_PROXY_HOST and settings.HTTP_PROXY_PORT:
-                proxy_url = f"http://{settings.HTTP_PROXY_HOST}:{settings.HTTP_PROXY_PORT}"
-                proxies = {"http://": proxy_url, "https://": proxy_url}
-            
-            headers = self.client.get_request_headers()
-            
-            async with httpx.AsyncClient(
-                headers=headers, proxies=proxies, timeout=30.0, verify=False
-            ) as client:
-                response = await client.get(url)
-                response.raise_for_status()
-                
-                self._parse_announce_response(response.content)
-                
-                self.last_announce = datetime.now(timezone.utc)
-                jitter = random.randint(-self.announce_jitter, self.announce_jitter)
-                self.next_announce = self.last_announce + timedelta(
-                    seconds=self.announce_interval + jitter
-                )
-                
-                logger.debug(f"✅ Announce successful for {self.torrent.name[:50]}")
-                logger.debug(f"   Peers: {self.seeders} seeders, {self.leechers} leechers")
-                
-                if self.last_error:
-                    self.last_error = None
-                    self.last_error_time = None
-                
-                self._last_successful_announce = time.time()
-                self._last_successful_uploaded = self.uploaded
-                
-                history_service.add_entry(
-                    EventType.ANNOUNCE_SUCCESS,
-                    f"Announced {self.torrent.name}",
-                    {
-                        "torrent": self.torrent.name,
-                        "seeders": self.seeders,
-                        "leechers": self.leechers,
-                        "uploaded": self.uploaded,
-                        "upload_speed": self.upload_speed
-                    }
-                )
-                
-        except httpx.HTTPStatusError as e:
-            logger.error(f"❌ HTTP error {e.response.status_code} for {self.torrent.name}")
-            history_service.add_entry(
-                EventType.ANNOUNCE_FAILED,
-                f"Announce failed for {self.torrent.name}",
-                {"torrent": self.torrent.name, "error": f"HTTP {e.response.status_code}"}
-            )
-        except httpx.TimeoutException as e:
-            logger.error(f"⏱️  Timeout announcing {self.torrent.name}: {e}")
-            self._record_error(f"Timeout: {str(e)}")
-            history_service.add_entry(
-                EventType.ANNOUNCE_FAILED,
-                f"Announce timeout for {self.torrent.name}",
-                {"torrent": self.torrent.name, "error": "Timeout"}
-            )
-        except Exception as e:
-            logger.error(f"❌ Announce error for {self.torrent.name}: {e}", exc_info=True)
-            self._record_error(f"Announce error: {str(e)}")
-            history_service.add_entry(
-                EventType.ANNOUNCE_FAILED,
-                f"Announce failed for {self.torrent.name}",
-                {"torrent": self.torrent.name, "error": str(e)}
-            )
-    
     async def _send_announce_with_retry(self, event: Optional[str] = None):
         """Send announce with intelligent retry logic."""
         max_attempts = self.max_retries + 1
@@ -512,15 +416,28 @@ class TrackerAnnouncer:
             event=event
         )
         
+        # Include tracker_id if we received one (BEP 3 compliance)
+        if hasattr(self, '_tracker_id') and self._tracker_id:
+            tid = self._tracker_id
+            if isinstance(tid, bytes):
+                tid = tid.decode('utf-8', errors='ignore')
+            url += f"&trackerid={tid}"
+        
         headers = self.client.get_request_headers()
         timeout = httpx.Timeout(30.0)
         
-        async with httpx.AsyncClient(timeout=timeout, headers=headers, verify=False, follow_redirects=True, max_redirects=5) as client:
+        # Proxy support — respect user's proxy configuration
+        proxy_kwargs = {}
+        if settings.HTTP_PROXY_HOST and settings.HTTP_PROXY_PORT:
+            proxy_url = f"http://{settings.HTTP_PROXY_HOST}:{settings.HTTP_PROXY_PORT}"
+            proxy_kwargs['proxies'] = {"http://": proxy_url, "https://": proxy_url}
+        
+        async with httpx.AsyncClient(timeout=timeout, headers=headers, verify=False, follow_redirects=True, max_redirects=5, **proxy_kwargs) as http_client:
             logger.debug(f"🎭 HTTP Announce to {tracker_url}")
             logger.debug(f"   Client: {self.client.name} {self.client.version}")
             
             start_time = time.time()
-            response = await client.get(url)
+            response = await http_client.get(url)
             response_time = (time.time() - start_time) * 1000
             
             if response.status_code != 200:
@@ -648,18 +565,28 @@ class TrackerAnnouncer:
                     warning = warning.decode('utf-8', errors='ignore')
                 logger.warning(f"⚠️ Tracker warning: {warning}")
             
+            # BEP 3: Parse interval and min_interval.
+            # min_interval takes precedence — we must NEVER announce faster.
+            tracker_min_interval = 0
+            
             if b'min interval' in response:
                 min_interval = response[b'min interval']
                 if isinstance(min_interval, int) and min_interval > 0:
-                    self.announce_interval = max(self.announce_interval, min_interval)
+                    tracker_min_interval = min_interval
             
             if b'interval' in response:
                 interval = response[b'interval']
                 if isinstance(interval, int) and interval > 0:
                     old_interval = self.announce_interval
-                    self.announce_interval = max(60, min(interval, 3600))
+                    # Clamp interval to sane bounds, but never below min_interval
+                    new_interval = max(60, min(interval, 3600))
+                    if tracker_min_interval > 0:
+                        new_interval = max(new_interval, tracker_min_interval)
+                    self.announce_interval = new_interval
                     if old_interval != self.announce_interval:
                         logger.info(f"⏰ Announce interval updated: {old_interval}s -> {self.announce_interval}s")
+            elif tracker_min_interval > 0:
+                self.announce_interval = max(self.announce_interval, tracker_min_interval)
             
             old_seeders = self.seeders
             old_leechers = self.leechers

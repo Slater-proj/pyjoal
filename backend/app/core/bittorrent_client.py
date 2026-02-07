@@ -418,14 +418,18 @@ class BitTorrentClient:
             )
         
         # URL encode info_hash (binary -> URL encoded)
+        if isinstance(info_hash, str):
+            info_hash = bytes.fromhex(info_hash) if all(c in '0123456789abcdefABCDEF' for c in info_hash) and len(info_hash) % 2 == 0 else info_hash.encode('latin-1')
         encoded_info_hash = self.url_encode(info_hash)
         
         # URL encode peer_id if needed
+        peer_id_bytes = peer_id if isinstance(peer_id, bytes) else peer_id.encode('latin-1')
+        peer_id_str = peer_id if isinstance(peer_id, str) else peer_id.decode('latin-1')
         peer_id_config = self.config.get("peerIdGenerator", {})
         if peer_id_config.get("shouldUrlEncode", False):
-            encoded_peer_id = self.url_encode(peer_id.encode('latin-1'))
+            encoded_peer_id = self.url_encode(peer_id_bytes)
         else:
-            encoded_peer_id = peer_id
+            encoded_peer_id = peer_id_str
         
         # Determine numwant
         if numwant is None:
@@ -455,14 +459,17 @@ class BitTorrentClient:
         if event:
             query = query.replace("{event}", event)
         else:
-            # Remove event parameter entirely if no event
-            # Remove patterns like "event={event}&" or "&event={event}"
-            query = re.sub(r'&?event=\{event\}&?', '', query)
+            # Remove event parameter entirely if no event.
+            # Must handle mid-query (&event=...&), start (event=...&), and end (&event=...)
+            # without eating both surrounding delimiters.
+            query = re.sub(r'[&?]event=\{event\}(?=&|$)', '', query)  # &event=...& or &event=...$
+            query = re.sub(r'event=\{event\}&?', '', query)            # event=...& at start
             query = re.sub(r'^&|&$', '', query)  # Clean up leading/trailing &
         
         # Handle optional IPv6 placeholder
+        query = re.sub(r'[&?]ipv6=(?:&|$)', '', query)
         query = query.replace("{ipv6}", "")
-        query = re.sub(r'&?ipv6=&?', '', query)
+        query = re.sub(r'[&?]ipv6=&?', '', query)
         query = re.sub(r'^&|&$', '', query)
         
         # Build final URL

@@ -83,6 +83,13 @@ class StatsSimulator:
         self.download_speed: float = 0
         self._seeding_start_delay_min: Optional[int] = None  # cached for determinism
         
+        # Separate timestamp for stealth path to avoid cross-contamination
+        # with the display update path (M1 fix)
+        self._last_stealth_upload_time: Optional[float] = None
+        
+        # Speed smoothing: remember previous speed for autocorrelation
+        self._previous_speed: Optional[int] = None
+        
         # Pause / speed tier state
         self._is_in_fake_pause: bool = False
         self._pause_until: Optional[datetime] = None
@@ -209,7 +216,10 @@ class StatsSimulator:
         
         if current_speed > 0:
             capped_interval = min(time_interval, 10)
-            upload_delta = int(current_speed * capped_interval)
+            raw_delta = int(current_speed * capped_interval)
+            # Piece-align upload delta — real clients transfer in piece chunks
+            piece_size = 16384  # 16 KiB standard sub-piece
+            upload_delta = max(piece_size, (raw_delta // piece_size) * piece_size)
             self.uploaded += upload_delta
             
             logger.debug(f"📈 UPLOAD: {self.torrent_name[:25]} +{upload_delta/1024:.1f}KB ({current_speed/1024:.1f}KB/s × {capped_interval:.1f}s) = Total: {self.uploaded/(1024*1024):.2f}MB")
@@ -299,14 +309,17 @@ class StatsSimulator:
         )
         
         if current_speed > 0:
-            if self._last_upload_time is not None:
-                time_interval = current_time - self._last_upload_time
+            if self._last_stealth_upload_time is not None:
+                time_interval = current_time - self._last_stealth_upload_time
             else:
                 time_interval = 5
             
-            self._last_upload_time = current_time
+            self._last_stealth_upload_time = current_time
             
-            upload_delta = current_speed * min(time_interval, 10)
+            # Piece-align upload delta — real clients upload in piece chunks
+            raw_delta = int(current_speed * min(time_interval, 10))
+            piece_size = 16384  # 16 KiB — standard BT sub-piece
+            upload_delta = max(piece_size, (raw_delta // piece_size) * piece_size)
             self.uploaded += upload_delta
             
             if self._seeding_session_start:
@@ -332,13 +345,13 @@ class StatsSimulator:
             
         self._last_download_time = current_time
         
-        download_delta = download_speed * min(time_interval, 10)
+        download_delta = int(download_speed * min(time_interval, 10))
         
         self.downloaded = min(self.downloaded + download_delta, self.torrent_size)
         self.left = max(0, self.torrent_size - self.downloaded)
         
-        upload_speed = max(download_speed * 0.1, 1024)
-        upload_delta = upload_speed * min(time_interval, 10)
+        upload_speed = max(int(download_speed * 0.1), 1024)
+        upload_delta = int(upload_speed * min(time_interval, 10))
         self.uploaded += upload_delta
         
         self.download_speed = float(download_speed)
@@ -458,6 +471,15 @@ class StatsSimulator:
             )
         else:
             logger.debug(f"🎯 {self.torrent_name[:20]}: {speed/1024:.0f} KB/s (tier: {current_tier}, range: {effective_min/1024:.0f}-{effective_max/1024:.0f})")
+        
+        # Speed autocorrelation — real network speeds are temporally correlated,
+        # not independent random jumps.  Blend 70% previous + 30% new target
+        # so successive samples form a smooth curve instead of white-noise.
+        if self._previous_speed is not None and self._previous_speed > 0:
+            smoothing = 0.7
+            speed = int(self._previous_speed * smoothing + speed * (1 - smoothing))
+            speed = max(min_rate, min(max_rate, speed))
+        self._previous_speed = speed
         
         return speed
     
