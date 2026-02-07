@@ -39,14 +39,11 @@ class TestNotificationServiceInit:
 
 class TestNotificationSending:
     @pytest.mark.asyncio
-    async def test_notify_disabled(self):
+    async def test_send_disabled(self):
+        """When notifications are disabled, notify should be a no-op"""
         svc = _make_service()
-        svc._config = {
-            "enabled": False,
-            "gotify": {"url": "", "token": ""},
-            "webhook": {"url": "", "method": "POST", "headers": {}},
-            "events": {"test": True},
-        }
+        svc._config = {"enabled": False, "events": {"test": False}, "gotify": {"enabled": False}, "webhook": {"enabled": False}}
+        # Should not raise
         await svc.notify(
             event=NotificationEvent.TEST,
             title="Test",
@@ -55,15 +52,24 @@ class TestNotificationSending:
         )
 
     @pytest.mark.asyncio
-    async def test_notify_gotify_success(self):
+    async def test_send_gotify_success(self):
         svc = _make_service()
         svc._config = {
             "enabled": True,
-            "gotify": {"url": "http://localhost:8080", "token": "test"},
-            "webhook": {"url": "", "method": "POST", "headers": {}},
+            "gotify": {"enabled": True, "url": "http://localhost:8080", "token": "test"},
+            "webhook": {"enabled": False, "url": "", "method": "POST", "headers": {}},
             "events": {"test": True},
         }
-        with patch.object(svc, "_send_gotify", new_callable=AsyncMock, return_value=True):
+        with patch("httpx.AsyncClient") as MockClient:
+            mock_instance = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.raise_for_status = MagicMock()
+            mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
+            mock_instance.__aexit__ = AsyncMock(return_value=False)
+            mock_instance.post = AsyncMock(return_value=mock_response)
+            MockClient.return_value = mock_instance
+
             await svc.notify(
                 event=NotificationEvent.TEST,
                 title="Test",
@@ -81,6 +87,7 @@ class TestEventFiltering:
             "gotify": {"url": "", "token": ""},
             "webhook": {"url": "", "method": "POST", "headers": {}},
         }
+        # is_event_enabled should return False
         result = svc.is_event_enabled(NotificationEvent.SYSTEM_START)
         assert result is False
 

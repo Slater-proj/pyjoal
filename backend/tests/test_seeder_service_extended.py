@@ -2,6 +2,7 @@
 Extended tests for seeder_service - config updates, caching, stats, persistence
 """
 import pytest
+import asyncio
 from unittest.mock import patch, AsyncMock, MagicMock, PropertyMock
 from datetime import datetime, timezone
 
@@ -14,22 +15,23 @@ from app.services.seeder_service import SeederService
 def _make_service():
     """Create a SeederService with mocked internals."""
     svc = SeederService.__new__(SeederService)
-    # Set delegates first (before property access)
+    svc.is_running = False
+    # Mock the delegates that properties forward to
     svc._tm = MagicMock()
     svc._tm.announcers = {}
     svc._tm.failed_torrents = {}
-    svc._tm.get_torrents = MagicMock(return_value=[])
-    svc._tm.has_torrents = MagicMock(return_value=False)
     svc._cfg = MagicMock()
     svc._cfg.config = {}
     svc._cfg._config = {}
-    # Basic attributes
-    svc.is_running = False
     svc.client = None
+    svc._lock = asyncio.Lock()
     svc._monitor_task = None
-    svc._lock = __import__("asyncio").Lock()
+    svc._stats_cache = None
+    svc._stats_cache_time = 0
+    svc._torrents_cache = None
+    svc._torrents_cache_time = 0
     svc.started_at = None
-    svc.file_watcher = None
+    svc.available_clients = []
     return svc
 
 
@@ -86,7 +88,7 @@ class TestSeederServiceStats:
         svc = _make_service()
         svc.is_running = True
         svc.started_at = datetime.now(timezone.utc)
-        svc._tm.announcers = {
+        svc.announcers = {
             "abc": _mock_announcer(uploaded=1024, speed=50000, running=True),
             "def": _mock_announcer(info_hash="def456", uploaded=2048, speed=25000, running=True),
         }
@@ -98,7 +100,7 @@ class TestSeederServiceStats:
         svc = _make_service()
         svc.is_running = True
         svc.started_at = datetime.now(timezone.utc)
-        svc._tm.announcers = {
+        svc.announcers = {
             "abc": _mock_announcer(running=True),
             "def": _mock_announcer(info_hash="def456", running=False),
         }
@@ -109,7 +111,7 @@ class TestSeederServiceStats:
 class TestSeederServiceConfig:
     def test_get_config(self):
         svc = _make_service()
-        svc._cfg.config = {"minUploadRate": 50, "maxUploadRate": 500}
+        svc._config = {"minUploadRate": 50, "maxUploadRate": 500}
         config = svc.get_config()
         assert isinstance(config, dict)
 
@@ -148,7 +150,7 @@ class TestSeederServiceStartStop:
 class TestPersistStats:
     def test_persist_all_stats(self):
         svc = _make_service()
-        svc._tm.announcers = {
+        svc.announcers = {
             "abc": _mock_announcer(uploaded=1024),
         }
         with patch("app.services.seeder_service.persistence_service") as mock_ps:

@@ -209,7 +209,7 @@ async def _background_torrent_startup():
 # Create FastAPI app
 app = FastAPI(
     title="PyJOAL API",
-    description="BitTorrent Ratio Client - Émulation multi-clients avec interface web moderne",
+    description="BitTorrent Ratio Client - Multi-client emulation with modern web interface",
     version=APP_VERSION,
     lifespan=lifespan
 )
@@ -220,7 +220,7 @@ from pydantic import ValidationError
 @app.exception_handler(ValidationError)
 async def validation_exception_handler(request: Request, exc: ValidationError):
     """Convert Pydantic validation errors to user-friendly messages"""
-    error_msg = "Données de configuration invalides"
+    error_msg = "Invalid configuration data"
     
     # Extract the first meaningful error message
     if exc.errors():
@@ -229,26 +229,25 @@ async def validation_exception_handler(request: Request, exc: ValidationError):
         error_type = error.get('type', '')
         msg = error.get('msg', '')
         
-        # Translate common Pydantic error messages to French
         if error_type == 'value_error' and 'ctx' in error and 'error' in error['ctx']:
             # Custom validator error - use the message directly
             error_msg = msg.replace('Value error, ', '')
         elif error_type == 'greater_than_equal':
             if 'minUploadRate' in field:
-                error_msg = "La vitesse minimum ne peut pas être négative"
+                error_msg = "Minimum upload rate cannot be negative"
             elif 'maxUploadRate' in field:
-                error_msg = "La vitesse maximum ne peut pas être négative"
+                error_msg = "Maximum upload rate cannot be negative"
             else:
-                error_msg = f"La valeur de {field} ne peut pas être négative"
+                error_msg = f"The value of {field} cannot be negative"
         elif error_type == 'less_than_equal':
             if 'Upload' in field:
-                error_msg = "La vitesse ne peut pas dépasser 100 MB/s (100000 KB/s)"
+                error_msg = "Upload rate cannot exceed 100 MB/s (100000 KB/s)"
             else:
-                error_msg = f"La valeur de {field} est trop élevée"
+                error_msg = f"The value of {field} is too high"
         elif error_type == 'missing':
-            error_msg = f"Le champ {field} est obligatoire"
+            error_msg = f"The field {field} is required"
         elif 'type' in error_type:
-            error_msg = f"Le format de {field} est incorrect"
+            error_msg = f"Invalid format for {field}"
         else:
             error_msg = msg
     

@@ -107,7 +107,7 @@ class TestValidationExceptionHandlerDirect:
             scope = {"type": "http", "method": "PUT", "path": "/", "headers": []}
             response = await validation_exception_handler(Request(scope), exc)
             body = json.loads(response.body.decode())
-            assert "négative" in body["detail"]
+            assert "negative" in body["detail"].lower()
 
     @pytest.mark.asyncio
     async def test_less_than_equal_upload(self):
@@ -124,7 +124,7 @@ class TestValidationExceptionHandlerDirect:
             scope = {"type": "http", "method": "PUT", "path": "/", "headers": []}
             response = await validation_exception_handler(Request(scope), exc)
             body = json.loads(response.body.decode())
-            assert "100 MB/s" in body["detail"] or "élevée" in body["detail"]
+            assert "100 MB/s" in body["detail"] or "too high" in body["detail"]
 
     @pytest.mark.asyncio
     async def test_less_than_equal_generic(self):
@@ -141,7 +141,7 @@ class TestValidationExceptionHandlerDirect:
             scope = {"type": "http", "method": "PUT", "path": "/", "headers": []}
             response = await validation_exception_handler(Request(scope), exc)
             body = json.loads(response.body.decode())
-            assert "élevée" in body["detail"]
+            assert "too high" in body["detail"]
 
     @pytest.mark.asyncio
     async def test_missing_field(self):
@@ -157,7 +157,7 @@ class TestValidationExceptionHandlerDirect:
             scope = {"type": "http", "method": "PUT", "path": "/", "headers": []}
             response = await validation_exception_handler(Request(scope), exc)
             body = json.loads(response.body.decode())
-            assert "obligatoire" in body["detail"]
+            assert "required" in body["detail"]
 
     @pytest.mark.asyncio
     async def test_type_error(self):
@@ -206,4 +206,4 @@ class TestValidationExceptionHandlerDirect:
         scope = {"type": "http", "method": "PUT", "path": "/", "headers": []}
         response = await validation_exception_handler(Request(scope), exc)
         body = json.loads(response.body.decode())
-        assert body["detail"] == "Données de configuration invalides"
+        assert body["detail"] == "Invalid configuration data"

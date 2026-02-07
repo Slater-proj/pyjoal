@@ -72,6 +72,8 @@ def _make_announcer():
     ann.stealth_profile = {}
     ann._last_successful_announce = 0
     ann._last_successful_uploaded = 0
+    ann._tracker_id = None
+    ann._min_interval = 0
     ann.announce_interval = 1800
     ann.announce_jitter = 60
 
@@ -107,24 +109,36 @@ class TestSendAnnounce:
              patch("app.core.tracker_announcer.settings") as mock_s:
             mock_s.HTTP_PROXY_HOST = None
             mock_s.HTTP_PROXY_PORT = None
-            await ann._send_announce(event="started")
+            await ann._send_announce_stealth(event="started")
 
         assert ann.last_announce is not None
 
     @pytest.mark.asyncio
     async def test_send_announce_no_tracker(self):
         ann = _make_announcer()
-        ann.torrent.primary_tracker = None
-        await ann._send_announce()
+        ann.tracker_mgr.get_next_tracker.return_value = None
+        with pytest.raises(Exception, match="No tracker available"):
+            await ann._send_announce_stealth()
 
     @pytest.mark.asyncio
     async def test_send_announce_network_error_simulated(self):
+        import httpx
         ann = _make_announcer()
-        ann.stats.simulate_occasional_network_errors.return_value = True
-        with patch("app.core.tracker_announcer.settings") as mock_s:
+        ann.max_retries = 0
+        mock_client_instance = MagicMock()
+        mock_client_instance.get = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
+        mock_client_ctx = AsyncMock()
+        mock_client_ctx.__aenter__ = AsyncMock(return_value=mock_client_instance)
+        mock_client_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=mock_client_ctx), \
+             patch("app.core.tracker_announcer.history_service"), \
+             patch("app.core.tracker_announcer.settings") as mock_s:
             mock_s.HTTP_PROXY_HOST = None
             mock_s.HTTP_PROXY_PORT = None
-            await ann._send_announce()
+            await ann._send_announce_with_retry()
+
+        assert ann.consecutive_failures > 0
 
     @pytest.mark.asyncio
     async def test_send_announce_with_proxy(self):
@@ -147,17 +161,16 @@ class TestSendAnnounce:
              patch("app.core.tracker_announcer.settings") as mock_s:
             mock_s.HTTP_PROXY_HOST = "proxy.example.com"
             mock_s.HTTP_PROXY_PORT = 8080
-            await ann._send_announce()
+            await ann._send_announce_stealth()
 
     @pytest.mark.asyncio
     async def test_send_announce_http_error(self):
         import httpx
         ann = _make_announcer()
+        ann.max_retries = 0
         mock_response = MagicMock()
         mock_response.status_code = 503
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Service Unavailable", request=MagicMock(), response=mock_response
-        )
+        mock_response.text = "Service Unavailable"
 
         mock_client_instance = MagicMock()
         mock_client_instance.get = AsyncMock(return_value=mock_response)
@@ -170,12 +183,15 @@ class TestSendAnnounce:
              patch("app.core.tracker_announcer.settings") as mock_s:
             mock_s.HTTP_PROXY_HOST = None
             mock_s.HTTP_PROXY_PORT = None
-            await ann._send_announce()
+            await ann._send_announce_with_retry()
+
+        assert ann.consecutive_failures > 0
 
     @pytest.mark.asyncio
     async def test_send_announce_timeout(self):
         import httpx
         ann = _make_announcer()
+        ann.max_retries = 0
         mock_client_instance = MagicMock()
         mock_client_instance.get = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
         mock_client_ctx = AsyncMock()
@@ -187,13 +203,14 @@ class TestSendAnnounce:
              patch("app.core.tracker_announcer.settings") as mock_s:
             mock_s.HTTP_PROXY_HOST = None
             mock_s.HTTP_PROXY_PORT = None
-            await ann._send_announce()
+            await ann._send_announce_with_retry()
 
-        assert ann.last_error is not None
+        assert ann.consecutive_failures > 0
 
     @pytest.mark.asyncio
     async def test_send_announce_generic_exception(self):
         ann = _make_announcer()
+        ann.max_retries = 0
         mock_client_instance = MagicMock()
         mock_client_instance.get = AsyncMock(side_effect=Exception("connection reset"))
         mock_client_ctx = AsyncMock()
@@ -205,9 +222,9 @@ class TestSendAnnounce:
              patch("app.core.tracker_announcer.settings") as mock_s:
             mock_s.HTTP_PROXY_HOST = None
             mock_s.HTTP_PROXY_PORT = None
-            await ann._send_announce()
+            await ann._send_announce_with_retry()
 
-        assert ann.last_error is not None
+        assert ann.consecutive_failures > 0
 
 
 class TestStartStop:
@@ -222,8 +239,9 @@ class TestStartStop:
             await ann.start()
 
         assert ann.is_running is True
-        assert ann.stats._initial_seeding is False
-        ann._send_announce_stealth.assert_awaited_once_with(event="completed")
+        # _initial_seeding is now reset inside _announce_loop (after started+completed events),
+        # not inside start() — so it remains True here until the loop runs.
+        assert ann.stats._initial_seeding is True
 
     @pytest.mark.asyncio
     async def test_start_already_running(self):
