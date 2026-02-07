@@ -16,8 +16,6 @@ vi.mock('../services/api', () => ({
     start: vi.fn(),
     stop: vi.fn(),
     uploadTorrent: vi.fn(),
-    startTorrent: vi.fn(),
-    stopTorrent: vi.fn(),
   },
   getToken: vi.fn(() => null),
 }))

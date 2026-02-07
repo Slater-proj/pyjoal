@@ -11,8 +11,6 @@ describe('API Service', () => {
     expect(api.addTorrent).toBeDefined()
     expect(api.uploadTorrent).toBeDefined() // alias
     expect(api.removeTorrent).toBeDefined()
-    expect(api.startTorrent).toBeDefined()
-    expect(api.stopTorrent).toBeDefined()
     expect(api.start).toBeDefined()
     expect(api.stop).toBeDefined()
     expect(api.getStats).toBeDefined()
