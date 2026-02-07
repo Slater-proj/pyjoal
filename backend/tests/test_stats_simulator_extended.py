@@ -28,9 +28,9 @@ def _mock_client(min_rate=10240, max_rate=102400):
 # ================================================================
 
 class TestDisplayUpdateNoDoubleCount:
-    """Verify update_stats_for_display does NOT increment self.uploaded."""
+    """Verify update_stats_for_display correctly accumulates uploaded bytes."""
 
-    def test_display_update_no_upload_increment(self):
+    def test_display_update_increments_uploaded(self):
         sim = _make_sim()
         sim.simulate_natural_seeding_start()
         initial_uploaded = sim.uploaded
@@ -43,8 +43,8 @@ class TestDisplayUpdateNoDoubleCount:
             time.sleep(0.05)
             sim.update_stats_for_display(client, True, seeders=5, leechers=3)
 
-        # uploaded should NOT have changed (only speed should update)
-        assert sim.uploaded == initial_uploaded
+        # Display path now accumulates uploaded bytes (fix for v1.12.3)
+        assert sim.uploaded >= initial_uploaded
 
     def test_display_update_sets_speed(self):
         sim = _make_sim()
@@ -68,7 +68,9 @@ class TestDisplayUpdateNoDoubleCount:
 # ================================================================
 
 class TestStealthStatsUpdate:
-    def test_stealth_update_increments_uploaded(self):
+    def test_stealth_update_sets_speed(self):
+        """Stealth update should set upload_speed (uploaded accumulation
+        is now handled by the display path)."""
         sim = _make_sim()
         sim.simulate_natural_seeding_start()
         sim._last_upload_time = time.time() - 5
@@ -82,7 +84,7 @@ class TestStealthStatsUpdate:
             mock_ss._config = {}
             sim.update_stats_with_stealth(client, stealth, "hash", True, 5, 3)
 
-        assert sim.uploaded > 0
+        assert sim.upload_speed > 0
 
     def test_stealth_update_not_running(self):
         sim = _make_sim()
@@ -114,8 +116,19 @@ class TestSpeedTiers:
         client = _mock_client()
         with patch("app.services.seeder_service.seeder_service") as mock_ss:
             mock_ss._config = {}
+            speed = sim.get_activity_based_upload_speed(client, 0, 0)
+        assert speed > 0  # Background speed for dead swarm
+
+    def test_zero_leechers_with_seeders_normal_speed(self):
+        """With seeders > 0 but leechers=0, should use normal speed tiers."""
+        sim = _make_sim()
+        sim.simulate_natural_seeding_start()
+        sim._current_speed_tier = 'high'
+        client = _mock_client()
+        with patch("app.services.seeder_service.seeder_service") as mock_ss:
+            mock_ss._config = {}
             speed = sim.get_activity_based_upload_speed(client, 5, 0)
-        assert speed > 0  # Should get background speed, not 0
+        assert speed > 10 * 1024  # Normal speed, not background
 
     def test_low_tier_reduced_speed(self):
         sim = _make_sim()
@@ -190,7 +203,7 @@ class TestSwarmSpeed:
         with patch("app.services.seeder_service.seeder_service") as mock_ss:
             mock_ss._config = {}
             speed = sim.get_realistic_upload_speed_based_on_swarm(client, 10, 0)
-        assert speed > 0  # Background speed
+        assert speed > 0  # Normal speed (seeders > 0)
 
     def test_realistic_upload_speed_with_peers(self):
         sim = _make_sim()

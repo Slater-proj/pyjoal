@@ -262,9 +262,15 @@ class StatsSimulator:
             variation = random.uniform(-self.speed_variation_percent/100, self.speed_variation_percent/100)
             current_speed = int(current_speed * (1 + variation))
         
-        # NOTE: Do NOT accumulate self.uploaded here — that is done
-        # exclusively by update_stats_with_stealth() in the announce loop
-        # to avoid double-counting uploaded bytes.
+        # Accumulate uploaded bytes in the display path (every 3s) so
+        # the UI and stats update continuously instead of only at announce time.
+        if current_speed > 0 and time_interval > 0:
+            capped_interval = min(time_interval, 10)
+            raw_delta = int(current_speed * capped_interval)
+            piece_size = 16384  # 16 KiB standard sub-piece
+            upload_delta = max(piece_size, (raw_delta // piece_size) * piece_size)
+            self.uploaded += upload_delta
+
         self.upload_speed = float(current_speed)
         self._last_upload_time = current_time
         self._last_stats_update = current_time
@@ -309,19 +315,10 @@ class StatsSimulator:
         )
         
         if current_speed > 0:
-            if self._last_stealth_upload_time is not None:
-                time_interval = current_time - self._last_stealth_upload_time
-            else:
-                time_interval = 5
-            
             self._last_stealth_upload_time = current_time
-            
-            # Piece-align upload delta — real clients upload in piece chunks
-            raw_delta = int(current_speed * min(time_interval, 10))
-            piece_size = 16384  # 16 KiB — standard BT sub-piece
-            upload_delta = max(piece_size, (raw_delta // piece_size) * piece_size)
-            self.uploaded += upload_delta
-            
+            # NOTE: uploaded bytes accumulation is handled by the display
+            # path (update_stats_for_display) which runs every 3s, so we
+            # do NOT duplicate accumulation here to avoid double-counting.
             if self._seeding_session_start:
                 self._total_seeding_time = (datetime.now(timezone.utc) - self._seeding_session_start).total_seconds()
             
@@ -410,15 +407,18 @@ class StatsSimulator:
         dynamic_config = seeder_service._config if seeder_service else None
         min_rate, max_rate = client.get_upload_rate_range(dynamic_config)
         
-        # When leechers == 0: use minimal background speed instead of hard 0.
-        # Tracker peer lists are inherently stale (15-30 min updates), DHT/PEX
-        # peers may not be reflected, and brief peer connections between announces
-        # are normal behavior for a real BitTorrent client.
-        if leechers == 0:
+        # When BOTH seeders and leechers are 0 the swarm is dead — use
+        # minimal background speed.  When seeders > 0 but leechers == 0
+        # the swarm is alive (tracker peer lists are stale 15-30 min),
+        # so we proceed with normal speed tiers.
+        if leechers == 0 and seeders <= 0:
             background_speed = max(1024, int(min_rate * 0.05))
             variation = random.randint(-512, 512)
             speed = max(512, background_speed + variation)
-            logger.debug(f"🛡️ {self.torrent_name[:20]}: 0 leechers → background speed={speed/1024:.1f} KB/s")
+            logger.debug(
+                f"🛡️ {self.torrent_name[:20]}: dead swarm "
+                f"(0S/0L) → background speed={speed / 1024:.1f} KB/s"
+            )
             return int(speed)
         
         current_tier = self._current_speed_tier

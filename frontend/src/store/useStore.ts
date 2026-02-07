@@ -34,6 +34,8 @@ interface Store {
   updateConfig: (config: Config) => Promise<void>;
   addTorrent: (file: File) => Promise<void>;
   removeTorrent: (infoHash: string) => Promise<void>;
+  pauseTorrent: (infoHash: string) => Promise<void>;
+  resumeTorrent: (infoHash: string) => Promise<void>;
   reloadTorrents: () => Promise<void>;
   startSeeding: () => Promise<void>;
   stopSeeding: () => Promise<void>;
@@ -206,6 +208,26 @@ export const useStore = create<Store>((set, get) => ({
     }
   },
 
+  pauseTorrent: async (infoHash) => {
+    try {
+      await api.pauseTorrent(infoHash);
+      await get().fetchTorrents();
+    } catch (error) {
+      console.error("Failed to pause torrent:", error);
+      throw error;
+    }
+  },
+
+  resumeTorrent: async (infoHash) => {
+    try {
+      await api.resumeTorrent(infoHash);
+      await get().fetchTorrents();
+    } catch (error) {
+      console.error("Failed to resume torrent:", error);
+      throw error;
+    }
+  },
+
   reloadTorrents: async () => {
     try {
       const response = await fetch("/api/torrents/reload", {
@@ -258,9 +280,18 @@ export const useStore = create<Store>((set, get) => ({
     const token = (window as any).__PYJOAL_TOKEN__ || '';
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`);
 
-    ws.onopen = () => {
+    ws.onopen = async () => {
       console.log("WebSocket connected");
       set({ connected: true });
+      // Clear loading banner on WS connect (handles race condition where
+      // backend sent 'ready' before WS was established)
+      try {
+        await get().fetchTorrents();
+        await get().fetchStats();
+        set({ loadingStatus: null });
+      } catch (e) {
+        console.error('Failed initial fetch on WS connect:', e);
+      }
     };
 
     ws.onclose = () => {

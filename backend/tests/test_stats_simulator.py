@@ -161,15 +161,26 @@ class TestActivityHelpers:
         assert speed == 0
 
     def test_speed_background_when_zero_leechers(self):
-        """With 0 leechers, should return minimal background speed, not 0."""
+        """With 0 leechers but seeders > 0, should return normal speed (swarm alive)."""
         sim = _make_simulator()
         sim.simulate_natural_seeding_start()
         client = _make_mock_client()
 
         speed = sim.get_activity_based_upload_speed(client, seeders=10, leechers=0)
         assert isinstance(speed, int)
-        assert speed > 0, "Speed should not be 0 when leechers=0 (background speed expected)"
-        # Background speed should be small (around 5% of min_rate)
+        assert speed > 0, "Speed should not be 0 when seeders > 0"
+        # Normal speed tiers apply when seeders > 0
+        assert speed > 10 * 1024, "Should use normal speed tiers (not background)"
+
+    def test_speed_background_when_dead_swarm(self):
+        """With 0 seeders AND 0 leechers, should return minimal background speed."""
+        sim = _make_simulator()
+        sim.simulate_natural_seeding_start()
+        client = _make_mock_client()
+
+        speed = sim.get_activity_based_upload_speed(client, seeders=0, leechers=0)
+        assert isinstance(speed, int)
+        assert speed > 0, "Speed should not be 0 (background speed expected)"
         assert speed < 10 * 1024, "Background speed should be small (< 10 KB/s)"
 
     def test_speed_background_when_zero_leechers_not_paused(self):

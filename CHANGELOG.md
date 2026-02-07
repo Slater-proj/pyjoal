@@ -1,5 +1,17 @@
 # Changelog - PyJOAL
 
+## [1.12.3] - 2025-02-07
+
+### Fixed — Critical
+- **"Loading torrents..." banner never disappears**: Race condition where backend broadcast `loading_status: ready` before WebSocket was connected. Frontend now clears the loading banner on WS connect by fetching current state
+- **Uploaded / ratio / duration not counting**: `update_stats_for_display()` (monitor loop, every 3s) did not accumulate uploaded bytes — only `update_stats_with_stealth()` (announce loop, every ~30 min) did. Moved byte accumulation to the display path so stats update continuously
+- **Ultra-low upload speed (5% of min)**: When tracker reports `leechers=0` (common for stale peer lists), speed dropped to 5% of configured minimum. Fixed: background speed only activates when BOTH seeders=0 AND leechers=0 (truly dead swarm). When seeders > 0, normal speed tiers apply
+
+### Added — Feature
+- **Per-torrent pause/resume**: New pause button per torrent row in the dashboard. Paused torrents stop announcing without being archived and are excluded from auto-resume. Column renamed from "Del" to "Actions" with both pause/resume and delete buttons
+  - Backend: `POST /api/torrents/{info_hash}/pause` and `POST /api/torrents/{info_hash}/resume` endpoints
+  - Frontend: Pause (yellow) / Play (green) toggle button per torrent row
+
 ## [1.12.2] - 2025-02-07
 
 ### Fixed — Critical

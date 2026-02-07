@@ -53,6 +53,9 @@ class SeederService:
         self._cfg = ConfigManager()
         self._tm = TorrentManager()
 
+        # Manually paused torrents (not auto-resumed by seed limit)
+        self._paused_torrents: set = set()
+
         # File watcher for auto-reload
         self.file_watcher = None
 
@@ -213,6 +216,49 @@ class SeederService:
     async def remove_torrent(self, info_hash: str):
         persistence_service.remove(info_hash)
         await self._tm.remove_torrent(info_hash)
+
+    async def pause_torrent(self, info_hash: str):
+        """Pause a specific torrent (stop announcer without archiving)."""
+        if info_hash not in self.announcers:
+            raise ValueError(f"Torrent {info_hash} not found")
+        announcer = self.announcers[info_hash]
+        if not announcer.is_running:
+            logger.info(f"⏸️ Torrent already paused: {announcer.torrent.name}")
+            return
+        # Persist stats before pausing
+        stats = announcer.get_stats()
+        persistence_service.update(
+            info_hash,
+            uploaded=int(stats["uploaded"]),
+            seeding_time=stats["seedingTime"],
+            added_at=announcer.torrent.added_at.isoformat(),
+            torrent_name=announcer.torrent.name,
+        )
+        await announcer.stop()
+        self._paused_torrents.add(info_hash)
+        logger.info(f"⏸️ Torrent paused: {announcer.torrent.name}")
+        await websocket_manager.broadcast(
+            {"type": "torrents_update", "data": {"torrents": self.get_torrents()}}
+        )
+
+    async def resume_torrent(self, info_hash: str):
+        """Resume a paused torrent."""
+        if info_hash not in self.announcers:
+            raise ValueError(f"Torrent {info_hash} not found")
+        announcer = self.announcers[info_hash]
+        if announcer.is_running:
+            logger.info(
+                f"▶️ Torrent already running: {announcer.torrent.name}"
+            )
+            return
+        if not self.is_running:
+            raise ValueError("Seeding service is not running")
+        self._paused_torrents.discard(info_hash)
+        await announcer.start()
+        logger.info(f"▶️ Torrent resumed: {announcer.torrent.name}")
+        await websocket_manager.broadcast(
+            {"type": "torrents_update", "data": {"torrents": self.get_torrents()}}
+        )
 
     def get_torrents(self) -> List[Dict]:
         return self._tm.get_torrents()
@@ -427,7 +473,10 @@ class SeederService:
         
         simultaneous_seed = self._config.get("simultaneousSeed", settings.SIMULTANEOUS_SEED)
         active_count = sum(1 for ann in self.announcers.values() if ann.is_running)
-        inactive_announcers = [ann for ann in self.announcers.values() if not ann.is_running]
+        inactive_announcers = [
+            ann for ih, ann in self.announcers.items()
+            if not ann.is_running and ih not in self._paused_torrents
+        ]
         
         if active_count < simultaneous_seed and inactive_announcers:
             to_start = min(simultaneous_seed - active_count, len(inactive_announcers))

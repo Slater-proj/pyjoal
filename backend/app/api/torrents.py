@@ -116,6 +116,30 @@ async def get_torrent(info_hash: str):
     return torrent_info
 
 
+@router.post("/torrents/{info_hash}/pause")
+async def pause_torrent(info_hash: str):
+    """Pause a specific torrent (stop announcing without archiving)"""
+    try:
+        await seeder_service.pause_torrent(info_hash)
+        return SuccessResponse(message="Torrent paused")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/torrents/{info_hash}/resume")
+async def resume_torrent(info_hash: str):
+    """Resume a paused torrent"""
+    try:
+        await seeder_service.resume_torrent(info_hash)
+        return SuccessResponse(message="Torrent resumed")
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/torrents/reload")
 async def reload_torrents():
     """Reload torrents from folder - detects added/removed torrent files"""

@@ -1,4 +1,4 @@
-import { Trash2, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react'
+import { Trash2, ChevronLeft, ChevronRight, RotateCcw, Pause, Play } from 'lucide-react'
 import { useStore } from '../store/useStore'
 import { useEffect, useState, useCallback, useRef } from 'react'
 
@@ -11,7 +11,7 @@ const DEFAULT_COLUMN_WIDTHS = {
   peers: 100,
   ratio: 110,
   duration: 110,
-  actions: 50
+  actions: 80
 }
 
 // Min widths for auto-size calculation
@@ -23,11 +23,11 @@ const MIN_COLUMN_WIDTHS = {
   peers: 70,
   ratio: 80,
   duration: 80,
-  actions: 40
+  actions: 60
 }
 
 export default function TorrentsTable() {
-  const { torrents, stats, removeTorrent, config, startAutoRefresh, stopAutoRefresh, reloadTorrents } = useStore()
+  const { torrents, stats, removeTorrent, pauseTorrent, resumeTorrent, config, startAutoRefresh, stopAutoRefresh, reloadTorrents } = useStore()
   const isRunning = stats?.isRunning || false
   const [currentPage, setCurrentPage] = useState(1)
   const [isReloading, setIsReloading] = useState(false)
@@ -362,7 +362,7 @@ export default function TorrentsTable() {
                 />
               </th>
               <th className="px-4 py-3 text-center overflow-hidden" style={{ width: columnWidths.actions }}>
-                <span className="truncate block">Del</span>
+                <span className="truncate block">Actions</span>
               </th>
             </tr>
           </thead>
@@ -495,13 +495,37 @@ export default function TorrentsTable() {
                     </div>
                   </td>
                   <td className="px-2 py-3 text-center overflow-hidden">
-                    <button
-                      onClick={(e) => handleRemove(e, torrent.id)}
-                      className="p-1.5 rounded text-red-400 hover:bg-red-500/20 transition-all"
-                      title="Remove torrent"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center justify-center gap-1">
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          try {
+                            if (torrent.isRunning) {
+                              await pauseTorrent(torrent.id)
+                            } else {
+                              await resumeTorrent(torrent.id)
+                            }
+                          } catch (error) {
+                            console.error('Failed to toggle torrent:', error)
+                          }
+                        }}
+                        className={`p-1.5 rounded transition-all ${
+                          torrent.isRunning
+                            ? 'text-yellow-400 hover:bg-yellow-500/20'
+                            : 'text-green-400 hover:bg-green-500/20'
+                        }`}
+                        title={torrent.isRunning ? 'Pause torrent' : 'Resume torrent'}
+                      >
+                        {torrent.isRunning ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                      </button>
+                      <button
+                        onClick={(e) => handleRemove(e, torrent.id)}
+                        className="p-1.5 rounded text-red-400 hover:bg-red-500/20 transition-all"
+                        title="Remove torrent"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )

@@ -76,6 +76,7 @@ export interface Torrent {
   tracker: string | null;
   createdBy: string | null;
   seedingTime: number;
+  isRunning?: boolean;
   status?: TorrentStatus;
 }
 
@@ -157,6 +158,16 @@ export const api = {
 
   removeTorrent: async (infoHash: string) => {
     const { data } = await axios.delete(`${API_BASE}/torrents/${infoHash}`);
+    return data;
+  },
+
+  pauseTorrent: async (infoHash: string) => {
+    const { data } = await axios.post(`${API_BASE}/torrents/${infoHash}/pause`);
+    return data;
+  },
+
+  resumeTorrent: async (infoHash: string) => {
+    const { data } = await axios.post(`${API_BASE}/torrents/${infoHash}/resume`);
     return data;
   },
 
