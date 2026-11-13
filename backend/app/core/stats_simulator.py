@@ -404,7 +404,7 @@ class StatsSimulator:
         # Sans stall, le débit est toujours > 0 → signature de bot.
         elif random.random() < 0.05:
             current_speed = 0
-            logger.debug(f"💤 Random stall → 0 KB/s")
+            logger.debug("💤 Random stall → 0 KB/s")
         
         if current_speed > 0:
             self._last_stealth_upload_time = current_time
