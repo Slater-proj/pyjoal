@@ -202,6 +202,12 @@ class StatsSimulator:
         self._current_speed_tier = random.choice(['high', 'medium'])
         
         logger.debug(f"📥 Natural download start for {self.torrent_name[:30]}: {completion_percentage:.1%} completed, {self.left / (1024**2):.2f} MB remaining")
+        return {
+            "downloaded": self.downloaded,
+            "uploaded": self.uploaded,
+            "left": self.left,
+            "completion_percentage": completion_percentage,
+        }
     
     def simulate_download_to_seed_transition(self):
         """Simulate the transition from download to seed with realistic history.
@@ -356,6 +362,26 @@ class StatsSimulator:
         logger.debug(f"   Total uploaded: {self.uploaded / (1024**2):.2f} MB")
         logger.debug(f"   Ratio: {self.uploaded / self.torrent_size if self.torrent_size > 0 else 0:.3f}")
     
+    def _simulate_burst_or_stall(self) -> bool:
+        """Randomly trigger a burst (2-5x speed) or stall (50-80% speed).
+
+        Returns True if a burst is active, False if a stall is active or neither.
+        """
+        roll = random.random()
+        if roll < 0.05:  # 5% chance of burst
+            self._burst_until = time.time() + random.uniform(10, 30)
+            self._speed_multiplier = random.uniform(2.0, 5.0)
+            logger.debug(f"⚡ Burst triggered: {self._speed_multiplier:.1f}x for {self._burst_until - time.time():.0f}s")
+            return True
+        elif roll < 0.10:  # 5% chance of stall
+            self._stall_until = time.time() + random.uniform(15, 45)
+            self._speed_multiplier = random.uniform(0.5, 0.8)
+            logger.debug(f"🐌 Stall triggered: {self._speed_multiplier:.1f}x for {self._stall_until - time.time():.0f}s")
+            return False
+        else:
+            self._speed_multiplier = 1.0
+            return False
+
     def update_stats_with_stealth(self, client, stealth_service, torrent_info_hash: str, is_running: bool,
                                   seeders: int = -1, leechers: int = -1):
         """Update stats with stealth service natural variations.

@@ -55,7 +55,6 @@ class SeederService:
         self._last_stop_time: Optional[float] = None
         self._lock = asyncio.Lock()
         self._monitor_task: Optional[asyncio.Task] = None
-        self._last_stop_time: Optional[float] = None
 
         # Delegates
         self._cfg = ConfigManager()
