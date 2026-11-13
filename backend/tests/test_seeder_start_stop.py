@@ -23,6 +23,7 @@ def _make_service():
     svc.client = MagicMock()
     svc.file_watcher = None
     svc._monitor_task = None
+    svc._last_stop_time = None
     # announcers property delegates to _tm
     svc._tm.announcers = {}
     svc._tm.get_torrents.return_value = []

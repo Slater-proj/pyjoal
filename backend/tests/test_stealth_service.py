@@ -190,3 +190,45 @@ class TestCryptoFlags:
         svc = _make_service()
         flags = svc.get_crypto_support_flags("UnknownClient")
         assert "supportcrypto" in flags
+
+
+class TestPeerCountVariation:
+    def test_returns_tuple_of_ints(self):
+        svc = _make_service()
+        result = svc.get_peer_count_variation(100, 50)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        assert isinstance(result[0], int)
+        assert isinstance(result[1], int)
+
+    def test_zero_inputs(self):
+        svc = _make_service()
+        seeders, leechers = svc.get_peer_count_variation(0, 0)
+        assert seeders == 0
+        assert leechers == 0
+
+    def test_variation_within_bounds(self):
+        """Variation should be within ±15% (sinusoidal ±10% + noise ±5%)"""
+        svc = _make_service()
+        for _ in range(100):
+            seeders, leechers = svc.get_peer_count_variation(100, 100)
+            # Allow some margin for edge cases
+            assert 70 <= seeders <= 130, f"Seeders {seeders} out of bounds"
+            assert 70 <= leechers <= 130, f"Leechers {leechers} out of bounds"
+
+    def test_not_static(self):
+        """Multiple calls should produce different values (not always the same)"""
+        svc = _make_service()
+        results = set()
+        for _ in range(50):
+            results.add(svc.get_peer_count_variation(100, 100))
+        # Should have some variation
+        assert len(results) > 1, "Peer count variation is static (always same value)"
+
+    def test_minimum_one_for_positive_base(self):
+        """If base > 0, result should be at least 1"""
+        svc = _make_service()
+        for _ in range(20):
+            seeders, leechers = svc.get_peer_count_variation(1, 1)
+            assert seeders >= 1
+            assert leechers >= 1

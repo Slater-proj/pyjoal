@@ -4,6 +4,8 @@ Provides intelligent randomization and natural behavior patterns for maximum dis
 """
 import random
 import hashlib
+import math
+import time
 from typing import Dict, List
 from datetime import datetime, timezone
 from dataclasses import dataclass
@@ -417,6 +419,45 @@ class StealthService:
             'requirecrypto': False,
             'cryptoport': False,
         }
+    
+    def get_peer_count_variation(self, seeders: int, leechers: int) -> tuple[int, int]:
+        """
+        Apply natural variation to peer counts to avoid static values.
+        
+        Real peer counts fluctuate due to users joining/leaving.
+        We apply a sinusoidal drift + random noise to make the numbers
+        look organic rather than fixed.
+        
+        Args:
+            seeders: Raw seeder count from tracker
+            leechers: Raw leecher count from tracker
+            
+        Returns:
+            Tuple of (varied_seeders, varied_leechers)
+        """
+        if seeders == 0 and leechers == 0:
+            return 0, 0
+        
+        # Sinusoidal drift based on time (period ~2 hours)
+        t = time.time()
+        sine_factor = math.sin(t / 3600 * 2 * math.pi)  # ~2h period
+        
+        # Apply ±10% sinusoidal variation + ±5% random noise
+        if seeders > 0:
+            sine_offset = int(seeders * 0.10 * sine_factor)
+            noise_offset = random.randint(-max(1, int(seeders * 0.05)), max(1, int(seeders * 0.05)))
+            varied_seeders = max(1, seeders + sine_offset + noise_offset)
+        else:
+            varied_seeders = 0
+        
+        if leechers > 0:
+            sine_offset = int(leechers * 0.10 * sine_factor)
+            noise_offset = random.randint(-max(1, int(leechers * 0.05)), max(1, int(leechers * 0.05)))
+            varied_leechers = max(1, leechers + sine_offset + noise_offset)
+        else:
+            varied_leechers = 0
+        
+        return varied_seeders, varied_leechers
     
     def get_session_stats(self, torrent_hash: str) -> Dict:
         """Get session statistics for monitoring"""

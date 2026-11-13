@@ -202,6 +202,47 @@ class StatsSimulator:
         self._current_speed_tier = random.choice(['high', 'medium'])
         
         logger.debug(f"📥 Natural download start for {self.torrent_name[:30]}: {completion_percentage:.1%} completed, {self.left / (1024**2):.2f} MB remaining")
+        return {
+            "downloaded": self.downloaded,
+            "uploaded": self.uploaded,
+            "left": self.left,
+            "completion_percentage": completion_percentage,
+        }
+    
+    def simulate_download_to_seed_transition(self):
+        """Simulate the transition from download to seed with realistic history.
+        
+        A real user who just finished downloading has:
+        - Downloaded bytes ≈ torrent size
+        - Some uploaded bytes (from the download phase, ~5-15% of size)
+        - A session that started in the past (not now)
+        """
+        # Simulate that the download took some time in the past
+        download_duration_hours = random.uniform(0.5, 4.0)
+        self._seeding_session_start = datetime.now(timezone.utc) - timedelta(hours=download_duration_hours)
+        
+        # During download, user uploads some data (peer-to-peer exchange)
+        upload_during_download = int(self.torrent_size * random.uniform(0.05, 0.15))
+        self.uploaded = upload_during_download
+        
+        # Mark as seeding now
+        self._is_downloading = False
+        self._initial_seeding = True
+        self._total_seeding_time = 0
+        
+        logger.debug(f"🔄 Download-to-seed transition for {self.torrent_name[:30]}: "
+                    f"downloaded={self.downloaded / (1024**2):.2f} MB, "
+                    f"uploaded={self.uploaded / (1024**2):.2f} MB, "
+                    f"session started {download_duration_hours:.1f}h ago")
+
+        return {
+            "downloaded": self.downloaded,
+            "uploaded": self.uploaded,
+            "left": self.left,
+            "completion_percentage": 100.0,
+            "download_time": download_duration_hours * 3600,
+            "seed_time": 300,
+        }
     
     # ================================================================
     # Stats update methods
@@ -330,6 +371,26 @@ class StatsSimulator:
         logger.debug(f"   Total uploaded: {self.uploaded / (1024**2):.2f} MB")
         logger.debug(f"   Ratio: {self.uploaded / self.torrent_size if self.torrent_size > 0 else 0:.3f}")
     
+    def _simulate_burst_or_stall(self) -> bool:
+        """Randomly trigger a burst (2-5x speed) or stall (50-80% speed).
+
+        Returns True if a burst is active, False if a stall is active or neither.
+        """
+        roll = random.random()
+        if roll < 0.05:  # 5% chance of burst
+            self._burst_until = time.time() + random.uniform(10, 30)
+            self._speed_multiplier = random.uniform(2.0, 5.0)
+            logger.debug(f"⚡ Burst triggered: {self._speed_multiplier:.1f}x for {self._burst_until - time.time():.0f}s")
+            return True
+        elif roll < 0.10:  # 5% chance of stall
+            self._stall_until = time.time() + random.uniform(15, 45)
+            self._speed_multiplier = random.uniform(0.5, 0.8)
+            logger.debug(f"🐌 Stall triggered: {self._speed_multiplier:.1f}x for {self._stall_until - time.time():.0f}s")
+            return False
+        else:
+            self._speed_multiplier = 1.0
+            return False
+
     def update_stats_with_stealth(self, client, stealth_service, torrent_info_hash: str, is_running: bool,
                                   seeders: int = -1, leechers: int = -1):
         """Update stats with stealth service natural variations.
@@ -363,6 +424,22 @@ class StatsSimulator:
             base_speed, 
             torrent_info_hash
         )
+        
+        # --- Burst d'upload : 10% du temps, vitesse x3-x5 ---
+        # Un vrai client a des pics d'activité (flush de buffer, réponse à un
+        # leecher qui demande plusieurs chunks). Sans burst, le débit est
+        # trop régulier → signature de bot.
+        if random.random() < 0.10:
+            burst_multiplier = random.uniform(3.0, 5.0)
+            current_speed *= burst_multiplier
+            logger.debug(f"⚡ Burst upload x{burst_multiplier:.1f} → {current_speed / 1024:.2f} KB/s")
+        
+        # --- Stall aléatoire : 5% du temps, débit à 0 ---
+        # Un vrai client a des micro-pauses (GC, I/O disque, contexte OS).
+        # Sans stall, le débit est toujours > 0 → signature de bot.
+        elif random.random() < 0.05:
+            current_speed = 0
+            logger.debug("💤 Random stall → 0 KB/s")
         
         if current_speed > 0:
             self._last_stealth_upload_time = current_time

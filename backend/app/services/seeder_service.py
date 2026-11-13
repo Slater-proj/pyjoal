@@ -6,6 +6,7 @@ Delegates configuration management to ConfigManager and torrent lifecycle to Tor
 """
 import asyncio
 import logging
+import time
 from typing import Dict, List, Optional
 from datetime import datetime, timezone
 
@@ -42,10 +43,16 @@ class SeederService:
     - TorrentManager - torrent load / add / remove / archive / ratio checks
     """
 
+    # Minimum delay (seconds) between a stop and the next start.
+    # A real client (qBittorrent, Transmission) doesn't restart instantly —
+    # the user thinks, the UI lags, the tracker sees a gap.
+    MIN_STOP_START_DELAY = 120  # 2 minutes
+
     def __init__(self):
         self.client: Optional[BitTorrentClient] = None
         self.is_running: bool = False
         self.started_at: Optional[datetime] = None
+        self._last_stop_time: Optional[float] = None
         self._lock = asyncio.Lock()
         self._monitor_task: Optional[asyncio.Task] = None
 
@@ -353,10 +360,22 @@ class SeederService:
 
     async def start(self):
         """Start seeding with race condition protection"""
+        # Anti-detection: a real client doesn't restart instantly after a stop.
+        # If the user stopped less than MIN_STOP_START_DELAY ago, wait the
+        # remaining time so the tracker sees a realistic gap.
+        # (Done OUTSIDE the lock so we don't block stop()/status during the wait.)
+        if self._last_stop_time is not None:
+            elapsed = time.time() - self._last_stop_time
+            if elapsed < self.MIN_STOP_START_DELAY:
+                wait = self.MIN_STOP_START_DELAY - elapsed
+                logger.info(f"   Waiting {wait:.0f}s before restart (stop→start cooldown)")
+                await asyncio.sleep(wait)
+
         async with self._lock:
             if self.is_running:
                 logger.warning("Seeding already running")
                 return
+
             logger.info("Starting seeding service...")
             self.is_running = True
             self.started_at = datetime.now(timezone.utc)
@@ -443,6 +462,9 @@ class SeederService:
         )
         await websocket_manager.broadcast({"type": "torrents_update", "data": {"torrents": self.get_torrents()}})
         logger.info("Seeding stopped successfully")
+
+        # Record stop time for the anti-detection cooldown
+        self._last_stop_time = time.time()
 
         # Send notification and close client
         await notification_service.notify_system_stop()

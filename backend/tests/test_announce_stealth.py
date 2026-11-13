@@ -156,7 +156,8 @@ class TestSendAnnounceUdp:
         mock_udp.announce = AsyncMock(return_value=mock_response)
         ann.tracker_mgr.get_or_create_udp_tracker.return_value = mock_udp
 
-        with patch("app.core.tracker_announcer.history_service"):
+        with patch("app.core.tracker_announcer.history_service"), \
+             patch("app.core.tracker_announcer.stealth_service.get_peer_count_variation", return_value=(15, 5)):
             await ann._send_announce_udp("udp://tracker.example.com:6969", event="started")
 
         assert ann.seeders == 15

@@ -28,6 +28,7 @@ def _make_service():
     svc._monitor_task = None
     svc._stats_cache = None
     svc._stats_cache_time = 0
+    svc._last_stop_time = None
     svc._torrents_cache = None
     svc._torrents_cache_time = 0
     svc.started_at = None
