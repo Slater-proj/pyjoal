@@ -10,8 +10,7 @@ def _make_simulator():
     """Create a StatsSimulator in seeding mode."""
     sim = StatsSimulator(
         torrent_name="Test.Torrent",
-        file_size=1024 * 1024 * 100,  # 100 MB
-        info_hash="a" * 40
+        torrent_size=1024 * 1024 * 100,  # 100 MB
     )
     # Force seeding mode so update_stats_with_stealth takes the seeding path
     sim.seeding_only_mode = True

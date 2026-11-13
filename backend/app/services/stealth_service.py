@@ -453,7 +453,7 @@ class StealthService:
         if leechers > 0:
             sine_offset = int(leechers * 0.10 * sine_factor)
             noise_offset = random.randint(-max(1, int(leechers * 0.05)), max(1, int(leechers * 0.05)))
-            varied_leechers = max(0, leechers + sine_offset + noise_offset)
+            varied_leechers = max(1, leechers + sine_offset + noise_offset)
         else:
             varied_leechers = 0
         

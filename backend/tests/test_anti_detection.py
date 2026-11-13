@@ -80,9 +80,12 @@ class TestStopStartCooldown:
 
         start_time = time.time()
         # Mock the heavy parts of start() so we only measure the wait
-        with patch.object(svc, '_start_announcers', new_callable=AsyncMock):
-            with patch.object(svc, '_start_monitor', new_callable=AsyncMock):
-                asyncio.run(svc.start())
+        with patch('app.core.tracker_announcer.TrackerAnnouncer.start', new_callable=AsyncMock), \
+             patch.object(svc, '_monitor_loop', new_callable=AsyncMock), \
+             patch('app.services.seeder_service.websocket_manager.broadcast', new_callable=AsyncMock), \
+             patch('app.services.seeder_service.notification_service.notify_system_start', new_callable=AsyncMock), \
+             patch('app.services.seeder_service.resource_optimizer.periodic_optimization', new_callable=AsyncMock):
+            asyncio.run(svc.start())
 
         elapsed = time.time() - start_time
         # Should have waited roughly 90s (120 - 30), allow some tolerance
@@ -95,9 +98,12 @@ class TestStopStartCooldown:
         svc.MIN_STOP_START_DELAY = 120
 
         start_time = time.time()
-        with patch.object(svc, '_start_announcers', new_callable=AsyncMock):
-            with patch.object(svc, '_start_monitor', new_callable=AsyncMock):
-                asyncio.run(svc.start())
+        with patch('app.core.tracker_announcer.TrackerAnnouncer.start', new_callable=AsyncMock), \
+             patch.object(svc, '_monitor_loop', new_callable=AsyncMock), \
+             patch('app.services.seeder_service.websocket_manager.broadcast', new_callable=AsyncMock), \
+             patch('app.services.seeder_service.notification_service.notify_system_start', new_callable=AsyncMock), \
+             patch('app.services.seeder_service.resource_optimizer.periodic_optimization', new_callable=AsyncMock):
+            asyncio.run(svc.start())
 
         elapsed = time.time() - start_time
         assert elapsed < 5, f"Expected instant start, took {elapsed:.1f}s"
@@ -108,9 +114,12 @@ class TestStopStartCooldown:
         svc._last_stop_time = None  # never stopped
 
         start_time = time.time()
-        with patch.object(svc, '_start_announcers', new_callable=AsyncMock):
-            with patch.object(svc, '_start_monitor', new_callable=AsyncMock):
-                asyncio.run(svc.start())
+        with patch('app.core.tracker_announcer.TrackerAnnouncer.start', new_callable=AsyncMock), \
+             patch.object(svc, '_monitor_loop', new_callable=AsyncMock), \
+             patch('app.services.seeder_service.websocket_manager.broadcast', new_callable=AsyncMock), \
+             patch('app.services.seeder_service.notification_service.notify_system_start', new_callable=AsyncMock), \
+             patch('app.services.seeder_service.resource_optimizer.periodic_optimization', new_callable=AsyncMock):
+            asyncio.run(svc.start())
 
         elapsed = time.time() - start_time
         assert elapsed < 5, f"First start should be instant, took {elapsed:.1f}s"

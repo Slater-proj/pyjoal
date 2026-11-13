@@ -19,11 +19,21 @@ logger = logging.getLogger(__name__)
 class BitTorrentClient:
     """BitTorrent client emulator - JOAL compatible"""
     
-    def __init__(self, client_file: str):
+    def __init__(self, client_file: Optional[str] = None):
         """Initialize client from .client file"""
         self.client_file = client_file
         self.config: Dict = {}
-        self._load_client_config()
+        if client_file:
+            self._load_client_config()
+        
+        # Default peer ID prefix for realism when no client file is loaded
+        self._default_prefix: Optional[str] = None
+        if not client_file:
+            self._default_prefix = random.choice([
+                '-qB5140-', '-TR4602-', '-DE0010-', '-lt1600-',
+                '-UT3A00-', '-XT3000-', '-am1200-', '-AX0210-',
+                '-qT0000-', '-BT0000-'
+            ])
         
         # Consistent port for all torrents (more realistic)
         self._session_port = random.randint(49152, 65535)
@@ -136,7 +146,7 @@ class BitTorrentClient:
     
     # ========== PEER ID GENERATION ==========
     
-    def generate_peer_id(self, info_hash: str) -> str:
+    def generate_peer_id(self, info_hash: Optional[str] = None) -> str:
         """Generate peer ID based on client configuration (JOAL compatible)
         
         Peer ID is ALWAYS exactly 20 bytes.
@@ -182,6 +192,11 @@ class BitTorrentClient:
     
     def _generate_peer_id_regex(self, algorithm: Dict) -> str:
         """Generate peer_id from regex pattern (qBittorrent, Deluge style)"""
+        # When no config, use a realistic client prefix
+        if not algorithm and self._default_prefix:
+            suffix = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+            return self._default_prefix + suffix
+        
         pattern = algorithm.get("pattern", "-JOAL00-[A-Za-z0-9]{12}")
         
         # Parse the pattern to extract prefix and character class
