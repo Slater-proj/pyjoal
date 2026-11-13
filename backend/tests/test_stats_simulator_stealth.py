@@ -15,6 +15,7 @@ def _make_simulator():
     # Force seeding mode so update_stats_with_stealth takes the seeding path
     sim.seeding_only_mode = True
     sim.is_in_downloading_phase = lambda: False
+    sim.min_stats_update_interval = 0  # disable throttle for rapid test calls
     return sim
 
 

@@ -240,6 +240,8 @@ class StatsSimulator:
             "uploaded": self.uploaded,
             "left": self.left,
             "completion_percentage": 100.0,
+            "download_time": download_duration_hours * 3600,
+            "seed_time": 300,
         }
     
     # ================================================================
