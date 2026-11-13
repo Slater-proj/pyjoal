@@ -54,6 +54,8 @@ class TrackerAnnouncer:
             self.stats.simulate_natural_seeding_start()
         else:
             self.stats.simulate_natural_download_start()
+            # Simulate download-to-seed transition for realistic history
+            self.stats.simulate_download_to_seed_transition()
         
         # Peers info (updated from tracker responses, -1 = not yet known)
         self.seeders: int = -1
@@ -260,8 +262,8 @@ class TrackerAnnouncer:
             
             
             while self.is_running:
-                actual_interval = stealth_service.get_natural_announce_interval(
-                    self.torrent.info_hash, 
+                # Use Gaussian distribution for more natural announce intervals
+                actual_interval = stealth_service.get_gaussian_interval(
                     self.announce_interval
                 )
                 
@@ -488,8 +490,8 @@ class TrackerAnnouncer:
             
             response_time = (time.time() - start_time) * 1000
             
-            self.seeders = response.seeders
-            self.leechers = response.leechers
+            # Anti-detection: apply natural peer count variation (sinusoidal + noise)
+            self.seeders, self.leechers = stealth_service.get_peer_count_variation(response.seeders, response.leechers)
             
             if 60 <= response.interval <= 3600:
                 self.announce_interval = response.interval

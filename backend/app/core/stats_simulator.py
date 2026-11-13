@@ -203,6 +203,32 @@ class StatsSimulator:
         
         logger.debug(f"📥 Natural download start for {self.torrent_name[:30]}: {completion_percentage:.1%} completed, {self.left / (1024**2):.2f} MB remaining")
     
+    def simulate_download_to_seed_transition(self):
+        """Simulate the transition from download to seed with realistic history.
+        
+        A real user who just finished downloading has:
+        - Downloaded bytes ≈ torrent size
+        - Some uploaded bytes (from the download phase, ~5-15% of size)
+        - A session that started in the past (not now)
+        """
+        # Simulate that the download took some time in the past
+        download_duration_hours = random.uniform(0.5, 4.0)
+        self._seeding_session_start = datetime.now(timezone.utc) - timedelta(hours=download_duration_hours)
+        
+        # During download, user uploads some data (peer-to-peer exchange)
+        upload_during_download = int(self.torrent_size * random.uniform(0.05, 0.15))
+        self.uploaded = upload_during_download
+        
+        # Mark as seeding now
+        self._is_downloading = False
+        self._initial_seeding = True
+        self._total_seeding_time = 0
+        
+        logger.debug(f"🔄 Download-to-seed transition for {self.torrent_name[:30]}: "
+                    f"downloaded={self.downloaded / (1024**2):.2f} MB, "
+                    f"uploaded={self.uploaded / (1024**2):.2f} MB, "
+                    f"session started {download_duration_hours:.1f}h ago")
+    
     # ================================================================
     # Stats update methods
     # ================================================================
@@ -363,6 +389,22 @@ class StatsSimulator:
             base_speed, 
             torrent_info_hash
         )
+        
+        # --- Burst d'upload : 10% du temps, vitesse x3-x5 ---
+        # Un vrai client a des pics d'activité (flush de buffer, réponse à un
+        # leecher qui demande plusieurs chunks). Sans burst, le débit est
+        # trop régulier → signature de bot.
+        if random.random() < 0.10:
+            burst_multiplier = random.uniform(3.0, 5.0)
+            current_speed *= burst_multiplier
+            logger.debug(f"⚡ Burst upload x{burst_multiplier:.1f} → {current_speed / 1024:.2f} KB/s")
+        
+        # --- Stall aléatoire : 5% du temps, débit à 0 ---
+        # Un vrai client a des micro-pauses (GC, I/O disque, contexte OS).
+        # Sans stall, le débit est toujours > 0 → signature de bot.
+        elif random.random() < 0.05:
+            current_speed = 0
+            logger.debug(f"💤 Random stall → 0 KB/s")
         
         if current_speed > 0:
             self._last_stealth_upload_time = current_time
