@@ -234,6 +234,13 @@ class StatsSimulator:
                     f"downloaded={self.downloaded / (1024**2):.2f} MB, "
                     f"uploaded={self.uploaded / (1024**2):.2f} MB, "
                     f"session started {download_duration_hours:.1f}h ago")
+
+        return {
+            "downloaded": self.downloaded,
+            "uploaded": self.uploaded,
+            "left": self.left,
+            "completion_percentage": 100.0,
+        }
     
     # ================================================================
     # Stats update methods

@@ -26,6 +26,7 @@ def _make_client():
     """Minimal mock client."""
     client = MagicMock()
     client.get_upload_speed.return_value = 102400  # 100 KB/s
+    client.get_upload_rate_range.return_value = (50, 500)  # KB/s range
     return client
 
 
