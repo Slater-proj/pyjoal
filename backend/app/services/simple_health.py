@@ -105,24 +105,15 @@ class SimpleHealthCheck:
     def _check_cpu(self) -> Dict:
         """Check CPU usage of PyJOAL process"""
         try:
-            process = psutil.Process()
-            
-            # Use a longer interval for more accurate CPU measurement
-            # This approach is better for containers
-            cpu_percent = process.cpu_percent(interval=1.0)
-            
-            # If still 0, try alternative approach
-            if cpu_percent == 0.0:
-                # Try system CPU as fallback
-                import time
-                cpu1 = process.cpu_times()
-                time.sleep(0.5)
-                cpu2 = process.cpu_times()
-                
-                # Calculate CPU percentage manually
-                cpu_delta = (cpu2.user + cpu2.system) - (cpu1.user + cpu1.system)
-                cpu_percent = (cpu_delta / 0.5) * 100
-            
+            # Non-blocking measurement: interval=None compares with the previous
+            # call (cached Process instance).  The old interval=1.0 + time.sleep(0.5)
+            # froze the asyncio event loop for ~1.5s on every /health call, which
+            # could exceed the Docker healthcheck timeout (3s).
+            if not hasattr(self, "_process"):
+                self._process = psutil.Process()
+                self._process.cpu_percent(interval=None)  # prime the counter
+            cpu_percent = self._process.cpu_percent(interval=None)
+
             if cpu_percent > 80:
                 return {
                     'status': 'error',

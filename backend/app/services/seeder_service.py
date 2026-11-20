@@ -215,8 +215,7 @@ class SeederService:
 
             if "client" in new_config and new_config["client"] != self.client.client_file:
                 try:
-                    self.client = BitTorrentClient(new_config["client"])
-                    logger.info(f"Switched to client: {self.client.name} {self.client.version}")
+                    await self._switch_client(new_config["client"])
                 except Exception as e:
                     logger.error(f"Failed to switch client: {e}")
 
@@ -224,6 +223,32 @@ class SeederService:
             self._propagate_config_to_announcers()
         except Exception as settings_error:
             logger.error(f"Failed to update settings: {settings_error}")
+
+    async def _switch_client(self, client_file: str):
+        """Switch the emulated client for ALL torrents, not only new ones.
+
+        Previously only ``self.client`` was replaced: already-loaded torrents
+        kept announcing with the old peer_id / User-Agent / port while new
+        torrents used the new client, i.e. two different clients announcing
+        from the same IP.  Running torrents are stopped (old identity), then
+        restarted with the new identity - exactly what a real user switching
+        client does.
+        """
+        new_client = BitTorrentClient(client_file)
+        self.client = new_client
+        switched = 0
+        for announcer in list(self.announcers.values()):
+            was_running = announcer.is_running
+            if was_running:
+                await announcer.stop()
+            announcer.client = new_client
+            announcer.tracker_mgr.client = new_client
+            announcer.peer_id = new_client.generate_peer_id(announcer.torrent.info_hash)
+            announcer.port = new_client.get_session_port()
+            if was_running:
+                await announcer.start()
+            switched += 1
+        logger.info(f"Switched to client: {new_client.name} {new_client.version} ({switched} torrent(s) updated)")
 
     def _propagate_config_to_announcers(self):
         """Push current config into every running announcer's StatsSimulator."""
@@ -380,7 +405,8 @@ class SeederService:
         self._monitor_task = asyncio.create_task(self._monitor_loop())
         logger.info("   Monitor task started (updates every 3s)")
 
-        if not hasattr(self, "_resource_optimizer_task"):
+        optimizer_task = getattr(self, "_resource_optimizer_task", None)
+        if optimizer_task is None or optimizer_task.done():
             self._resource_optimizer_task = asyncio.create_task(resource_optimizer.periodic_optimization())
             logger.info("   Resource optimizer started")
 
@@ -411,21 +437,24 @@ class SeederService:
             except asyncio.CancelledError:
                 pass
 
-        if hasattr(self, "_resource_optimizer_task") and self._resource_optimizer_task:
+        if getattr(self, "_resource_optimizer_task", None):
             logger.debug("   Stopping resource optimizer...")
             self._resource_optimizer_task.cancel()
             try:
                 await self._resource_optimizer_task
             except asyncio.CancelledError:
                 pass
+            self._resource_optimizer_task = None
 
-        if self.file_watcher:
-            logger.debug("   Stopping file watcher...")
-            await self.file_watcher.stop()
+        # NOTE: the file watcher and the persistence auto-save are app-lifetime
+        # services and are NOT stopped here (see shutdown()).  Stopping them on
+        # a simple Stop (or on /api/torrents/reload, which does stop+start)
+        # silently disabled torrent auto-loading and on-disk persistence until
+        # the container was restarted.
 
         # Persist stats before stopping announcers
         self._persist_all_stats()
-        await persistence_service.stop_autosave()
+        persistence_service.save()
 
         active_count = sum(1 for a in self.announcers.values() if a.is_running)
         logger.info(f"   Stopping {active_count} active announcer(s)...")
@@ -447,6 +476,15 @@ class SeederService:
         # Send notification and close client
         await notification_service.notify_system_stop()
         await notification_service.close()
+
+    async def shutdown(self):
+        """Application shutdown: stop seeding and every background service."""
+        await self.stop()
+        if self.file_watcher:
+            logger.debug("   Stopping file watcher...")
+            await self.file_watcher.stop()
+        self._persist_all_stats()
+        await persistence_service.stop_autosave()
 
     # ------------------------------------------------------------------
     # Stats

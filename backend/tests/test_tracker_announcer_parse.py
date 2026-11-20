@@ -274,8 +274,18 @@ class TestGetStats:
 class TestGetStatusInfo:
     def test_status_info(self):
         ann = _make_announcer()
-        ann._get_activity_based_upload_speed = MagicMock(return_value=50000)
+        ann.is_running = True
+        ann.upload_speed = 50000
         info = ann.get_status_info()
         assert "current_speed" in info
         assert info["current_speed"] == 50000
         assert "speed_formatted" in info
+
+    def test_status_info_does_not_mutate_speed_model(self):
+        """UI polling must not recompute (and thus perturb) the simulated speed."""
+        ann = _make_announcer()
+        ann.is_running = True
+        ann.upload_speed = 50000
+        ann._get_activity_based_upload_speed = MagicMock(return_value=1)
+        ann.get_status_info()
+        ann._get_activity_based_upload_speed.assert_not_called()

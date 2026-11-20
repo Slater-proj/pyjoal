@@ -73,14 +73,47 @@ class TestGetNextTracker:
         mgr._tracker_tiers = []
         assert mgr.get_next_tracker() == torrent.primary_tracker
 
-    def test_iterates_through_tier(self):
+    def test_sticks_to_working_tracker(self):
+        """BEP 12: keep announcing to the same tracker while it works."""
         torrent = _make_mock_torrent(announce_list=[
             ["http://a.com/a", "http://b.com/a"],
         ])
         mgr = TrackerManager(torrent, _make_mock_client())
         t1 = mgr.get_next_tracker()
+        mgr.mark_tracker_success(t1)
         t2 = mgr.get_next_tracker()
+        assert t1 == t2
+
+    def test_moves_on_after_repeated_failures(self):
+        torrent = _make_mock_torrent(announce_list=[
+            ["http://a.com/a", "http://b.com/a"],
+        ])
+        mgr = TrackerManager(torrent, _make_mock_client())
+        t1 = mgr.get_next_tracker()
+        for _ in range(TrackerManager.MAX_FAILURES):
+            mgr.mark_tracker_failure(t1)
+        t2 = mgr.get_next_tracker()
+        assert t2 != t1
         assert {t1, t2} == {"http://a.com/a", "http://b.com/a"}
+
+    def test_falls_back_to_next_tier(self):
+        torrent = _make_mock_torrent(announce_list=[
+            ["http://tier1.com/a"],
+            ["http://tier2.com/a"],
+        ])
+        mgr = TrackerManager(torrent, _make_mock_client())
+        assert mgr.get_next_tracker() == "http://tier1.com/a"
+        for _ in range(TrackerManager.MAX_FAILURES):
+            mgr.mark_tracker_failure("http://tier1.com/a")
+        assert mgr.get_next_tracker() == "http://tier2.com/a"
+
+    def test_all_failed_resets_counters(self):
+        torrent = _make_mock_torrent(announce_list=[["http://only.com/a"]])
+        mgr = TrackerManager(torrent, _make_mock_client())
+        for _ in range(TrackerManager.MAX_FAILURES):
+            mgr.mark_tracker_failure("http://only.com/a")
+        assert mgr.get_next_tracker() == "http://only.com/a"
+        assert mgr._tracker_failures == {}
 
     def test_skips_failed_trackers(self):
         torrent = _make_mock_torrent(announce_list=[

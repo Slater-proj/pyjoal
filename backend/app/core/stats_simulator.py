@@ -79,6 +79,9 @@ class StatsSimulator:
         # Download simulation
         self._is_downloading: bool = False
         self._initial_seeding: bool = False
+        # Set when a simulated download completes; consumed by the announcer
+        # to send the BEP 3 'completed' event exactly once.
+        self._completed_pending: bool = False
         self._last_download_time: Optional[float] = None
         self.download_speed: float = 0
         self._seeding_start_delay_min: Optional[int] = None  # cached for determinism
@@ -89,7 +92,11 @@ class StatsSimulator:
         
         # Speed smoothing: remember previous speed for autocorrelation
         self._previous_speed: Optional[int] = None
-        
+
+        # Sub-piece remainder carried between display ticks so that
+        # piece-aligned accounting does not inflate low speeds.
+        self._upload_carry: int = 0
+
         # Pause / speed tier state
         self._is_in_fake_pause: bool = False
         self._pause_until: Optional[datetime] = None
@@ -315,11 +322,7 @@ class StatsSimulator:
         # Accumulate uploaded bytes in the display path (every 3s) so
         # the UI and stats update continuously instead of only at announce time.
         if current_speed > 0 and time_interval > 0:
-            capped_interval = min(time_interval, 10)
-            raw_delta = int(current_speed * capped_interval)
-            piece_size = 16384  # 16 KiB standard sub-piece
-            upload_delta = max(piece_size, (raw_delta // piece_size) * piece_size)
-            self.uploaded += upload_delta
+            self.uploaded += self._piece_aligned_delta(current_speed, time_interval)
 
         self.upload_speed = float(current_speed)
         self._last_upload_time = current_time
@@ -330,6 +333,21 @@ class StatsSimulator:
         logger.debug(f"   Total uploaded: {self.uploaded / (1024**2):.2f} MB")
         logger.debug(f"   Ratio: {self.uploaded / self.torrent_size if self.torrent_size > 0 else 0:.3f}")
     
+    def _piece_aligned_delta(self, speed: float, time_interval: float) -> int:
+        """Bytes to add for ``speed`` over ``time_interval``, in 16 KiB blocks.
+
+        Real clients transfer whole 16 KiB blocks.  The remainder is carried to
+        the next tick instead of being rounded UP to one block per tick - the
+        old ``max(16 KiB, ...)`` floor turned a 1 KB/s background speed into
+        ~5.3 KB/s (16 KiB every 3 s) and made low-speed settings meaningless.
+        """
+        piece_size = 16384  # 16 KiB standard block
+        capped_interval = min(time_interval, 10)
+        total = self._upload_carry + int(speed * capped_interval)
+        delta = (total // piece_size) * piece_size
+        self._upload_carry = total - delta
+        return delta
+
     def update_stats_with_stealth(self, client, stealth_service, torrent_info_hash: str, is_running: bool,
                                   seeders: int = -1, leechers: int = -1):
         """Update stats with stealth service natural variations.
@@ -416,7 +434,7 @@ class StatsSimulator:
         
         base_speed = random.randint(min_dl, max_dl)
         
-        hour = datetime.now(timezone.utc).hour
+        hour = datetime.now().hour  # local time (TZ): peak hours describe the user's day
         start_h, end_h = self._peak_hours
         if start_h <= end_h:
             in_peak = start_h <= hour <= end_h
@@ -646,10 +664,18 @@ class StatsSimulator:
             if should_start_seeding:
                 self._is_downloading = False
                 self.left = 0
+                self.downloaded = self.torrent_size
+                self._completed_pending = True
                 logger.debug(f"🔄 {self.torrent_name[:30]} transitioned from downloading to seeding")
                 
         return self._is_downloading
     
+    def consume_completed_event(self) -> bool:
+        """Return True once after a simulated download completed (then reset)."""
+        pending = getattr(self, "_completed_pending", False)
+        self._completed_pending = False
+        return pending
+
     def simulate_occasional_network_errors(self) -> bool:
         """Simulate realistic network errors (1-3% chance). Returns True if error simulated."""
         error_chance = random.uniform(0.01, 0.03)
@@ -690,7 +716,7 @@ class StatsSimulator:
     
     def is_user_active_hour(self) -> bool:
         """Check if current time is within user's peak activity hours."""
-        current_hour = datetime.now(timezone.utc).hour
+        current_hour = datetime.now().hour  # local time (TZ)
         start_hour, end_hour = self._peak_hours
         
         is_active = False

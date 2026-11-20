@@ -10,6 +10,7 @@ import logging
 import time
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote_from_bytes
 import httpx
 
 from app.core.bittorrent_client import BitTorrentClient
@@ -30,7 +31,12 @@ class TrackerAnnouncer:
     Delegates stats simulation to StatsSimulator and tracker tier
     management to TrackerManager.
     """
-    
+
+    # Class-level defaults (also cover instances built without __init__)
+    _session_uploaded_base: int = 0
+    _session_downloaded_base: int = 0
+    _tracker_min_interval: int = 0
+
     def __init__(self, torrent: Torrent, client: BitTorrentClient, discretion_config: Optional[Dict] = None):
         """Initialize announcer with optional discretion settings."""
         self.torrent = torrent
@@ -89,7 +95,17 @@ class TrackerAnnouncer:
         # Track real announce success for speed calculation
         self._last_successful_announce: Optional[float] = None
         self._last_successful_uploaded: int = 0
-    
+
+        # BEP 3: 'uploaded' / 'downloaded' sent to the tracker are totals
+        # *since the 'started' event* (i.e. per session).  The simulator keeps
+        # all-time totals (restored from persistence, used for UI / ratio), so
+        # we snapshot them at start() and report the difference.
+        self._session_uploaded_base: int = 0
+        self._session_downloaded_base: int = 0
+
+        # Tracker-imposed minimum interval (BEP 3 'min interval') - never announce faster
+        self._tracker_min_interval: int = 0
+
     # ================================================================
     # Backward-compatible property accessors (delegate to stats)
     # ================================================================
@@ -119,9 +135,19 @@ class TrackerAnnouncer:
         self.stats.left = value
     
     @property
+    def session_uploaded(self) -> int:
+        """Bytes uploaded since the last 'started' event (value sent to tracker)."""
+        return max(0, self.stats.uploaded - self._session_uploaded_base)
+
+    @property
+    def session_downloaded(self) -> int:
+        """Bytes downloaded since the last 'started' event (value sent to tracker)."""
+        return max(0, self.stats.downloaded - self._session_downloaded_base)
+
+    @property
     def upload_speed(self) -> float:
         return self.stats.upload_speed
-    
+
     @upload_speed.setter
     def upload_speed(self, value: float):
         self.stats.upload_speed = value
@@ -205,7 +231,11 @@ class TrackerAnnouncer:
         
         self.is_running = True
         self._seeding_started_at = datetime.now(timezone.utc)
-        
+
+        # New tracker session: counters reported to the tracker restart from 0
+        self._session_uploaded_base = self.stats.uploaded
+        self._session_downloaded_base = self.stats.downloaded
+
         if self.upload_speed == 0:
             self.upload_speed = self.stats.get_activity_based_upload_speed(self.client)
             logger.debug(f"   Initial upload speed: {self.upload_speed / 1024:.2f} KB/s")
@@ -246,55 +276,101 @@ class TrackerAnnouncer:
     # ================================================================
     
     async def _announce_loop(self):
-        """Main announce loop."""
+        """Main announce loop.
+
+        Resilient by design: a failing 'started' announce (tracker down,
+        DNS error...) is retried with backoff instead of killing the loop,
+        and an unexpected error in one iteration never stops the torrent.
+        """
         try:
             logger.info(f"📢 Starting announce loop for: {self.torrent.name}")
-            await self._send_announce_stealth(event="started")
-            
-            # BEP 3: send 'completed' AFTER 'started' when we already have the full
-            # torrent but this is a fresh session (initial_seeding flag).
-            if self._initial_seeding:
-                logger.debug("   📋 Sending 'completed' event (initial seeding)")
-                await self._send_announce_stealth(event="completed")
-                self._initial_seeding = False
-            
-            
+
+            # 1. 'started' must succeed before regular announces (BEP 3)
             while self.is_running:
-                actual_interval = stealth_service.get_natural_announce_interval(
-                    self.torrent.info_hash, 
-                    self.announce_interval
-                )
-                
-                if self._in_backoff and self.last_retry_attempt:
-                    backoff_time = self._calculate_backoff_delay()
-                    time_since_last_retry = (datetime.now(timezone.utc) - self.last_retry_attempt).total_seconds()
-                    if time_since_last_retry < backoff_time:
-                        remaining_backoff = int(backoff_time - time_since_last_retry)
-                        actual_interval = max(actual_interval, remaining_backoff)
-                        logger.debug(f"🛡️ In backoff period, waiting {remaining_backoff}s more")
-                
-                if stealth_service.should_simulate_temporary_disconnect(self.torrent.info_hash):
-                    disconnect_duration = stealth_service.get_disconnect_duration()
-                    logger.debug(f"🎭 Simulating natural disconnect for {disconnect_duration}s")
-                    actual_interval += disconnect_duration
-                
-                logger.debug(f"⏰ Natural interval: {actual_interval}s for {self.torrent.name}")
-                await asyncio.sleep(actual_interval)
-                
-                if not self.is_running:
+                try:
+                    await self._send_announce_stealth(event="started")
+                    self.consecutive_failures = 0
+                    self._in_backoff = False
                     break
-                
-                self._update_stats_with_stealth()
-                logger.debug(f"📊 Stats updated for {self.torrent.name}: uploaded={self.uploaded / (1024**2):.2f} MB, speed={self.upload_speed / 1024:.2f} KB/s")
-                
-                await self._send_announce_with_retry()
-                
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    self.consecutive_failures += 1
+                    delay = self._calculate_backoff_delay()
+                    self._record_error_silent(f"'started' announce failed: {e}")
+                    logger.warning(
+                        f"🛡️ 'started' announce failed for {self.torrent.name[:40]} "
+                        f"(attempt {self.consecutive_failures}), retrying in {delay}s: {e}"
+                    )
+                    self.next_announce = datetime.now(timezone.utc) + timedelta(seconds=delay)
+                    await asyncio.sleep(delay)
+
+            # BEP 3: "No completed is sent if the file was complete when started."
+            # A seed that starts with left=0 must NOT send 'completed' (the old
+            # code sent it on every start, i.e. a fake "snatch" per restart).
+            # 'completed' is only sent when a simulated download finishes - see
+            # the regular loop below.
+            self._initial_seeding = False
+
+            # 2. Regular announces
+            while self.is_running:
+                try:
+                    actual_interval = self._compute_next_interval()
+                    self.next_announce = datetime.now(timezone.utc) + timedelta(seconds=actual_interval)
+                    logger.debug(f"⏰ Natural interval: {actual_interval}s for {self.torrent.name}")
+                    await asyncio.sleep(actual_interval)
+
+                    if not self.is_running:
+                        break
+
+                    self._update_stats_with_stealth()
+                    logger.debug(f"📊 Stats updated for {self.torrent.name}: uploaded={self.uploaded / (1024**2):.2f} MB, speed={self.upload_speed / 1024:.2f} KB/s")
+
+                    # Simulated download just finished -> this announce carries 'completed'
+                    event = "completed" if self.stats.consume_completed_event() else None
+                    await self._send_announce_with_retry(event)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.error(f"❌ Announce iteration error for {self.torrent.name}: {e}", exc_info=True)
+                    self._record_error(f"Announce loop error: {str(e)}")
+                    await asyncio.sleep(self.base_retry_delay)
+
         except asyncio.CancelledError:
             logger.debug(f"Announce loop cancelled for {self.torrent.name}")
         except Exception as e:
             logger.error(f"❌ Announce error for {self.torrent.name}: {e}", exc_info=True)
             self._record_error(f"Announce loop error: {str(e)}")
-    
+
+    def _compute_next_interval(self) -> int:
+        """Compute the delay before the next regular announce.
+
+        Natural jitter + backoff + occasional disconnects, but never below the
+        tracker's 'min interval' (BEP 3).
+        """
+        actual_interval = stealth_service.get_natural_announce_interval(
+            self.torrent.info_hash,
+            self.announce_interval
+        )
+
+        if self._in_backoff and self.last_retry_attempt:
+            backoff_time = self._calculate_backoff_delay()
+            time_since_last_retry = (datetime.now(timezone.utc) - self.last_retry_attempt).total_seconds()
+            if time_since_last_retry < backoff_time:
+                remaining_backoff = int(backoff_time - time_since_last_retry)
+                actual_interval = max(actual_interval, remaining_backoff)
+                logger.debug(f"🛡️ In backoff period, waiting {remaining_backoff}s more")
+
+        if stealth_service.should_simulate_temporary_disconnect(self.torrent.info_hash):
+            disconnect_duration = stealth_service.get_disconnect_duration()
+            logger.debug(f"🎭 Simulating natural disconnect for {disconnect_duration}s")
+            actual_interval += disconnect_duration
+
+        if self._tracker_min_interval > 0:
+            actual_interval = max(actual_interval, self._tracker_min_interval)
+
+        return int(actual_interval)
+
     # ================================================================
     # Stats delegation
     # ================================================================
@@ -406,8 +482,8 @@ class TrackerAnnouncer:
             info_hash=self.torrent.info_hash_bytes,
             peer_id=self.peer_id,
             port=self.port,
-            uploaded=self.uploaded,
-            downloaded=self.downloaded,
+            uploaded=self.session_uploaded,
+            downloaded=self.session_downloaded,
             left=self.left,
             event=event
         )
@@ -415,9 +491,9 @@ class TrackerAnnouncer:
         # Include tracker_id if we received one (BEP 3 compliance)
         if hasattr(self, '_tracker_id') and self._tracker_id:
             tid = self._tracker_id
-            if isinstance(tid, bytes):
-                tid = tid.decode('utf-8', errors='ignore')
-            url += f"&trackerid={tid}"
+            if isinstance(tid, str):
+                tid = tid.encode('utf-8')
+            url += f"&trackerid={quote_from_bytes(tid, safe='')}"
         
         headers = self.client.get_request_headers()
         timeout = httpx.Timeout(30.0)
@@ -444,11 +520,10 @@ class TrackerAnnouncer:
             self._mark_tracker_success(tracker_url)
             
             self.last_announce = datetime.now(timezone.utc)
-            jitter = random.randint(-self.announce_jitter, self.announce_jitter)
-            self.next_announce = self.last_announce + timedelta(
-                seconds=self.announce_interval + jitter
-            )
-            
+            # Provisional estimate; the announce loop sets the exact value
+            # right before it sleeps.
+            self.next_announce = self.last_announce + timedelta(seconds=self.announce_interval)
+
             logger.info(f"✅ HTTP Announce OK ({response_time:.0f}ms) {self.torrent.name[:40]} — {self.seeders}S/{self.leechers}L | {self.uploaded / (1024**2):.1f}MB up")
             
             history_service.add_entry(
@@ -478,8 +553,8 @@ class TrackerAnnouncer:
                 info_hash=self.torrent.info_hash_bytes,
                 peer_id=self.peer_id,
                 port=self.port,
-                uploaded=self.uploaded,
-                downloaded=self.downloaded,
+                uploaded=self.session_uploaded,
+                downloaded=self.session_downloaded,
                 left=self.left,
                 event=event,
                 key=key_int,
@@ -497,11 +572,10 @@ class TrackerAnnouncer:
             self._mark_tracker_success(tracker_url)
             
             self.last_announce = datetime.now(timezone.utc)
-            jitter = random.randint(-self.announce_jitter, self.announce_jitter)
-            self.next_announce = self.last_announce + timedelta(
-                seconds=self.announce_interval + jitter
-            )
-            
+            # Provisional estimate; the announce loop sets the exact value
+            # right before it sleeps.
+            self.next_announce = self.last_announce + timedelta(seconds=self.announce_interval)
+
             logger.info(f"✅ UDP Announce OK ({response_time:.0f}ms) {self.torrent.name[:40]} — {self.seeders}S/{self.leechers}L | {self.uploaded / (1024**2):.1f}MB up")
             
             history_service.add_entry(
@@ -567,7 +641,8 @@ class TrackerAnnouncer:
                 min_interval = response[b'min interval']
                 if isinstance(min_interval, int) and min_interval > 0:
                     tracker_min_interval = min_interval
-            
+                    self._tracker_min_interval = min_interval
+
             if b'interval' in response:
                 interval = response[b'interval']
                 if isinstance(interval, int) and interval > 0:
@@ -700,8 +775,10 @@ class TrackerAnnouncer:
         """Get detailed status information for UI display."""
         status_info = self.stats.get_status_info()
         
-        # Override current_speed with actual client-aware speed
-        current_speed = self._get_activity_based_upload_speed()
+        # Report the speed actually used by the simulation.  Do NOT recompute it
+        # here: get_activity_based_upload_speed() mutates the autocorrelation
+        # state, so every UI poll used to perturb the simulated speed curve.
+        current_speed = int(self.upload_speed) if self.is_running else 0
         status_info['current_speed'] = current_speed
         status_info['speed_formatted'] = f"{current_speed // 1024} kB/s" if current_speed >= 1024 else f"{current_speed} B/s"
         

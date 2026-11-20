@@ -74,7 +74,8 @@ class WebSocketManager:
         try:
             while self._running:
                 # Optimized: Get logs with longer timeout to reduce CPU polling
-                new_logs = log_handler.get_new_logs(timeout=1.0)  # Increased from 0.5s to 1.0s
+                # Non-blocking drain of the log queue (never block the event loop)
+                new_logs = log_handler.get_new_logs()
                 
                 if new_logs and self.active_connections:
                     # Broadcast logs to all connected clients
@@ -108,7 +109,8 @@ class WebSocketManager:
         
         # Ensure websocket is properly closed to prevent memory leaks
         try:
-            if not websocket.client_state.CLOSED:
+            from starlette.websockets import WebSocketState
+            if websocket.client_state != WebSocketState.DISCONNECTED:
                 await websocket.close()
         except Exception as e:
             logger.debug(f"WebSocket already closed: {e}")
