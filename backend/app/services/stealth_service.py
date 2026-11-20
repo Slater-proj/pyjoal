@@ -418,6 +418,13 @@ class StealthService:
             'cryptoport': False,
         }
     
+    def forget(self, torrent_hash: str):
+        """Drop per-torrent state once a torrent is removed/archived (no leak)."""
+        self.session_profiles.pop(torrent_hash, None)
+        prefix = f"{torrent_hash}_"
+        for key in [k for k in self._speed_cache if k.startswith(prefix)]:
+            del self._speed_cache[key]
+
     def get_session_stats(self, torrent_hash: str) -> Dict:
         """Get session statistics for monitoring"""
         if torrent_hash not in self.session_profiles:

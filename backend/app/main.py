@@ -69,6 +69,12 @@ log_datefmt = '%Y-%m-%d %H:%M:%S'
 
 # Create formatter and handlers
 formatter = TimezoneFormatter(log_format, datefmt=log_datefmt)
+# Logs contain emojis: never let a non-UTF-8 console (Windows cp1252, some
+# NAS shells) turn every log line into a UnicodeEncodeError traceback.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setFormatter(formatter)
 
@@ -346,6 +352,11 @@ async def websocket_endpoint(websocket: WebSocket):
             if data == "ping":
                 await websocket.send_text("pong")
     except WebSocketDisconnect:
+        await websocket_manager.disconnect(websocket)
+    except Exception as e:
+        # Any other error (network reset...) must not leave a dead socket
+        # in active_connections
+        logger.debug(f"WebSocket error: {e}")
         await websocket_manager.disconnect(websocket)
 
 

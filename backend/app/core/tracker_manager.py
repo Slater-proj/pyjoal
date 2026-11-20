@@ -13,6 +13,7 @@ import httpx
 from app.core.torrent_parser import Torrent
 from app.core.bittorrent_client import BitTorrentClient
 from app.core.udp_tracker import UDPTracker, is_udp_tracker
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,12 @@ class TrackerManager:
         
         # UDP tracker instances cache
         self._udp_trackers: Dict[str, UDPTracker] = {}
-    
+        self._udp_proxy_warned: bool = False
+
+    @staticmethod
+    def _proxy_configured() -> bool:
+        return bool(settings.HTTP_PROXY_HOST and settings.HTTP_PROXY_PORT)
+
     def _build_tracker_tiers(self) -> List[List[str]]:
         """Build tracker tiers from announce-list (BEP 12)."""
         tiers = []
@@ -77,6 +83,21 @@ class TrackerManager:
         """
         if not self._tracker_tiers:
             return self.torrent.primary_tracker
+
+        # UDP announces cannot go through the HTTP proxy: when a proxy is
+        # configured, prefer any healthy HTTP(S) tracker so the real IP is not
+        # exposed; fall back to UDP only if nothing else is available.
+        if self._proxy_configured():
+            for tier in self._tracker_tiers:
+                for tracker in tier:
+                    if not is_udp_tracker(tracker) and self._tracker_failures.get(tracker, 0) < self.MAX_FAILURES:
+                        return tracker
+            if not self._udp_proxy_warned:
+                logger.warning(
+                    f"⚠️ {self.torrent.name[:40]}: only UDP trackers available - "
+                    "UDP announces bypass the HTTP proxy (real IP visible to the tracker)"
+                )
+                self._udp_proxy_warned = True
 
         for tier in self._tracker_tiers:
             for tracker in tier:
@@ -159,7 +180,11 @@ class TrackerManager:
             
             headers = self.client.get_request_headers()
             
-            async with httpx.AsyncClient(timeout=15.0, headers=headers, verify=False) as client:
+            proxy_kwargs = {}
+            if self._proxy_configured():
+                proxy_kwargs['proxy'] = f"http://{settings.HTTP_PROXY_HOST}:{settings.HTTP_PROXY_PORT}"
+            async with httpx.AsyncClient(timeout=15.0, headers=headers,
+                                         verify=settings.TRACKER_VERIFY_SSL, **proxy_kwargs) as client:
                 response = await client.get(scrape_url)
                 
                 if response.status_code == 200:

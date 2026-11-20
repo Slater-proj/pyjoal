@@ -48,8 +48,10 @@ async def add_torrent(file: UploadFile = File(...)):
                 detail=f"Invalid torrent file: {validation_error}"
             )
         
-        # Write to temporary location for final parsing
-        temp_path = settings.TORRENTS_DIR / f"temp_{safe_filename}"
+        # Write to temporary location for final parsing.  The ".part" suffix
+        # keeps the file watcher / directory scan from picking up a half-
+        # written "temp_x.torrent" as a real torrent.
+        temp_path = settings.TORRENTS_DIR / f"temp_{safe_filename}.part"
         with open(temp_path, 'wb') as buffer:
             buffer.write(content)
         
@@ -65,8 +67,12 @@ async def add_torrent(file: UploadFile = File(...)):
             )
         
         # Parsing succeeded, move to final location
-        temp_path.rename(torrent_path)
-        
+        temp_path.replace(torrent_path)
+        # Point the torrent at its final file (it referenced the temp path,
+        # so archive/remove could not find the file afterwards)
+        torrent.path = torrent_path
+        torrent.filename = torrent_path.name
+
         # Add to seeder service
         await seeder_service.add_torrent(torrent)
         

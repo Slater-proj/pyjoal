@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getToken } from '../services/api'
 
 interface TestConfig {
   announceInterval?: number
@@ -14,12 +15,16 @@ export default function DiscretionTestPanel() {
   
   useEffect(() => {
     // Test direct de l'API
+    // Token injected by the backend at runtime (never hardcode secrets here)
     fetch('/api/config', {
       headers: {
-        'X-API-Token': '17bc9cc3781c8116f3bdc6a6aee8a48c'
+        'X-API-Token': getToken() || ''
       }
     })
-    .then(res => res.json())
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json()
+    })
     .then((data: TestConfig) => {
       console.log('🧪 Test Config:', data)
       setConfig(data)

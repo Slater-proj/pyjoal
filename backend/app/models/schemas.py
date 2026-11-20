@@ -1,7 +1,7 @@
 """
 Pydantic models for request/response schemas
 """
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, List
 from datetime import datetime, timezone
 from enum import Enum
@@ -106,6 +106,23 @@ class ConfigSchema(BaseModel):
         if v < -1:
             raise ValueError("La durée de seed doit être -1 (illimitée) ou un nombre positif")
         return v
+
+    @model_validator(mode="after")
+    def validate_min_max_pairs(self):
+        """Reject min > max pairs: they crashed random.randint() at runtime
+        (torrent list / UI broken every 3 s, torrents impossible to add)."""
+        pairs = [
+            ("minUploadRate", "maxUploadRate", "La vitesse minimum doit être ≤ à la vitesse maximum"),
+            ("pauseDurationMin", "pauseDurationMax", "La durée de pause minimum doit être ≤ au maximum"),
+            ("reducedSpeedDurationMin", "reducedSpeedDurationMax",
+             "La durée de vitesse réduite minimum doit être ≤ au maximum"),
+            ("stateChangeIntervalMin", "stateChangeIntervalMax",
+             "L'intervalle de changement d'état minimum doit être ≤ au maximum"),
+        ]
+        for lo, hi, message in pairs:
+            if getattr(self, lo) > getattr(self, hi):
+                raise ValueError(message)
+        return self
 
 
 class TorrentStatusInfo(BaseModel):

@@ -16,6 +16,8 @@ from app.services.websocket_manager import websocket_manager
 from app.services.history_service import history_service, EventType
 from app.services.persistence_service import persistence_service
 from app.services.notification_service import notification_service
+from app.services.config_manager import ConfigManager
+from app.services.stealth_service import stealth_service
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +34,13 @@ class TorrentManager:
     # ------------------------------------------------------------------
 
     def has_torrents(self) -> bool:
-        return len(self.announcers) > 0 or len(load_torrents_from_directory(settings.TORRENTS_DIR)) > 0
+        # Cheap check: no need to parse every .torrent file just to know if one exists
+        if self.announcers:
+            return True
+        try:
+            return any(settings.TORRENTS_DIR.glob("*.torrent"))
+        except OSError:
+            return len(load_torrents_from_directory(settings.TORRENTS_DIR)) > 0
 
     def get_torrents(self) -> List[Dict]:
         """Get working torrents info"""
@@ -182,34 +190,7 @@ class TorrentManager:
         announcer = TrackerAnnouncer(
             torrent,
             client,
-            discretion_config={
-                "announce_interval": config.get("announceInterval", settings.ANNOUNCE_INTERVAL),
-                "announce_jitter": config.get("announceJitter", settings.ANNOUNCE_JITTER),
-                "min_stats_update_interval": config.get("minStatsUpdateInterval", settings.MIN_STATS_UPDATE_INTERVAL),
-                "enable_speed_variation": config.get("enableSpeedVariation", settings.ENABLE_SPEED_VARIATION),
-                "speed_variation_percent": config.get("speedVariationPercent", settings.SPEED_VARIATION_PERCENT),
-                # Realistic Behavior Timing
-                "pauseDurationMin": config.get("pauseDurationMin", settings.PAUSE_DURATION_MIN),
-                "pauseDurationMax": config.get("pauseDurationMax", settings.PAUSE_DURATION_MAX),
-                "reducedSpeedDurationMin": config.get("reducedSpeedDurationMin", settings.REDUCED_SPEED_DURATION_MIN),
-                "reducedSpeedDurationMax": config.get("reducedSpeedDurationMax", settings.REDUCED_SPEED_DURATION_MAX),
-                "stateChangeIntervalMin": config.get("stateChangeIntervalMin", settings.STATE_CHANGE_INTERVAL_MIN),
-                "stateChangeIntervalMax": config.get("stateChangeIntervalMax", settings.STATE_CHANGE_INTERVAL_MAX),
-                "reducedSpeedKbps": config.get("reducedSpeedKbps", settings.REDUCED_SPEED_KBPS),
-                # Torrent Behavior Mode
-                "seedingOnlyMode": config.get("seedingOnlyMode", settings.SEEDING_ONLY_MODE),
-                # Peer speed tiers
-                "peer_speed_tiers_enabled": config.get("peerSpeedTiersEnabled", settings.PEER_SPEED_TIERS_ENABLED),
-                "peer_tier1_max_peers": config.get("peerTier1MaxPeers", settings.PEER_TIER1_MAX_PEERS),
-                "peer_tier1_speed_percent": config.get("peerTier1SpeedPercent", settings.PEER_TIER1_SPEED_PERCENT),
-                "peer_tier2_max_peers": config.get("peerTier2MaxPeers", settings.PEER_TIER2_MAX_PEERS),
-                "peer_tier2_speed_percent": config.get("peerTier2SpeedPercent", settings.PEER_TIER2_SPEED_PERCENT),
-                "peer_tier3_max_peers": config.get("peerTier3MaxPeers", settings.PEER_TIER3_MAX_PEERS),
-                "peer_tier3_speed_percent": config.get("peerTier3SpeedPercent", settings.PEER_TIER3_SPEED_PERCENT),
-                "peer_tier4_max_peers": config.get("peerTier4MaxPeers", settings.PEER_TIER4_MAX_PEERS),
-                "peer_tier4_speed_percent": config.get("peerTier4SpeedPercent", settings.PEER_TIER4_SPEED_PERCENT),
-                "peer_tier5_speed_percent": config.get("peerTier5SpeedPercent", settings.PEER_TIER5_SPEED_PERCENT),
-            },
+            discretion_config=ConfigManager.build_discretion_config(config),
         )
         self.announcers[torrent.info_hash] = announcer
 
@@ -260,6 +241,7 @@ class TorrentManager:
             await announcer.stop()
 
         del self.announcers[info_hash]
+        stealth_service.forget(info_hash)
 
         history_service.add_entry(
             EventType.TORRENT_REMOVED,
@@ -310,6 +292,7 @@ class TorrentManager:
             await announcer.stop()
 
         del self.announcers[info_hash]
+        stealth_service.forget(info_hash)
 
         archived_dir = settings.TORRENTS_DIR / "archived"
         archived_dir.mkdir(exist_ok=True)

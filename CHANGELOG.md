@@ -1,5 +1,47 @@
 # Changelog - PyJOAL
 
+## [Unreleased] - Reliability & protocol compliance
+
+### Fixed — Critical
+- **Event loop frozen up to 1s per second**: the WebSocket log broadcaster drained the log queue with a blocking `queue.get(timeout=1)` on the asyncio loop. HTTP, WebSocket and announces were all stalled. Now non-blocking
+- **`/health` blocked ~1.5-2s** (`psutil.cpu_percent(interval=1)` + `time.sleep`), enough to fail the 3s Docker healthcheck. Now non-blocking (~1 ms)
+- **Persisted upload re-sent to the tracker on every restart / pause-resume**: `uploaded`/`downloaded` announced are now session-relative (BEP 3: totals since `started`). Seeds also reported `downloaded=<torrent size>` on every session; now `0`. All-time totals are kept for the UI, ratio and persistence
+- **A failed `started` announce killed the torrent's announce loop** until the next restart. It is now retried with backoff, and errors in one iteration never stop the loop
+- **Stop/Start (and `/api/torrents/reload`) disabled the file watcher and the persistence auto-save** for the rest of the container's life. They now live for the whole app lifetime (`SeederService.shutdown()` on exit)
+- **Crash with min > max settings** (pause, reduced speed, state change interval): `random.randint` raised on every UI refresh and when adding torrents. Rejected by validation, and tolerated at runtime for older `config.json`
+
+### Fixed — Protocol (BEP 3 / 12 / 15)
+- Tracker `min interval` is stored and always honoured
+- No `completed` event for torrents already complete at start ("No completed is sent if the file was complete when started"); `completed` is now sent when a simulated download actually finishes
+- Multi-tracker torrents no longer switch tracker on every announce: the working tracker is kept, next one used only after failures (BEP 12); tiers no longer lost when the torrent is read from cache
+- `trackerid` URL-encoded; UDP tracker error replies are not retried
+- `stopped` announces bounded in time (`STOP_ANNOUNCE_TIMEOUT`, default 8s) so every torrent sends it before Docker stops the container (`stop_grace_period: 30s` in compose)
+
+### Fixed — Simulation & features
+- **Announce Jitter setting had no effect** (only used for the UI estimate). The natural per-torrent interval is now bounded by `±announceJitter`
+- Low speeds inflated by a 16 KiB-per-tick floor (1 KB/s became ~5.3 KB/s); the sub-block remainder is now carried over
+- UI polling no longer recomputes (and perturbs) the simulated speed
+- Download simulation mode: progress is continuous (every 3s, paced to the planned completion time) instead of jumping to 100%
+- Switching client in Settings now applies to already-loaded torrents (peer_id, port, headers) instead of mixing two clients from one IP
+- User activity hours use local time (`TZ`) instead of UTC
+- The torrent card shows the client really emulated (not a random profile name)
+- Uploaded torrents kept a reference to their temp file (archive/remove could not find the file); temp files now use a `.part` suffix so the file watcher never picks them up
+- History hourly stats pruned to 30 days; stealth per-torrent state released on removal
+- WebSocket: latest update of each type always delivered (throttled messages used to be dropped), stalled clients can't block others, dead sockets always removed
+- Frontend: log console history was never loaded (unauthenticated request → 401); no more per-message console logging (memory growth in long-lived tabs)
+- Logs no longer crash on non-UTF-8 consoles (Windows)
+
+### Security
+- **Path traversal** in the SPA route (`/<prefix>/ui/..%2F..%2F...`) allowed reading arbitrary files (config, `.env`, sources)
+- **HTTPS tracker certificates are verified** (`TRACKER_VERIFY_SSL`, default `true`); the passkey in announce URLs was exposed to any man-in-the-middle
+- HTTP proxy: HTTP(S) trackers are preferred over UDP (UDP cannot be proxied and exposed the real IP); scrape requests now use the proxy too
+- Hardcoded API token removed from `DiscretionTestPanel`
+- CORS no longer allows credentials with a wildcard origin
+- Dependencies upgraded (python-multipart CVE-2024-24762 / CVE-2024-53981, requests CVE-2024-35195, cryptography, FastAPI/Starlette, pydantic); Python 3.13 now supported
+
+### Tests
+- 840 passed (+36 regression tests), coverage 81%; end-to-end run against a local tracker
+
 ## [1.12.7] - 2025-02-07
 
 ### Security

@@ -3,6 +3,8 @@ services:
     build: .
     container_name: pyjoal
     restart: unless-stopped
+    # Leave time for every torrent to send its 'stopped' announce
+    stop_grace_period: 30s
 
     ports:
       - "${PORT:-8080}:8080"
@@ -33,6 +35,9 @@ services:
       # Proxy (optional)
       - HTTP_PROXY_HOST=${HTTP_PROXY_HOST:-}
       - HTTP_PROXY_PORT=${HTTP_PROXY_PORT:-}
+
+      # Tracker TLS (set false only for a self-signed tracker certificate)
+      - TRACKER_VERIFY_SSL=${TRACKER_VERIFY_SSL:-true}
 
     healthcheck:
       test:

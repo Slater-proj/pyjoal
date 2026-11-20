@@ -267,7 +267,14 @@ class TrackerAnnouncer:
                 pass
         
         try:
-            await self._send_announce_stealth(event="stopped")
+            # Bounded: on shutdown every torrent must get its 'stopped' before
+            # the container is killed (Docker default grace period: 10 s).
+            await asyncio.wait_for(
+                self._send_announce_stealth(event="stopped"),
+                timeout=settings.STOP_ANNOUNCE_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"'stopped' announce timed out for {self.torrent.name}")
         except Exception as e:
             logger.warning(f"Failed to send 'stopped' announce for {self.torrent.name}: {e}")
     
@@ -342,16 +349,34 @@ class TrackerAnnouncer:
             logger.error(f"❌ Announce error for {self.torrent.name}: {e}", exc_info=True)
             self._record_error(f"Announce loop error: {str(e)}")
 
+    def _bounded_natural_interval(self) -> int:
+        """Natural (per-torrent, time-of-day aware) interval, bounded by the
+        user's 'Announce Jitter (±seconds)' setting.
+
+        The setting used to be ignored (it only fed the UI estimate) while the
+        real spread was up to ±60% of the interval.  The natural variation is
+        kept when it fits in ±jitter; otherwise a value is drawn uniformly in
+        [interval - jitter, interval + jitter].
+        """
+        base = int(self.announce_interval)
+        natural = stealth_service.get_natural_announce_interval(self.torrent.info_hash, base)
+        try:
+            jitter = int(self.announce_jitter)
+        except (TypeError, ValueError):
+            return int(natural)
+        if jitter < 0:
+            return int(natural)
+        if abs(natural - base) > jitter:
+            natural = base + random.randint(-jitter, jitter)
+        return max(30, int(natural))
+
     def _compute_next_interval(self) -> int:
         """Compute the delay before the next regular announce.
 
         Natural jitter + backoff + occasional disconnects, but never below the
         tracker's 'min interval' (BEP 3).
         """
-        actual_interval = stealth_service.get_natural_announce_interval(
-            self.torrent.info_hash,
-            self.announce_interval
-        )
+        actual_interval = self._bounded_natural_interval()
 
         if self._in_backoff and self.last_retry_attempt:
             backoff_time = self._calculate_backoff_delay()
@@ -504,12 +529,25 @@ class TrackerAnnouncer:
             proxy_url = f"http://{settings.HTTP_PROXY_HOST}:{settings.HTTP_PROXY_PORT}"
             proxy_kwargs['proxy'] = proxy_url
         
-        async with httpx.AsyncClient(timeout=timeout, headers=headers, verify=False, follow_redirects=True, max_redirects=5, **proxy_kwargs) as http_client:
+        async with httpx.AsyncClient(timeout=timeout, headers=headers, verify=settings.TRACKER_VERIFY_SSL,
+                                     follow_redirects=True, max_redirects=5, **proxy_kwargs) as http_client:
             logger.debug(f"🎭 HTTP Announce to {tracker_url}")
             logger.debug(f"   Client: {self.client.name} {self.client.version}")
-            
+
             start_time = time.time()
-            response = await http_client.get(url)
+            try:
+                response = await http_client.get(url)
+            except httpx.ConnectError as e:
+                self._mark_tracker_failure(tracker_url)
+                if "CERTIFICATE_VERIFY_FAILED" in str(e):
+                    raise Exception(
+                        "TLS certificate verification failed for the tracker "
+                        "(set TRACKER_VERIFY_SSL=false only if this tracker uses a self-signed certificate)"
+                    ) from e
+                raise
+            except httpx.HTTPError:
+                self._mark_tracker_failure(tracker_url)
+                raise
             response_time = (time.time() - start_time) * 1000
             
             if response.status_code != 200:
@@ -759,7 +797,9 @@ class TrackerAnnouncer:
         
         if stealth_stats:
             base_stats["stealth"] = {
-                "client": stealth_stats.get("client", "Unknown"),
+                # The client actually emulated on the wire (the stealth profile's
+                # own random "client" was never used for requests - misleading)
+                "client": self._emulated_client_label() or stealth_stats.get("client", "Unknown"),
                 "sessionDuration": stealth_stats.get("session_duration_hours", 0),
                 "activityPattern": stealth_stats.get("activity_pattern", "steady"),
                 "connectionStability": stealth_stats.get("connection_stability", 95.0),
@@ -770,6 +810,14 @@ class TrackerAnnouncer:
         base_stats["status"] = self.get_status_info()
         
         return base_stats
+    
+    def _emulated_client_label(self) -> Optional[str]:
+        """'<name> <version>' of the client really emulated on the wire."""
+        name = getattr(self.client, "name", None)
+        version = getattr(self.client, "version", None)
+        if isinstance(name, str) and name:
+            return f"{name} {version}" if isinstance(version, str) and version else name
+        return None
     
     def get_status_info(self) -> Dict[str, Any]:
         """Get detailed status information for UI display."""

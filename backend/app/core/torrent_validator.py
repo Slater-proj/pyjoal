@@ -67,7 +67,8 @@ def validate_torrent_file(file_path: Path, content: bytes = None, retry_count: i
             # Try to parse as Torrent (this will validate bencoding and required fields)
             if content:
                 # For in-memory validation, write to temp file
-                temp_file = file_path.parent / f"temp_validate_{file_path.name}"
+                # ".part" suffix: invisible to the file watcher and *.torrent scans
+                temp_file = file_path.parent / f"temp_validate_{file_path.name}.part"
                 with open(temp_file, 'wb') as f:
                     f.write(content)
                 try:

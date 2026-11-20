@@ -118,65 +118,73 @@ class WebSocketManager:
         logger.info(f"🔌 WebSocket disconnected (total: {len(self.active_connections)})")
     
     async def broadcast(self, message: Dict):
-        """Broadcast message with intelligent batching and throttling"""
+        """Broadcast a message.
+
+        Frequent update types (stats/torrents/logs) are coalesced and
+        throttled with a *trailing edge*: the latest message of each type is
+        always delivered, at most once per throttle interval.  (Throttled
+        messages used to be dropped, so the final state - e.g. right after a
+        Stop - could be lost and the UI stayed stale until the next tick.)
+        Other messages are sent immediately.
+        """
         message_type = message.get('type', 'unknown')
-        
-        # Check if we should throttle this message type
-        if self._should_throttle(message_type):
-            logger.debug(f"🎯 Throttled {message_type} message")
-            return
-        
-        # Add to buffer for batching (if applicable)
+
         if self._should_batch(message_type):
             self._add_to_batch(message_type, message)
             return
-        
-        # Send immediately for time-sensitive messages
+
         await self._send_immediate(message)
-    
+
     def _should_throttle(self, message_type: str) -> bool:
-        """Check if message should be throttled"""
+        """Check if message should be throttled (and record the send if not)."""
         throttle_interval = self._throttle_intervals.get(message_type, 0)
         if throttle_interval <= 0:
             return False
-            
+
         current_time = time.time()
         last_sent = self._last_batch_send[message_type]
-        
+
         if (current_time - last_sent) < throttle_interval:
             return True
-            
+
         self._last_batch_send[message_type] = current_time
         return False
-    
+
     def _should_batch(self, message_type: str) -> bool:
         """Check if message type should be batched"""
         # Batch frequent updates, send alerts/events immediately
         batchable_types = {'stats_update', 'torrents_update', 'logs'}
         return message_type in batchable_types
-    
+
     def _add_to_batch(self, message_type: str, message: Dict):
         """Add message to batch buffer with task leak prevention"""
         # Override previous message of same type (latest wins)
         self._message_buffer[message_type] = message
-        
+
         # Schedule batch send if not already scheduled
         if self._batch_task is None or self._batch_task.done():
             self._batch_task = asyncio.create_task(self._send_batched_delayed())
-    
+
     async def _send_batched_delayed(self):
-        """Send batched messages after delay"""
+        """Flush buffered messages, honouring each type's throttle interval."""
         await asyncio.sleep(self._batch_interval)
-        
-        if self._message_buffer:
-            # Send all buffered messages
-            for message_type, message in self._message_buffer.items():
-                await self._send_immediate(message)
-                logger.debug(f"📦 Sent batched {message_type}")
-            
-            # Clear buffer
-            self._message_buffer.clear()
-    
+
+        while self._message_buffer:
+            next_wait = None
+            now = time.time()
+            for message_type in list(self._message_buffer.keys()):
+                interval = self._throttle_intervals.get(message_type, 0)
+                wait = self._last_batch_send[message_type] + interval - now
+                if wait <= 0:
+                    message = self._message_buffer.pop(message_type)
+                    self._last_batch_send[message_type] = now
+                    await self._send_immediate(message)
+                    logger.debug(f"📦 Sent batched {message_type}")
+                else:
+                    next_wait = wait if next_wait is None else min(next_wait, wait)
+            if next_wait is not None:
+                await asyncio.sleep(next_wait)
+
     async def _send_immediate(self, message: Dict):
         """Send message immediately to all connections"""
         if not self.active_connections:
@@ -191,9 +199,11 @@ class WebSocketManager:
         
         # Send to all connections
         disconnected = []
-        for connection in self.active_connections:
+        for connection in list(self.active_connections):
             try:
-                await connection.send_text(json_message)
+                # A stalled client must not block every other client (and the
+                # caller) indefinitely.
+                await asyncio.wait_for(connection.send_text(json_message), timeout=5.0)
             except Exception as e:
                 logger.warning(f"⚠️  Failed to send to WebSocket: {e}")
                 disconnected.append(connection)
