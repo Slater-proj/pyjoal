@@ -13,13 +13,17 @@ import httpx
 from app.core.torrent_parser import Torrent
 from app.core.bittorrent_client import BitTorrentClient
 from app.core.udp_tracker import UDPTracker, is_udp_tracker
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class TrackerManager:
     """Manages multi-tracker tiers, selection, and scraping for a torrent."""
-    
+
+    # Consecutive failures before a tracker is skipped
+    MAX_FAILURES = 3
+
     def __init__(self, torrent: Torrent, client: BitTorrentClient):
         """Initialize tracker manager.
         
@@ -38,7 +42,16 @@ class TrackerManager:
         
         # UDP tracker instances cache
         self._udp_trackers: Dict[str, UDPTracker] = {}
-    
+        self._udp_proxy_warned: bool = False
+
+        # Trackers that permanently refused this torrent (unregistered, bad
+        # passkey...): never announced to again until reset_rejections()
+        self._rejected: set = set()
+
+    @staticmethod
+    def _proxy_configured() -> bool:
+        return bool(settings.HTTP_PROXY_HOST and settings.HTTP_PROXY_PORT)
+
     def _build_tracker_tiers(self) -> List[List[str]]:
         """Build tracker tiers from announce-list (BEP 12)."""
         tiers = []
@@ -60,46 +73,83 @@ class TrackerManager:
         return tiers
     
     def get_next_tracker(self) -> Optional[str]:
-        """Get next tracker to try (respecting tiers)."""
+        """Return the tracker to announce to (BEP 12).
+
+        Trackers are tried in tier order; within a tier, the first tracker
+        that has not failed repeatedly is used.  A successful tracker is moved
+        to the front of its tier (see mark_tracker_success), so we *stick* to
+        it on subsequent announces.  We only move on after failures.
+
+        (The previous implementation advanced an index on every call, so a
+        multi-tracker torrent rotated to a different tracker on each announce:
+        trackers received regular announces without ever seeing 'started',
+        and 'stopped' went to whichever tracker was next.)
+        """
         if not self._tracker_tiers:
             return self.torrent.primary_tracker
-        
-        while self._current_tier < len(self._tracker_tiers):
-            tier = self._tracker_tiers[self._current_tier]
-            
-            while self._current_tracker_idx < len(tier):
-                tracker = tier[self._current_tracker_idx]
-                self._current_tracker_idx += 1
-                
-                if self._tracker_failures.get(tracker, 0) < 3:
+
+        # UDP announces cannot go through the HTTP proxy: when a proxy is
+        # configured, prefer any healthy HTTP(S) tracker so the real IP is not
+        # exposed; fall back to UDP only if nothing else is available.
+        if self._proxy_configured():
+            for tier in self._tracker_tiers:
+                for tracker in tier:
+                    if (not is_udp_tracker(tracker) and tracker not in self._rejected
+                            and self._tracker_failures.get(tracker, 0) < self.MAX_FAILURES):
+                        return tracker
+            if not self._udp_proxy_warned:
+                logger.warning(
+                    f"⚠️ {self.torrent.name[:40]}: only UDP trackers available - "
+                    "UDP announces bypass the HTTP proxy (real IP visible to the tracker)"
+                )
+                self._udp_proxy_warned = True
+
+        for tier in self._tracker_tiers:
+            for tracker in tier:
+                if tracker not in self._rejected and self._tracker_failures.get(tracker, 0) < self.MAX_FAILURES:
                     return tracker
-            
-            self._current_tier += 1
-            self._current_tracker_idx = 0
-        
-        # Reset and start over
-        self._current_tier = 0
-        self._current_tracker_idx = 0
-        
-        if self._tracker_tiers and self._tracker_tiers[0]:
-            return self._tracker_tiers[0][0]
-        
+
+        # Every tracker failed repeatedly: forget failures and start over
+        # (permanently rejecting trackers stay excluded)
+        logger.debug(f"All trackers failed for {self.torrent.name[:30]}, resetting failure counters")
+        self._tracker_failures.clear()
+        for tier in self._tracker_tiers:
+            for tracker in tier:
+                if tracker not in self._rejected:
+                    return tracker
         return self.torrent.primary_tracker
-    
+
+    def mark_tracker_rejected(self, tracker_url: str):
+        """The tracker permanently refused this torrent (BEP 3 'failure reason')."""
+        self._rejected.add(tracker_url)
+        logger.debug(f"Tracker permanently rejected torrent: {tracker_url}")
+
+    def all_trackers_rejected(self) -> bool:
+        """True when every known tracker permanently refused the torrent."""
+        known = {t for tier in self._tracker_tiers for t in tier}
+        if not known and self.torrent.primary_tracker:
+            known = {self.torrent.primary_tracker}
+        return bool(known) and known <= self._rejected
+
+    def reset_rejections(self):
+        """Forget permanent rejections (user explicitly resumed the torrent)."""
+        self._rejected.clear()
+        self._tracker_failures.clear()
+
     def mark_tracker_success(self, tracker_url: str):
-        """Mark tracker as successful (reset failure count)."""
+        """Mark tracker as successful (reset failure count, move to front of tier)."""
         self._tracker_failures[tracker_url] = 0
         for tier in self._tracker_tiers:
             if tracker_url in tier:
                 tier.remove(tracker_url)
                 tier.insert(0, tracker_url)
                 break
-    
+
     def mark_tracker_failure(self, tracker_url: str):
         """Mark tracker as failed."""
         self._tracker_failures[tracker_url] = self._tracker_failures.get(tracker_url, 0) + 1
         logger.debug(f"Tracker failure #{self._tracker_failures[tracker_url]}: {tracker_url}")
-    
+
     def get_or_create_udp_tracker(self, tracker_url: str) -> UDPTracker:
         """Get or create a UDP tracker client for the given URL."""
         if tracker_url not in self._udp_trackers:
@@ -155,7 +205,11 @@ class TrackerManager:
             
             headers = self.client.get_request_headers()
             
-            async with httpx.AsyncClient(timeout=15.0, headers=headers, verify=False) as client:
+            proxy_kwargs = {}
+            if self._proxy_configured():
+                proxy_kwargs['proxy'] = f"http://{settings.HTTP_PROXY_HOST}:{settings.HTTP_PROXY_PORT}"
+            async with httpx.AsyncClient(timeout=15.0, headers=headers,
+                                         verify=settings.TRACKER_VERIFY_SSL, **proxy_kwargs) as client:
                 response = await client.get(scrape_url)
                 
                 if response.status_code == 200:

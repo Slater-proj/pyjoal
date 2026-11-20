@@ -82,7 +82,11 @@ class TestParseAnnounceResponse:
     def test_failure_reason(self):
         ann = _make_announcer()
         data = self._bencode_dict({b"failure reason": b"Unregistered torrent"})
-        ann._parse_announce_response(data)
+        from app.core.tracker_announcer import TrackerFailureError
+        # A refusal must surface as an error (it used to be counted as a success)
+        with pytest.raises(TrackerFailureError) as exc:
+            ann._parse_announce_response(data)
+        assert exc.value.permanent is True
         ann._record_error.assert_called_once()
 
     def test_warning_message(self):
@@ -274,8 +278,18 @@ class TestGetStats:
 class TestGetStatusInfo:
     def test_status_info(self):
         ann = _make_announcer()
-        ann._get_activity_based_upload_speed = MagicMock(return_value=50000)
+        ann.is_running = True
+        ann.upload_speed = 50000
         info = ann.get_status_info()
         assert "current_speed" in info
         assert info["current_speed"] == 50000
         assert "speed_formatted" in info
+
+    def test_status_info_does_not_mutate_speed_model(self):
+        """UI polling must not recompute (and thus perturb) the simulated speed."""
+        ann = _make_announcer()
+        ann.is_running = True
+        ann.upload_speed = 50000
+        ann._get_activity_based_upload_speed = MagicMock(return_value=1)
+        ann.get_status_info()
+        ann._get_activity_based_upload_speed.assert_not_called()

@@ -69,6 +69,12 @@ log_datefmt = '%Y-%m-%d %H:%M:%S'
 
 # Create formatter and handlers
 formatter = TimezoneFormatter(log_format, datefmt=log_datefmt)
+# Logs contain emojis: never let a non-UTF-8 console (Windows cp1252, some
+# NAS shells) turn every log line into a UnicodeEncodeError traceback.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setFormatter(formatter)
 
@@ -163,7 +169,7 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 80)
     logger.info("🛑 Shutting down PyJOAL...")
     await websocket_manager.stop_log_broadcasting()
-    await seeder_service.stop()
+    await seeder_service.shutdown()
     # Persist history before exit
     from app.services.history_service import history_service
     history_service.save()
@@ -269,7 +275,9 @@ async def validation_exception_handler(request: Request, exc: ValidationError):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    # Auth is header/query-token based, cookies are never used: credentials
+    # must not be allowed together with a wildcard origin.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -344,6 +352,11 @@ async def websocket_endpoint(websocket: WebSocket):
             if data == "ping":
                 await websocket.send_text("pong")
     except WebSocketDisconnect:
+        await websocket_manager.disconnect(websocket)
+    except Exception as e:
+        # Any other error (network reset...) must not leave a dead socket
+        # in active_connections
+        logger.debug(f"WebSocket error: {e}")
         await websocket_manager.disconnect(websocket)
 
 
@@ -425,9 +438,12 @@ if frontend_build_path.exists():
             
             return HTMLResponse(content=html_content)
         
-        # Check if file exists
-        file_path = frontend_build_path / full_path
-        if file_path.exists() and file_path.is_file():
+        # Check if file exists - and stays INSIDE the frontend build directory.
+        # Starlette percent-decodes the path, so "..%2F..%2Fetc%2Fpasswd" used
+        # to reach arbitrary files (config.json, .env, /proc/self/environ...).
+        build_root = frontend_build_path.resolve()
+        file_path = (build_root / full_path).resolve()
+        if file_path.is_relative_to(build_root) and file_path.is_file():
             return FileResponse(file_path)
         
         # For SPA routing, return index.html with token injection

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Terminal, X, ChevronDown, Trash2, Pause, Play, GripHorizontal } from 'lucide-react'
 import { useStore } from '../store/useStore'
+import { getToken } from '../services/api'
 
 interface LogEntry {
   timestamp: string
@@ -59,7 +60,12 @@ export default function LogConsole() {
     // Fetch recent logs on mount
     const fetchRecentLogs = async () => {
       try {
-        const response = await fetch('/api/logs/recent?count=100')
+        // The logs API requires the token like every other endpoint (this
+        // call used to be unauthenticated -> always 401, history never shown)
+        const response = await fetch('/api/logs/recent?count=100', {
+          headers: { 'X-API-Token': getToken() || '' },
+        })
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
         const data = await response.json()
         setLogs(data.logs || [])
       } catch (error) {

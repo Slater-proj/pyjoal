@@ -327,18 +327,20 @@ export const useStore = create<Store>((set, get) => ({
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
-        console.log("📡 WebSocket message received:", message.type, message);
+        // No per-message console.log: stats/torrents/logs arrive every few
+        // seconds and DevTools retains every logged object, so a tab left
+        // open for days kept growing in memory.
 
         switch (message.type) {
           case "stats_update":
             set({ stats: message.data });
-            console.log("📊 Updated stats:", message.data);
             break;
 
           case "torrents_update":
             // Update torrents list from real-time data
-            set({ torrents: message.data.torrents });
-            console.log("🔄 Updated torrents:", message.data.torrents.length, "torrents");
+            if (Array.isArray(message.data?.torrents)) {
+              set({ torrents: message.data.torrents });
+            }
             break;
 
           case "torrent_load_error":
@@ -382,8 +384,14 @@ export const useStore = create<Store>((set, get) => ({
             }
             break;
 
+          case "logs":
+          case "torrent_archived":
+          case "log":
+            // Handled elsewhere (LogConsole listens to the socket directly)
+            break;
+
           default:
-            console.log("❓ Unknown WebSocket message type:", message.type);
+            console.debug("Unknown WebSocket message type:", message.type);
             break;
         }
       } catch (error) {

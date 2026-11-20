@@ -258,6 +258,7 @@ class TestDownloadPhase(unittest.TestCase):
         sim._is_downloading = True
         sim._download_completion_time = datetime.now(timezone.utc) - timedelta(minutes=1)
         sim._seeding_start_delay_min = 30
+        sim.left = 1000  # still bytes to download
         self.assertTrue(sim.is_in_downloading_phase())
 
     def test_past_delay(self):

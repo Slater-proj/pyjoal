@@ -2,7 +2,7 @@
 Application Configuration
 Using Pydantic Settings for environment variable management
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
 from typing import Optional, Any
 from pathlib import Path
@@ -36,7 +36,17 @@ class Settings(BaseSettings):
     # Proxy
     HTTP_PROXY_HOST: Optional[str] = Field(default=None, description="HTTP proxy host")
     HTTP_PROXY_PORT: Optional[int] = Field(default=None, description="HTTP proxy port")
-    
+
+    # TLS verification for HTTPS trackers.  Real clients (libtorrent >= 2.0)
+    # verify certificates; without it anyone on the path can read the announce
+    # URL - which contains the private passkey.  Set to false only for a
+    # tracker with a self-signed certificate.
+    TRACKER_VERIFY_SSL: bool = Field(default=True, description="Verify HTTPS tracker certificates")
+
+    # Timeout for the 'stopped' announce sent on stop/shutdown (seconds).
+    # Kept short so every torrent gets its 'stopped' before Docker kills us.
+    STOP_ANNOUNCE_TIMEOUT: float = Field(default=8.0, description="Timeout for 'stopped' announces (s)")
+
     @field_validator('HTTP_PROXY_HOST', 'HTTP_PROXY_PORT', mode='before')
     @classmethod
     def empty_str_to_none(cls, v: Any) -> Any:
@@ -85,9 +95,7 @@ class Settings(BaseSettings):
     PEER_TIER4_SPEED_PERCENT: int = Field(default=80, description="Speed percentage for tier 4 (0-100)")
     PEER_TIER5_SPEED_PERCENT: int = Field(default=100, description="Speed percentage for tier 5 / above tier 4 (0-100)")
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 
 # Global settings instance

@@ -10,6 +10,7 @@ import logging
 import time
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote_from_bytes
 import httpx
 
 from app.core.bittorrent_client import BitTorrentClient
@@ -24,13 +25,55 @@ from app.services.stealth_service import stealth_service
 logger = logging.getLogger(__name__)
 
 
+# 'failure reason' texts meaning the tracker will never accept this torrent
+# (with this passkey / client): retrying only hammers the tracker.
+_PERMANENT_FAILURE_PATTERNS = (
+    "unregistered", "not registered", "torrent not found", "unknown torrent",
+    "torrent does not exist", "info_hash not found", "infohash not found",
+    "invalid info_hash", "invalid infohash", "not authorized", "unauthorized",
+    "passkey", "banned", "client not allowed", "client is not allowed",
+    "not whitelisted", "blacklisted", "account disabled", "account has been disabled",
+    "torrent deleted", "has been deleted", "trumped",
+)
+
+
+def is_permanent_failure(reason: str) -> bool:
+    """Classify a tracker 'failure reason' as permanent (vs transient)."""
+    text = (reason or "").lower()
+    return any(p in text for p in _PERMANENT_FAILURE_PATTERNS)
+
+
+class TrackerFailureError(Exception):
+    """The tracker answered with a 'failure reason' (HTTP) or an error (UDP)."""
+
+    def __init__(self, reason: str):
+        super().__init__(f"Tracker failure: {reason}")
+        self.reason = reason
+        self.permanent = is_permanent_failure(reason)
+
+
+class TorrentRejectedError(Exception):
+    """Every tracker permanently refused the torrent: stop announcing it."""
+
+    def __init__(self, reason: str):
+        super().__init__(f"Rejected by tracker: {reason}")
+        self.reason = reason
+
+
 class TrackerAnnouncer:
     """Handles tracker announces for a torrent.
     
     Delegates stats simulation to StatsSimulator and tracker tier
     management to TrackerManager.
     """
-    
+
+    # Class-level defaults (also cover instances built without __init__)
+    _session_uploaded_base: int = 0
+    _session_downloaded_base: int = 0
+    _tracker_min_interval: int = 0
+    # Set when every tracker permanently refused the torrent (see _reject)
+    rejected_reason: Optional[str] = None
+
     def __init__(self, torrent: Torrent, client: BitTorrentClient, discretion_config: Optional[Dict] = None):
         """Initialize announcer with optional discretion settings."""
         self.torrent = torrent
@@ -89,7 +132,17 @@ class TrackerAnnouncer:
         # Track real announce success for speed calculation
         self._last_successful_announce: Optional[float] = None
         self._last_successful_uploaded: int = 0
-    
+
+        # BEP 3: 'uploaded' / 'downloaded' sent to the tracker are totals
+        # *since the 'started' event* (i.e. per session).  The simulator keeps
+        # all-time totals (restored from persistence, used for UI / ratio), so
+        # we snapshot them at start() and report the difference.
+        self._session_uploaded_base: int = 0
+        self._session_downloaded_base: int = 0
+
+        # Tracker-imposed minimum interval (BEP 3 'min interval') - never announce faster
+        self._tracker_min_interval: int = 0
+
     # ================================================================
     # Backward-compatible property accessors (delegate to stats)
     # ================================================================
@@ -119,9 +172,19 @@ class TrackerAnnouncer:
         self.stats.left = value
     
     @property
+    def session_uploaded(self) -> int:
+        """Bytes uploaded since the last 'started' event (value sent to tracker)."""
+        return max(0, self.stats.uploaded - self._session_uploaded_base)
+
+    @property
+    def session_downloaded(self) -> int:
+        """Bytes downloaded since the last 'started' event (value sent to tracker)."""
+        return max(0, self.stats.downloaded - self._session_downloaded_base)
+
+    @property
     def upload_speed(self) -> float:
         return self.stats.upload_speed
-    
+
     @upload_speed.setter
     def upload_speed(self, value: float):
         self.stats.upload_speed = value
@@ -205,7 +268,11 @@ class TrackerAnnouncer:
         
         self.is_running = True
         self._seeding_started_at = datetime.now(timezone.utc)
-        
+
+        # New tracker session: counters reported to the tracker restart from 0
+        self._session_uploaded_base = self.stats.uploaded
+        self._session_downloaded_base = self.stats.downloaded
+
         if self.upload_speed == 0:
             self.upload_speed = self.stats.get_activity_based_upload_speed(self.client)
             logger.debug(f"   Initial upload speed: {self.upload_speed / 1024:.2f} KB/s")
@@ -237,7 +304,14 @@ class TrackerAnnouncer:
                 pass
         
         try:
-            await self._send_announce_stealth(event="stopped")
+            # Bounded: on shutdown every torrent must get its 'stopped' before
+            # the container is killed (Docker default grace period: 10 s).
+            await asyncio.wait_for(
+                self._send_announce_stealth(event="stopped"),
+                timeout=settings.STOP_ANNOUNCE_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"'stopped' announce timed out for {self.torrent.name}")
         except Exception as e:
             logger.warning(f"Failed to send 'stopped' announce for {self.torrent.name}: {e}")
     
@@ -246,55 +320,137 @@ class TrackerAnnouncer:
     # ================================================================
     
     async def _announce_loop(self):
-        """Main announce loop."""
+        """Main announce loop.
+
+        Resilient by design: a failing 'started' announce (tracker down,
+        DNS error...) is retried with backoff instead of killing the loop,
+        and an unexpected error in one iteration never stops the torrent.
+        """
         try:
             logger.info(f"📢 Starting announce loop for: {self.torrent.name}")
-            await self._send_announce_stealth(event="started")
-            
-            # BEP 3: send 'completed' AFTER 'started' when we already have the full
-            # torrent but this is a fresh session (initial_seeding flag).
-            if self._initial_seeding:
-                logger.debug("   📋 Sending 'completed' event (initial seeding)")
-                await self._send_announce_stealth(event="completed")
-                self._initial_seeding = False
-            
-            
+
+            # 1. 'started' must succeed before regular announces (BEP 3)
             while self.is_running:
-                actual_interval = stealth_service.get_natural_announce_interval(
-                    self.torrent.info_hash, 
-                    self.announce_interval
-                )
-                
-                if self._in_backoff and self.last_retry_attempt:
-                    backoff_time = self._calculate_backoff_delay()
-                    time_since_last_retry = (datetime.now(timezone.utc) - self.last_retry_attempt).total_seconds()
-                    if time_since_last_retry < backoff_time:
-                        remaining_backoff = int(backoff_time - time_since_last_retry)
-                        actual_interval = max(actual_interval, remaining_backoff)
-                        logger.debug(f"🛡️ In backoff period, waiting {remaining_backoff}s more")
-                
-                if stealth_service.should_simulate_temporary_disconnect(self.torrent.info_hash):
-                    disconnect_duration = stealth_service.get_disconnect_duration()
-                    logger.debug(f"🎭 Simulating natural disconnect for {disconnect_duration}s")
-                    actual_interval += disconnect_duration
-                
-                logger.debug(f"⏰ Natural interval: {actual_interval}s for {self.torrent.name}")
-                await asyncio.sleep(actual_interval)
-                
-                if not self.is_running:
+                try:
+                    await self._send_announce_stealth(event="started")
+                    self.consecutive_failures = 0
+                    self._in_backoff = False
                     break
-                
-                self._update_stats_with_stealth()
-                logger.debug(f"📊 Stats updated for {self.torrent.name}: uploaded={self.uploaded / (1024**2):.2f} MB, speed={self.upload_speed / 1024:.2f} KB/s")
-                
-                await self._send_announce_with_retry()
-                
+                except asyncio.CancelledError:
+                    raise
+                except TorrentRejectedError as e:
+                    self._reject(e.reason)
+                    return
+                except TrackerFailureError as e:
+                    if e.permanent:
+                        continue  # this tracker refused us: try the next one now
+                    self.consecutive_failures += 1
+                    delay = self._calculate_backoff_delay()
+                    self._record_error_silent(f"'started' announce failed: {e}")
+                    logger.warning(
+                        f"🛡️ 'started' refused by tracker for {self.torrent.name[:40]}, "
+                        f"retrying in {delay}s: {e.reason}"
+                    )
+                    self.next_announce = datetime.now(timezone.utc) + timedelta(seconds=delay)
+                    await asyncio.sleep(delay)
+                except Exception as e:
+                    self.consecutive_failures += 1
+                    delay = self._calculate_backoff_delay()
+                    self._record_error_silent(f"'started' announce failed: {e}")
+                    logger.warning(
+                        f"🛡️ 'started' announce failed for {self.torrent.name[:40]} "
+                        f"(attempt {self.consecutive_failures}), retrying in {delay}s: {e}"
+                    )
+                    self.next_announce = datetime.now(timezone.utc) + timedelta(seconds=delay)
+                    await asyncio.sleep(delay)
+
+            # BEP 3: "No completed is sent if the file was complete when started."
+            # A seed that starts with left=0 must NOT send 'completed' (the old
+            # code sent it on every start, i.e. a fake "snatch" per restart).
+            # 'completed' is only sent when a simulated download finishes - see
+            # the regular loop below.
+            self._initial_seeding = False
+
+            # 2. Regular announces
+            while self.is_running:
+                try:
+                    actual_interval = self._compute_next_interval()
+                    self.next_announce = datetime.now(timezone.utc) + timedelta(seconds=actual_interval)
+                    logger.debug(f"⏰ Natural interval: {actual_interval}s for {self.torrent.name}")
+                    await asyncio.sleep(actual_interval)
+
+                    if not self.is_running:
+                        break
+
+                    self._update_stats_with_stealth()
+                    logger.debug(f"📊 Stats updated for {self.torrent.name}: uploaded={self.uploaded / (1024**2):.2f} MB, speed={self.upload_speed / 1024:.2f} KB/s")
+
+                    # Simulated download just finished -> this announce carries 'completed'
+                    event = "completed" if self.stats.consume_completed_event() else None
+                    await self._send_announce_with_retry(event)
+                except asyncio.CancelledError:
+                    raise
+                except TorrentRejectedError as e:
+                    self._reject(e.reason)
+                    return
+                except Exception as e:
+                    logger.error(f"❌ Announce iteration error for {self.torrent.name}: {e}", exc_info=True)
+                    self._record_error(f"Announce loop error: {str(e)}")
+                    await asyncio.sleep(self.base_retry_delay)
+
         except asyncio.CancelledError:
             logger.debug(f"Announce loop cancelled for {self.torrent.name}")
         except Exception as e:
             logger.error(f"❌ Announce error for {self.torrent.name}: {e}", exc_info=True)
             self._record_error(f"Announce loop error: {str(e)}")
-    
+
+    def _bounded_natural_interval(self) -> int:
+        """Natural (per-torrent, time-of-day aware) interval, bounded by the
+        user's 'Announce Jitter (±seconds)' setting.
+
+        The setting used to be ignored (it only fed the UI estimate) while the
+        real spread was up to ±60% of the interval.  The natural variation is
+        kept when it fits in ±jitter; otherwise a value is drawn uniformly in
+        [interval - jitter, interval + jitter].
+        """
+        base = int(self.announce_interval)
+        natural = stealth_service.get_natural_announce_interval(self.torrent.info_hash, base)
+        try:
+            jitter = int(self.announce_jitter)
+        except (TypeError, ValueError):
+            return int(natural)
+        if jitter < 0:
+            return int(natural)
+        if abs(natural - base) > jitter:
+            natural = base + random.randint(-jitter, jitter)
+        return max(30, int(natural))
+
+    def _compute_next_interval(self) -> int:
+        """Compute the delay before the next regular announce.
+
+        Natural jitter + backoff + occasional disconnects, but never below the
+        tracker's 'min interval' (BEP 3).
+        """
+        actual_interval = self._bounded_natural_interval()
+
+        if self._in_backoff and self.last_retry_attempt:
+            backoff_time = self._calculate_backoff_delay()
+            time_since_last_retry = (datetime.now(timezone.utc) - self.last_retry_attempt).total_seconds()
+            if time_since_last_retry < backoff_time:
+                remaining_backoff = int(backoff_time - time_since_last_retry)
+                actual_interval = max(actual_interval, remaining_backoff)
+                logger.debug(f"🛡️ In backoff period, waiting {remaining_backoff}s more")
+
+        if stealth_service.should_simulate_temporary_disconnect(self.torrent.info_hash):
+            disconnect_duration = stealth_service.get_disconnect_duration()
+            logger.debug(f"🎭 Simulating natural disconnect for {disconnect_duration}s")
+            actual_interval += disconnect_duration
+
+        if self._tracker_min_interval > 0:
+            actual_interval = max(actual_interval, self._tracker_min_interval)
+
+        return int(actual_interval)
+
     # ================================================================
     # Stats delegation
     # ================================================================
@@ -371,6 +527,20 @@ class TrackerAnnouncer:
                 self.consecutive_failures = 0
                 self._in_backoff = False
                 return
+            except TorrentRejectedError:
+                raise  # nothing left to retry: the announce loop stops the torrent
+            except TrackerFailureError as e:
+                if e.permanent:
+                    continue  # another tracker is still available: use it right away
+                self.consecutive_failures += 1
+                if attempt == max_attempts - 1:
+                    self._record_error_silent(f"Final retry failed: {e}")
+                    break
+                backoff_delay = self._calculate_backoff_delay()
+                self._in_backoff = True
+                self.last_retry_attempt = datetime.now(timezone.utc)
+                logger.debug(f"🛡️ Tracker refused announce, retrying in {backoff_delay}s: {e.reason}")
+                await asyncio.sleep(backoff_delay)
             except Exception as e:
                 self.consecutive_failures += 1
                 error_msg = str(e)
@@ -393,11 +563,17 @@ class TrackerAnnouncer:
         if not tracker_url:
             raise Exception("No tracker available")
         
-        if is_udp_tracker(tracker_url):
-            await self._send_announce_udp(tracker_url, event)
-            return
-        
-        await self._send_announce_http(tracker_url, event)
+        try:
+            if is_udp_tracker(tracker_url):
+                await self._send_announce_udp(tracker_url, event)
+            else:
+                await self._send_announce_http(tracker_url, event)
+        except TrackerFailureError as e:
+            if e.permanent:
+                self.tracker_mgr.mark_tracker_rejected(tracker_url)
+                if self.tracker_mgr.all_trackers_rejected():
+                    raise TorrentRejectedError(e.reason) from e
+            raise
     
     async def _send_announce_http(self, tracker_url: str, event: Optional[str] = None):
         """Send HTTP announce using client's JOAL-compatible format."""
@@ -406,8 +582,8 @@ class TrackerAnnouncer:
             info_hash=self.torrent.info_hash_bytes,
             peer_id=self.peer_id,
             port=self.port,
-            uploaded=self.uploaded,
-            downloaded=self.downloaded,
+            uploaded=self.session_uploaded,
+            downloaded=self.session_downloaded,
             left=self.left,
             event=event
         )
@@ -415,9 +591,9 @@ class TrackerAnnouncer:
         # Include tracker_id if we received one (BEP 3 compliance)
         if hasattr(self, '_tracker_id') and self._tracker_id:
             tid = self._tracker_id
-            if isinstance(tid, bytes):
-                tid = tid.decode('utf-8', errors='ignore')
-            url += f"&trackerid={tid}"
+            if isinstance(tid, str):
+                tid = tid.encode('utf-8')
+            url += f"&trackerid={quote_from_bytes(tid, safe='')}"
         
         headers = self.client.get_request_headers()
         timeout = httpx.Timeout(30.0)
@@ -428,27 +604,43 @@ class TrackerAnnouncer:
             proxy_url = f"http://{settings.HTTP_PROXY_HOST}:{settings.HTTP_PROXY_PORT}"
             proxy_kwargs['proxy'] = proxy_url
         
-        async with httpx.AsyncClient(timeout=timeout, headers=headers, verify=False, follow_redirects=True, max_redirects=5, **proxy_kwargs) as http_client:
+        async with httpx.AsyncClient(timeout=timeout, headers=headers, verify=settings.TRACKER_VERIFY_SSL,
+                                     follow_redirects=True, max_redirects=5, **proxy_kwargs) as http_client:
             logger.debug(f"🎭 HTTP Announce to {tracker_url}")
             logger.debug(f"   Client: {self.client.name} {self.client.version}")
-            
+
             start_time = time.time()
-            response = await http_client.get(url)
+            try:
+                response = await http_client.get(url)
+            except httpx.ConnectError as e:
+                self._mark_tracker_failure(tracker_url)
+                if "CERTIFICATE_VERIFY_FAILED" in str(e):
+                    raise Exception(
+                        "TLS certificate verification failed for the tracker "
+                        "(set TRACKER_VERIFY_SSL=false only if this tracker uses a self-signed certificate)"
+                    ) from e
+                raise
+            except httpx.HTTPError:
+                self._mark_tracker_failure(tracker_url)
+                raise
             response_time = (time.time() - start_time) * 1000
             
             if response.status_code != 200:
                 self._mark_tracker_failure(tracker_url)
                 raise Exception(f"HTTP {response.status_code}: {response.text[:200]}")
             
-            self._parse_announce_response(response.content)
+            try:
+                self._parse_announce_response(response.content)
+            except TrackerFailureError:
+                self._mark_tracker_failure(tracker_url)
+                raise
             self._mark_tracker_success(tracker_url)
             
             self.last_announce = datetime.now(timezone.utc)
-            jitter = random.randint(-self.announce_jitter, self.announce_jitter)
-            self.next_announce = self.last_announce + timedelta(
-                seconds=self.announce_interval + jitter
-            )
-            
+            # Provisional estimate; the announce loop sets the exact value
+            # right before it sleeps.
+            self.next_announce = self.last_announce + timedelta(seconds=self.announce_interval)
+
             logger.info(f"✅ HTTP Announce OK ({response_time:.0f}ms) {self.torrent.name[:40]} — {self.seeders}S/{self.leechers}L | {self.uploaded / (1024**2):.1f}MB up")
             
             history_service.add_entry(
@@ -478,8 +670,8 @@ class TrackerAnnouncer:
                 info_hash=self.torrent.info_hash_bytes,
                 peer_id=self.peer_id,
                 port=self.port,
-                uploaded=self.uploaded,
-                downloaded=self.downloaded,
+                uploaded=self.session_uploaded,
+                downloaded=self.session_downloaded,
                 left=self.left,
                 event=event,
                 key=key_int,
@@ -497,11 +689,10 @@ class TrackerAnnouncer:
             self._mark_tracker_success(tracker_url)
             
             self.last_announce = datetime.now(timezone.utc)
-            jitter = random.randint(-self.announce_jitter, self.announce_jitter)
-            self.next_announce = self.last_announce + timedelta(
-                seconds=self.announce_interval + jitter
-            )
-            
+            # Provisional estimate; the announce loop sets the exact value
+            # right before it sleeps.
+            self.next_announce = self.last_announce + timedelta(seconds=self.announce_interval)
+
             logger.info(f"✅ UDP Announce OK ({response_time:.0f}ms) {self.torrent.name[:40]} — {self.seeders}S/{self.leechers}L | {self.uploaded / (1024**2):.1f}MB up")
             
             history_service.add_entry(
@@ -520,6 +711,11 @@ class TrackerAnnouncer:
         except UDPTrackerError as e:
             self._mark_tracker_failure(tracker_url)
             logger.warning(f"❌ UDP Announce failed: {e}")
+            message = str(e)
+            if message.startswith("Tracker error:"):
+                reason = message[len("Tracker error:"):].strip()
+                self._record_error(f"Tracker failure: {reason}")
+                raise TrackerFailureError(reason) from e
             raise Exception(f"UDP error: {e}")
         except Exception as e:
             self._mark_tracker_failure(tracker_url)
@@ -551,7 +747,8 @@ class TrackerAnnouncer:
                     reason = reason.decode('utf-8', errors='ignore')
                 logger.warning(f"⚠️ Tracker returned failure: {reason}")
                 self._record_error(f"Tracker failure: {reason}")
-                return
+                # The announce was NOT accepted: never count it as a success
+                raise TrackerFailureError(str(reason))
             
             if b'warning message' in response:
                 warning = response[b'warning message']
@@ -567,7 +764,8 @@ class TrackerAnnouncer:
                 min_interval = response[b'min interval']
                 if isinstance(min_interval, int) and min_interval > 0:
                     tracker_min_interval = min_interval
-            
+                    self._tracker_min_interval = min_interval
+
             if b'interval' in response:
                 interval = response[b'interval']
                 if isinstance(interval, int) and interval > 0:
@@ -618,6 +816,8 @@ class TrackerAnnouncer:
             if b'tracker id' in response:
                 self._tracker_id = response[b'tracker id']
                 
+        except TrackerFailureError:
+            raise
         except Exception as e:
             logger.error(f"⚠️  Failed to parse announce response: {e}", exc_info=True)
     
@@ -625,6 +825,32 @@ class TrackerAnnouncer:
     # Error handling / retry
     # ================================================================
     
+    def _reject(self, reason: str):
+        """Every tracker permanently refused the torrent: stop announcing.
+
+        SeederService picks this up (monitor loop): keeps the torrent paused,
+        notifies the user.  Resuming the torrent clears the rejection.
+        """
+        self.rejected_reason = reason
+        self._record_error(f"Rejected by tracker: {reason}")
+        if self._seeding_started_at:
+            elapsed = (datetime.now(timezone.utc) - self._seeding_started_at).total_seconds()
+            self.seeding_time += int(elapsed)
+            self._seeding_started_at = None
+        self.is_running = False
+        self.upload_speed = 0
+        logger.warning(f"⛔ {self.torrent.name[:50]}: rejected by tracker ({reason}) - announcing stopped")
+        history_service.add_entry(
+            EventType.ANNOUNCE_FAILED,
+            f"⛔ Torrent rejected by tracker: {self.torrent.name}",
+            {"reason": reason, "tracker": self.torrent.primary_tracker, "action": "paused"},
+        )
+
+    def clear_rejection(self):
+        """Forget a previous rejection (user resumed the torrent)."""
+        self.rejected_reason = None
+        self.tracker_mgr.reset_rejections()
+
     def _record_error(self, error_message: str):
         """Record error for display in UI."""
         self.last_error = error_message
@@ -675,6 +901,7 @@ class TrackerAnnouncer:
             "lastError": self.last_error,
             "errorCount": self.error_count,
             "lastErrorTime": self.last_error_time,
+            "rejectedReason": self.rejected_reason,
             "isHealthy": self.last_error is None or (
                 self.last_announce is not None and 
                 self.last_error_time is not None and 
@@ -684,7 +911,9 @@ class TrackerAnnouncer:
         
         if stealth_stats:
             base_stats["stealth"] = {
-                "client": stealth_stats.get("client", "Unknown"),
+                # The client actually emulated on the wire (the stealth profile's
+                # own random "client" was never used for requests - misleading)
+                "client": self._emulated_client_label() or stealth_stats.get("client", "Unknown"),
                 "sessionDuration": stealth_stats.get("session_duration_hours", 0),
                 "activityPattern": stealth_stats.get("activity_pattern", "steady"),
                 "connectionStability": stealth_stats.get("connection_stability", 95.0),
@@ -696,12 +925,22 @@ class TrackerAnnouncer:
         
         return base_stats
     
+    def _emulated_client_label(self) -> Optional[str]:
+        """'<name> <version>' of the client really emulated on the wire."""
+        name = getattr(self.client, "name", None)
+        version = getattr(self.client, "version", None)
+        if isinstance(name, str) and name:
+            return f"{name} {version}" if isinstance(version, str) and version else name
+        return None
+    
     def get_status_info(self) -> Dict[str, Any]:
         """Get detailed status information for UI display."""
         status_info = self.stats.get_status_info()
         
-        # Override current_speed with actual client-aware speed
-        current_speed = self._get_activity_based_upload_speed()
+        # Report the speed actually used by the simulation.  Do NOT recompute it
+        # here: get_activity_based_upload_speed() mutates the autocorrelation
+        # state, so every UI poll used to perturb the simulated speed curve.
+        current_speed = int(self.upload_speed) if self.is_running else 0
         status_info['current_speed'] = current_speed
         status_info['speed_formatted'] = f"{current_speed // 1024} kB/s" if current_speed >= 1024 else f"{current_speed} B/s"
         

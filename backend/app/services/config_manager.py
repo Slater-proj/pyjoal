@@ -107,9 +107,58 @@ class ConfigManager:
             if not isinstance(duration, (int, float)) or (duration < -1 and duration != -1):
                 raise ValueError(f"Invalid seedingDurationLimit: {duration} (must be -1 or >= 0)")
 
+        # Cross-field checks on the merged result (min must not exceed max)
+        merged = {**self._config, **new_config}
+        for lo, hi in (
+            ("minUploadRate", "maxUploadRate"),
+            ("pauseDurationMin", "pauseDurationMax"),
+            ("reducedSpeedDurationMin", "reducedSpeedDurationMax"),
+            ("stateChangeIntervalMin", "stateChangeIntervalMax"),
+        ):
+            a, b = merged.get(lo), merged.get(hi)
+            if isinstance(a, (int, float)) and isinstance(b, (int, float)) and a > b:
+                raise ValueError(f"Invalid {lo}/{hi}: {a} > {b} (min must be <= max)")
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def build_discretion_config(config: Dict) -> Dict:
+        """Map the persisted config (camelCase) to the per-torrent discretion
+        config consumed by TrackerAnnouncer / StatsSimulator.
+
+        Single source of truth: this mapping used to be copy-pasted in
+        TorrentManager.add_torrent and SeederService._propagate_config_to_announcers.
+        """
+        return {
+            "announce_interval": config.get("announceInterval", settings.ANNOUNCE_INTERVAL),
+            "announce_jitter": config.get("announceJitter", settings.ANNOUNCE_JITTER),
+            "min_stats_update_interval": config.get("minStatsUpdateInterval", settings.MIN_STATS_UPDATE_INTERVAL),
+            "enable_speed_variation": config.get("enableSpeedVariation", settings.ENABLE_SPEED_VARIATION),
+            "speed_variation_percent": config.get("speedVariationPercent", settings.SPEED_VARIATION_PERCENT),
+            # Torrent Behavior Mode
+            "seedingOnlyMode": config.get("seedingOnlyMode", settings.SEEDING_ONLY_MODE),
+            # Realistic Behavior Timing
+            "pauseDurationMin": config.get("pauseDurationMin", settings.PAUSE_DURATION_MIN),
+            "pauseDurationMax": config.get("pauseDurationMax", settings.PAUSE_DURATION_MAX),
+            "reducedSpeedDurationMin": config.get("reducedSpeedDurationMin", settings.REDUCED_SPEED_DURATION_MIN),
+            "reducedSpeedDurationMax": config.get("reducedSpeedDurationMax", settings.REDUCED_SPEED_DURATION_MAX),
+            "stateChangeIntervalMin": config.get("stateChangeIntervalMin", settings.STATE_CHANGE_INTERVAL_MIN),
+            "stateChangeIntervalMax": config.get("stateChangeIntervalMax", settings.STATE_CHANGE_INTERVAL_MAX),
+            "reducedSpeedKbps": config.get("reducedSpeedKbps", settings.REDUCED_SPEED_KBPS),
+            # Peer speed tiers
+            "peer_speed_tiers_enabled": config.get("peerSpeedTiersEnabled", settings.PEER_SPEED_TIERS_ENABLED),
+            "peer_tier1_max_peers": config.get("peerTier1MaxPeers", settings.PEER_TIER1_MAX_PEERS),
+            "peer_tier1_speed_percent": config.get("peerTier1SpeedPercent", settings.PEER_TIER1_SPEED_PERCENT),
+            "peer_tier2_max_peers": config.get("peerTier2MaxPeers", settings.PEER_TIER2_MAX_PEERS),
+            "peer_tier2_speed_percent": config.get("peerTier2SpeedPercent", settings.PEER_TIER2_SPEED_PERCENT),
+            "peer_tier3_max_peers": config.get("peerTier3MaxPeers", settings.PEER_TIER3_MAX_PEERS),
+            "peer_tier3_speed_percent": config.get("peerTier3SpeedPercent", settings.PEER_TIER3_SPEED_PERCENT),
+            "peer_tier4_max_peers": config.get("peerTier4MaxPeers", settings.PEER_TIER4_MAX_PEERS),
+            "peer_tier4_speed_percent": config.get("peerTier4SpeedPercent", settings.PEER_TIER4_SPEED_PERCENT),
+            "peer_tier5_speed_percent": config.get("peerTier5SpeedPercent", settings.PEER_TIER5_SPEED_PERCENT),
+        }
 
     @staticmethod
     def _default_config() -> Dict:

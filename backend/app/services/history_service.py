@@ -50,7 +50,10 @@ class HistoryEntry:
 
 class HistoryService:
     """Service to manage history"""
-    
+
+    # 30 days of hourly buckets
+    MAX_HOURLY_BUCKETS = 24 * 30
+
     def __init__(self, max_entries: int = 1000):
         """Initialize history service"""
         self.max_entries = max_entries
@@ -116,6 +119,12 @@ class HistoryService:
                 self.stats_by_hour[hour_key]["uploaded"] += data["uploaded"]
         elif event_type == EventType.ANNOUNCE_FAILED:
             self.stats_by_hour[hour_key]["failed_announces"] += 1
+
+        # Keep hourly stats bounded (they were never pruned: history.json
+        # grew forever, and is fully rewritten every 10 entries)
+        if len(self.stats_by_hour) > self.MAX_HOURLY_BUCKETS:
+            for old_key in sorted(self.stats_by_hour)[:-self.MAX_HOURLY_BUCKETS]:
+                del self.stats_by_hour[old_key]
 
         # Auto-save every 10 entries
         self._save_counter += 1

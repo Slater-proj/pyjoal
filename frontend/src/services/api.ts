@@ -86,6 +86,9 @@ export interface Torrent {
   seedingTime: number;
   isRunning?: boolean;
   status?: TorrentStatus;
+  lastError?: string | null;
+  isHealthy?: boolean;
+  rejectedReason?: string | null;
 }
 
 export interface Stats {

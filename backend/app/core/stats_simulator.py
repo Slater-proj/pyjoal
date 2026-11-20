@@ -14,6 +14,15 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _randint_between(a, b) -> int:
+    """random.randint that tolerates swapped bounds (min > max in an old
+    config.json used to raise ValueError and break the torrent list)."""
+    a, b = int(a), int(b)
+    if a > b:
+        a, b = b, a
+    return random.randint(a, b)
+
+
 class StatsSimulator:
     """Simulates realistic upload/download statistics for a torrent.
     
@@ -79,6 +88,9 @@ class StatsSimulator:
         # Download simulation
         self._is_downloading: bool = False
         self._initial_seeding: bool = False
+        # Set when a simulated download completes; consumed by the announcer
+        # to send the BEP 3 'completed' event exactly once.
+        self._completed_pending: bool = False
         self._last_download_time: Optional[float] = None
         self.download_speed: float = 0
         self._seeding_start_delay_min: Optional[int] = None  # cached for determinism
@@ -89,7 +101,11 @@ class StatsSimulator:
         
         # Speed smoothing: remember previous speed for autocorrelation
         self._previous_speed: Optional[int] = None
-        
+
+        # Sub-piece remainder carried between display ticks so that
+        # piece-aligned accounting does not inflate low speeds.
+        self._upload_carry: int = 0
+
         # Pause / speed tier state
         self._is_in_fake_pause: bool = False
         self._pause_until: Optional[datetime] = None
@@ -162,7 +178,7 @@ class StatsSimulator:
         self._peak_hours = self._determine_user_peak_hours()
         self._user_activity_pattern = self._generate_user_activity_pattern()
         
-        hours_until_first_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
+        hours_until_first_change = _randint_between(self.state_change_interval_min, self.state_change_interval_max)
         self._next_pause_time = datetime.now(timezone.utc) + timedelta(hours=hours_until_first_change)
         self._pause_duration = 0
         self._pause_until = None
@@ -192,7 +208,7 @@ class StatsSimulator:
         self._peak_hours = self._determine_user_peak_hours()
         self._user_activity_pattern = self._generate_user_activity_pattern()
         
-        hours_until_first_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
+        hours_until_first_change = _randint_between(self.state_change_interval_min, self.state_change_interval_max)
         self._next_pause_time = datetime.now(timezone.utc) + timedelta(hours=hours_until_first_change)
         self._pause_duration = 0
         self._pause_until = None
@@ -305,7 +321,16 @@ class StatsSimulator:
         
         time_interval = current_time - self._display_update_time
         self._display_update_time = current_time
-        
+
+        # Download simulation: progress continuously (every display tick).
+        # It used to advance only at announce time (<= 10 s of transfer per
+        # ~30 min) while upload kept accumulating at full seeding speed.
+        if not self.seeding_only_mode and self.is_in_downloading_phase():
+            self._update_download_stats(client)
+            self._last_upload_time = current_time
+            self._last_stats_update = current_time
+            return
+
         current_speed = self.get_activity_based_upload_speed(client, seeders, leechers)
         
         if self.enable_speed_variation and current_speed > 0:
@@ -315,11 +340,7 @@ class StatsSimulator:
         # Accumulate uploaded bytes in the display path (every 3s) so
         # the UI and stats update continuously instead of only at announce time.
         if current_speed > 0 and time_interval > 0:
-            capped_interval = min(time_interval, 10)
-            raw_delta = int(current_speed * capped_interval)
-            piece_size = 16384  # 16 KiB standard sub-piece
-            upload_delta = max(piece_size, (raw_delta // piece_size) * piece_size)
-            self.uploaded += upload_delta
+            self.uploaded += self._piece_aligned_delta(current_speed, time_interval)
 
         self.upload_speed = float(current_speed)
         self._last_upload_time = current_time
@@ -330,6 +351,21 @@ class StatsSimulator:
         logger.debug(f"   Total uploaded: {self.uploaded / (1024**2):.2f} MB")
         logger.debug(f"   Ratio: {self.uploaded / self.torrent_size if self.torrent_size > 0 else 0:.3f}")
     
+    def _piece_aligned_delta(self, speed: float, time_interval: float) -> int:
+        """Bytes to add for ``speed`` over ``time_interval``, in 16 KiB blocks.
+
+        Real clients transfer whole 16 KiB blocks.  The remainder is carried to
+        the next tick instead of being rounded UP to one block per tick - the
+        old ``max(16 KiB, ...)`` floor turned a 1 KB/s background speed into
+        ~5.3 KB/s (16 KiB every 3 s) and made low-speed settings meaningless.
+        """
+        piece_size = 16384  # 16 KiB standard block
+        capped_interval = min(time_interval, 10)
+        total = self._upload_carry + int(speed * capped_interval)
+        delta = (total // piece_size) * piece_size
+        self._upload_carry = total - delta
+        return delta
+
     def update_stats_with_stealth(self, client, stealth_service, torrent_info_hash: str, is_running: bool,
                                   seeders: int = -1, leechers: int = -1):
         """Update stats with stealth service natural variations.
@@ -354,9 +390,13 @@ class StatsSimulator:
         self._last_stats_update = current_time
         
         if not self.seeding_only_mode and self.is_in_downloading_phase():
-            self._update_download_stats(client)
+            # Progress is driven by the display path (every 3 s); advancing it
+            # here as well would double-count.  Only refresh if the display
+            # path has never run (standalone use).
+            if self._display_update_time is None:
+                self._update_download_stats(client)
             return
-            
+
         base_speed = self.get_activity_based_upload_speed(client, seeders, leechers)
         
         current_speed = stealth_service.get_natural_speed_variation(
@@ -398,8 +438,7 @@ class StatsSimulator:
         self.left = max(0, self.torrent_size - self.downloaded)
         
         upload_speed = max(int(download_speed * 0.1), 1024)
-        upload_delta = int(upload_speed * min(time_interval, 10))
-        self.uploaded += upload_delta
+        self.uploaded += self._piece_aligned_delta(upload_speed, time_interval)
         
         self.download_speed = float(download_speed)
         self.upload_speed = float(upload_speed)
@@ -414,9 +453,16 @@ class StatsSimulator:
         if hasattr(client, 'get_download_rate_range'):
             min_dl, max_dl = client.get_download_rate_range()
         
-        base_speed = random.randint(min_dl, max_dl)
+        base_speed = random.randint(min(min_dl, max_dl), max(min_dl, max_dl))
+
+        # Pace the download so it ends around the planned completion time
+        # (otherwise 'left' jumped from e.g. 90% to 0 at the deadline).
+        if self._download_completion_time is not None and self.left > 0:
+            remaining_s = (self._download_completion_time - datetime.now(timezone.utc)).total_seconds()
+            needed = self.left / max(remaining_s, 60)
+            base_speed = int(needed * random.uniform(0.85, 1.15))
         
-        hour = datetime.now(timezone.utc).hour
+        hour = datetime.now().hour  # local time (TZ): peak hours describe the user's day
         start_h, end_h = self._peak_hours
         if start_h <= end_h:
             in_peak = start_h <= hour <= end_h
@@ -597,36 +643,36 @@ class StatsSimulator:
                 self._is_in_fake_pause = False
                 self._pause_until = None
                 self._current_speed_tier = random.choice(['high', 'medium'])
-                hours_until_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
+                hours_until_change = _randint_between(self.state_change_interval_min, self.state_change_interval_max)
                 self._next_pause_time = now + timedelta(hours=hours_until_change)
                 logger.debug(f"▶️ {self.torrent_name[:25]} resuming from pause → {self._current_speed_tier}, next state change in {hours_until_change}h")
         else:
             if self._next_pause_time and now >= self._next_pause_time:
                 roll = random.random()
                 if roll < 0.2:
-                    pause_minutes = random.randint(self.pause_duration_min, self.pause_duration_max)
+                    pause_minutes = _randint_between(self.pause_duration_min, self.pause_duration_max)
                     self._is_in_fake_pause = True
                     self._pause_until = now + timedelta(minutes=pause_minutes)
                     self._current_speed_tier = 'paused'
                     logger.debug(f"⏸️ {self.torrent_name[:25]} entering pause for {pause_minutes}min ({pause_minutes/60:.1f}h)")
                 elif roll < 0.6:
-                    reduced_minutes = random.randint(self.reduced_speed_duration_min, self.reduced_speed_duration_max)
+                    reduced_minutes = _randint_between(self.reduced_speed_duration_min, self.reduced_speed_duration_max)
                     self._current_speed_tier = 'low'
                     self._next_speed_change = now + timedelta(minutes=reduced_minutes)
                     logger.debug(f"🔽 {self.torrent_name[:25]} switching to reduced speed for {reduced_minutes}min ({reduced_minutes/60:.1f}h)")
                 else:
                     self._current_speed_tier = random.choice(['high', 'medium'])
-                    hours_until_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
+                    hours_until_change = _randint_between(self.state_change_interval_min, self.state_change_interval_max)
                     self._next_speed_change = now + timedelta(hours=hours_until_change)
                     logger.debug(f"🔼 {self.torrent_name[:25]} staying at {self._current_speed_tier} speed for {hours_until_change}h")
                 
-                hours_until_next = random.randint(self.state_change_interval_min, self.state_change_interval_max)
+                hours_until_next = _randint_between(self.state_change_interval_min, self.state_change_interval_max)
                 self._next_pause_time = now + timedelta(hours=hours_until_next)
         
         if self._next_speed_change and not self._is_in_fake_pause:
             if now >= self._next_speed_change and self._current_speed_tier == 'low':
                 self._current_speed_tier = random.choice(['high', 'medium'])
-                hours_until_change = random.randint(self.state_change_interval_min, self.state_change_interval_max)
+                hours_until_change = _randint_between(self.state_change_interval_min, self.state_change_interval_max)
                 self._next_speed_change = now + timedelta(hours=hours_until_change)
                 logger.debug(f"🔼 {self.torrent_name[:25]} reduced period ended, back to {self._current_speed_tier}")
     
@@ -639,17 +685,27 @@ class StatsSimulator:
             # Cache the delay so repeated calls are deterministic
             if self._seeding_start_delay_min is None:
                 self._seeding_start_delay_min = random.randint(5, 30)
-            should_start_seeding = datetime.now(timezone.utc) > (
+            # Done when every byte is downloaded, or (safety net) once the
+            # planned completion time + delay has passed.
+            should_start_seeding = self.left <= 0 or datetime.now(timezone.utc) > (
                 self._download_completion_time + timedelta(minutes=self._seeding_start_delay_min)
             )
             
             if should_start_seeding:
                 self._is_downloading = False
                 self.left = 0
+                self.downloaded = self.torrent_size
+                self._completed_pending = True
                 logger.debug(f"🔄 {self.torrent_name[:30]} transitioned from downloading to seeding")
                 
         return self._is_downloading
     
+    def consume_completed_event(self) -> bool:
+        """Return True once after a simulated download completed (then reset)."""
+        pending = getattr(self, "_completed_pending", False)
+        self._completed_pending = False
+        return pending
+
     def simulate_occasional_network_errors(self) -> bool:
         """Simulate realistic network errors (1-3% chance). Returns True if error simulated."""
         error_chance = random.uniform(0.01, 0.03)
@@ -690,7 +746,7 @@ class StatsSimulator:
     
     def is_user_active_hour(self) -> bool:
         """Check if current time is within user's peak activity hours."""
-        current_hour = datetime.now(timezone.utc).hour
+        current_hour = datetime.now().hour  # local time (TZ)
         start_hour, end_hour = self._peak_hours
         
         is_active = False

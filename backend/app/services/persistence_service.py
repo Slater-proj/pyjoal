@@ -93,9 +93,13 @@ class PersistenceService:
 
     async def start_autosave(self):
         """Start periodic auto-save background task."""
-        # Cancel any stale task from a previous event loop
+        # Cancel any stale task (possibly bound to a previous, closed event loop)
         if self._save_task is not None:
-            self._save_task.cancel()
+            try:
+                if not self._save_task.done():
+                    self._save_task.cancel()
+            except RuntimeError:
+                pass  # its loop is closed: nothing left to cancel
             self._save_task = None
         try:
             self._save_task = asyncio.create_task(self._autosave_loop())

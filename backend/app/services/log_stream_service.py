@@ -50,15 +50,19 @@ class LogHandler(logging.Handler):
         """Get recent logs"""
         return self.recent_logs[-count:]
     
-    def get_new_logs(self, timeout: float = 0.1) -> List[Dict]:
-        """Get new logs from queue (non-blocking)"""
+    def get_new_logs(self, timeout: float = 0.1, max_batch: int = 50) -> List[Dict]:
+        """Get new logs from queue (truly non-blocking).
+
+        This is called from the asyncio event loop, so it must NEVER block:
+        a blocking ``queue.get(timeout=...)`` here used to freeze the whole
+        event loop (HTTP, WebSocket, announces) for up to ``timeout`` seconds
+        on every iteration.  ``timeout`` is kept for backward compatibility
+        but ignored — the caller is responsible for sleeping asynchronously.
+        """
         logs = []
         try:
-            while True:
-                log = self.log_queue.get(timeout=timeout)
-                logs.append(log)
-                if len(logs) >= 10:  # Batch up to 10 logs
-                    break
+            while len(logs) < max_batch:
+                logs.append(self.log_queue.get_nowait())
         except queue.Empty:
             pass
         return logs

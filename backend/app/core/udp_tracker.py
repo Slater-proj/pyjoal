@@ -184,7 +184,17 @@ class UDPTracker:
                     logger.debug(f"UDP timeout (attempt {attempt + 1}/{self.MAX_RETRIES})")
                     last_error = "Timeout"
                     continue
-                    
+
+            except UDPTrackerError as e:
+                if str(e).startswith("Tracker error:"):
+                    # Explicit refusal from the tracker: retrying is pointless
+                    # (and hammering a tracker that said no is a bad idea).
+                    raise
+                last_error = str(e)
+                logger.debug(f"UDP error (attempt {attempt + 1}): {e}")
+                if attempt < self.MAX_RETRIES - 1:
+                    await asyncio.sleep(1)
+                continue
             except Exception as e:
                 last_error = str(e)
                 logger.debug(f"UDP error (attempt {attempt + 1}): {e}")

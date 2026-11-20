@@ -27,6 +27,8 @@
 
 - **Upload ratio** - Configurable target with automatic archiving
 - **Time limit** - Maximum seed duration per torrent
+- **Zero-peer cleanup** - With `keepTorrentWithZeroLeechers: false`, torrents with **no peers at all** (0 seeders and 0 leechers) for 5 min after an announce are archived
+- **Tracker rejections** - Torrents refused by their tracker (unregistered, invalid passkey...) are paused and flagged; resume to retry
 - **Proxy support** - Built-in HTTP proxy
 - **Advanced stealth** - Jitter, intervals, configurable variations
 - **📨 Notifications** - Gotify + webhook with per-event filtering
@@ -78,7 +80,10 @@ docker run -d --name pyjoal -p 8080:8080 \
 | `MIN_UPLOAD_RATE` | 30 | Min upload speed (KB/s) |
 | `MAX_UPLOAD_RATE` | 160 | Max upload speed (KB/s) |
 | `SIMULTANEOUS_SEED` | 20 | Max simultaneous torrents |
-| `TZ` | Europe/Paris | Timezone for logs |
+| `TZ` | Europe/Paris | Timezone for logs and user activity hours |
+| `HTTP_PROXY_HOST` / `HTTP_PROXY_PORT` | - | HTTP proxy for tracker requests (HTTP(S) trackers are preferred, UDP cannot be proxied) |
+| `TRACKER_VERIFY_SSL` | true | Verify HTTPS tracker certificates (false only for self-signed trackers) |
+| `STOP_ANNOUNCE_TIMEOUT` | 8 | Max seconds to wait for each `stopped` announce on stop/shutdown |
 
 ### JSON Configuration (config/config.json)
 

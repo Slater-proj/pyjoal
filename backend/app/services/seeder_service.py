@@ -56,6 +56,9 @@ class SeederService:
         # Manually paused torrents (not auto-resumed by seed limit)
         self._paused_torrents: set = set()
 
+        # Torrents refused by their tracker(s) already handled (notified)
+        self._rejected_handled: set = set()
+
         # File watcher for auto-reload
         self.file_watcher = None
 
@@ -215,8 +218,7 @@ class SeederService:
 
             if "client" in new_config and new_config["client"] != self.client.client_file:
                 try:
-                    self.client = BitTorrentClient(new_config["client"])
-                    logger.info(f"Switched to client: {self.client.name} {self.client.version}")
+                    await self._switch_client(new_config["client"])
                 except Exception as e:
                     logger.error(f"Failed to switch client: {e}")
 
@@ -225,34 +227,36 @@ class SeederService:
         except Exception as settings_error:
             logger.error(f"Failed to update settings: {settings_error}")
 
+    async def _switch_client(self, client_file: str):
+        """Switch the emulated client for ALL torrents, not only new ones.
+
+        Previously only ``self.client`` was replaced: already-loaded torrents
+        kept announcing with the old peer_id / User-Agent / port while new
+        torrents used the new client, i.e. two different clients announcing
+        from the same IP.  Running torrents are stopped (old identity), then
+        restarted with the new identity - exactly what a real user switching
+        client does.
+        """
+        new_client = BitTorrentClient(client_file)
+        self.client = new_client
+        switched = 0
+        for announcer in list(self.announcers.values()):
+            was_running = announcer.is_running
+            if was_running:
+                await announcer.stop()
+            announcer.client = new_client
+            announcer.tracker_mgr.client = new_client
+            announcer.peer_id = new_client.generate_peer_id(announcer.torrent.info_hash)
+            announcer.port = new_client.get_session_port()
+            if was_running:
+                await announcer.start()
+            switched += 1
+        logger.info(f"Switched to client: {new_client.name} {new_client.version} ({switched} torrent(s) updated)")
+
     def _propagate_config_to_announcers(self):
         """Push current config into every running announcer's StatsSimulator."""
         config = self._config
-        discretion_config = {
-            "announce_interval": config.get("announceInterval", settings.ANNOUNCE_INTERVAL),
-            "announce_jitter": config.get("announceJitter", settings.ANNOUNCE_JITTER),
-            "min_stats_update_interval": config.get("minStatsUpdateInterval", settings.MIN_STATS_UPDATE_INTERVAL),
-            "enable_speed_variation": config.get("enableSpeedVariation", settings.ENABLE_SPEED_VARIATION),
-            "speed_variation_percent": config.get("speedVariationPercent", settings.SPEED_VARIATION_PERCENT),
-            "seedingOnlyMode": config.get("seedingOnlyMode", settings.SEEDING_ONLY_MODE),
-            "pauseDurationMin": config.get("pauseDurationMin", settings.PAUSE_DURATION_MIN),
-            "pauseDurationMax": config.get("pauseDurationMax", settings.PAUSE_DURATION_MAX),
-            "reducedSpeedDurationMin": config.get("reducedSpeedDurationMin", settings.REDUCED_SPEED_DURATION_MIN),
-            "reducedSpeedDurationMax": config.get("reducedSpeedDurationMax", settings.REDUCED_SPEED_DURATION_MAX),
-            "stateChangeIntervalMin": config.get("stateChangeIntervalMin", settings.STATE_CHANGE_INTERVAL_MIN),
-            "stateChangeIntervalMax": config.get("stateChangeIntervalMax", settings.STATE_CHANGE_INTERVAL_MAX),
-            "reducedSpeedKbps": config.get("reducedSpeedKbps", settings.REDUCED_SPEED_KBPS),
-            "peer_speed_tiers_enabled": config.get("peerSpeedTiersEnabled", settings.PEER_SPEED_TIERS_ENABLED),
-            "peer_tier1_max_peers": config.get("peerTier1MaxPeers", settings.PEER_TIER1_MAX_PEERS),
-            "peer_tier1_speed_percent": config.get("peerTier1SpeedPercent", settings.PEER_TIER1_SPEED_PERCENT),
-            "peer_tier2_max_peers": config.get("peerTier2MaxPeers", settings.PEER_TIER2_MAX_PEERS),
-            "peer_tier2_speed_percent": config.get("peerTier2SpeedPercent", settings.PEER_TIER2_SPEED_PERCENT),
-            "peer_tier3_max_peers": config.get("peerTier3MaxPeers", settings.PEER_TIER3_MAX_PEERS),
-            "peer_tier3_speed_percent": config.get("peerTier3SpeedPercent", settings.PEER_TIER3_SPEED_PERCENT),
-            "peer_tier4_max_peers": config.get("peerTier4MaxPeers", settings.PEER_TIER4_MAX_PEERS),
-            "peer_tier4_speed_percent": config.get("peerTier4SpeedPercent", settings.PEER_TIER4_SPEED_PERCENT),
-            "peer_tier5_speed_percent": config.get("peerTier5SpeedPercent", settings.PEER_TIER5_SPEED_PERCENT),
-        }
+        discretion_config = ConfigManager.build_discretion_config(config)
         count = 0
         for announcer in self.announcers.values():
             announcer.announce_interval = discretion_config["announce_interval"]
@@ -338,6 +342,11 @@ class SeederService:
         if not self.is_running:
             raise ValueError("Seeding service is not running")
         self._paused_torrents.discard(info_hash)
+        # An explicit resume retries trackers that rejected the torrent
+        # (e.g. the passkey or the torrent was fixed on the tracker side)
+        if getattr(announcer, "rejected_reason", None):
+            announcer.clear_rejection()
+        self._rejected_handled.discard(info_hash)
         await announcer.start()
         logger.info(f"▶️ Torrent resumed: {announcer.torrent.name}")
         await websocket_manager.broadcast(
@@ -368,7 +377,12 @@ class SeederService:
         )
 
         simultaneous_seed = self._config.get("simultaneousSeed", settings.SIMULTANEOUS_SEED)
-        announcers_to_start = list(self.announcers.values())[:simultaneous_seed]
+        # Respect torrents paused by the user (or refused by their tracker):
+        # a global Stop/Start used to silently resume them.
+        paused = getattr(self, "_paused_torrents", set())
+        announcers_to_start = [
+            ann for ih, ann in self.announcers.items() if ih not in paused
+        ][:simultaneous_seed]
 
         logger.info(f"   Starting {len(announcers_to_start)}/{len(self.announcers)} torrent(s)")
         logger.info(f"   Simultaneous seed limit: {simultaneous_seed}")
@@ -380,7 +394,8 @@ class SeederService:
         self._monitor_task = asyncio.create_task(self._monitor_loop())
         logger.info("   Monitor task started (updates every 3s)")
 
-        if not hasattr(self, "_resource_optimizer_task"):
+        optimizer_task = getattr(self, "_resource_optimizer_task", None)
+        if optimizer_task is None or optimizer_task.done():
             self._resource_optimizer_task = asyncio.create_task(resource_optimizer.periodic_optimization())
             logger.info("   Resource optimizer started")
 
@@ -411,21 +426,24 @@ class SeederService:
             except asyncio.CancelledError:
                 pass
 
-        if hasattr(self, "_resource_optimizer_task") and self._resource_optimizer_task:
+        if getattr(self, "_resource_optimizer_task", None):
             logger.debug("   Stopping resource optimizer...")
             self._resource_optimizer_task.cancel()
             try:
                 await self._resource_optimizer_task
             except asyncio.CancelledError:
                 pass
+            self._resource_optimizer_task = None
 
-        if self.file_watcher:
-            logger.debug("   Stopping file watcher...")
-            await self.file_watcher.stop()
+        # NOTE: the file watcher and the persistence auto-save are app-lifetime
+        # services and are NOT stopped here (see shutdown()).  Stopping them on
+        # a simple Stop (or on /api/torrents/reload, which does stop+start)
+        # silently disabled torrent auto-loading and on-disk persistence until
+        # the container was restarted.
 
         # Persist stats before stopping announcers
         self._persist_all_stats()
-        await persistence_service.stop_autosave()
+        persistence_service.save()
 
         active_count = sum(1 for a in self.announcers.values() if a.is_running)
         logger.info(f"   Stopping {active_count} active announcer(s)...")
@@ -447,6 +465,15 @@ class SeederService:
         # Send notification and close client
         await notification_service.notify_system_stop()
         await notification_service.close()
+
+    async def shutdown(self):
+        """Application shutdown: stop seeding and every background service."""
+        await self.stop()
+        if self.file_watcher:
+            logger.debug("   Stopping file watcher...")
+            await self.file_watcher.stop()
+        self._persist_all_stats()
+        await persistence_service.stop_autosave()
 
     # ------------------------------------------------------------------
     # Stats
@@ -576,6 +603,48 @@ class SeederService:
                 except Exception as e:
                     logger.error(f"   ❌ Failed to start {announcer.torrent.name[:40]}: {e}")
 
+    def retry_rejected_torrents(self):
+        """Give torrents refused by their tracker another chance (used by Reload)."""
+        for info_hash in list(self._rejected_handled):
+            self._paused_torrents.discard(info_hash)
+            announcer = self.announcers.get(info_hash)
+            if announcer is not None and getattr(announcer, "rejected_reason", None):
+                announcer.clear_rejection()
+        self._rejected_handled.clear()
+
+    async def _handle_rejected_torrents(self):
+        """Keep torrents refused by their tracker paused and tell the user once."""
+        for info_hash, announcer in list(self.announcers.items()):
+            reason = getattr(announcer, "rejected_reason", None)
+            if not reason or info_hash in self._rejected_handled:
+                continue
+            self._rejected_handled.add(info_hash)
+            self._paused_torrents.add(info_hash)  # not restarted by the seed limit
+            name = announcer.torrent.name
+            try:
+                stats = announcer.get_stats()
+                persistence_service.update(
+                    info_hash,
+                    uploaded=int(stats["uploaded"]),
+                    seeding_time=stats["seedingTime"],
+                    added_at=announcer.torrent.added_at.isoformat(),
+                    torrent_name=name,
+                )
+            except Exception as e:
+                logger.debug(f"Could not persist rejected torrent stats: {e}")
+            await websocket_manager.broadcast({
+                "type": "toast",
+                "data": {"message": f"⛔ {name[:60]}: rejected by tracker ({reason[:80]})", "type": "error"},
+            })
+            try:
+                await notification_service.notify_error(
+                    "tracker",
+                    f"Torrent rejected by tracker and paused: {name}\nReason: {reason}",
+                    {"torrent": name, "reason": reason},
+                )
+            except Exception as e:
+                logger.debug(f"Rejection notification failed: {e}")
+
     async def _monitor_loop(self):
         """Monitor torrents and send updates - real-time"""
         logger.info("Monitor loop started!")
@@ -594,6 +663,8 @@ class SeederService:
                                 announcer._update_stats_for_display()
                             except Exception as e:
                                 logger.error(f"Error updating stats for {announcer.torrent.name}: {e}")
+
+                    await self._handle_rejected_torrents()
 
                     stats = self.get_stats()
                     torrents = self.get_torrents()

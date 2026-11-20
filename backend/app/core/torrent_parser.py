@@ -61,6 +61,8 @@ class Torrent:
         self.name = cached_metadata['name']
         self.size = cached_metadata['size']
         self.trackers = cached_metadata['trackers']
+        # BEP 12 tiers (older cache entries may lack it: one tier per tracker)
+        self.announce_list = cached_metadata.get('announce_list') or [[t] for t in self.trackers]
         self.created_by = cached_metadata.get('created_by', '')
         # Don't cache the full data dict (memory optimization)
     
@@ -71,6 +73,7 @@ class Torrent:
             'name': self.name,
             'size': self.size,
             'trackers': self.trackers,
+            'announce_list': getattr(self, 'announce_list', []),
             'created_by': self.created_by,
             'filename': self.filename,
             'parsed_at': datetime.now(timezone.utc).isoformat()
