@@ -2,6 +2,18 @@
 
 ## [Unreleased] - Reliability & protocol compliance
 
+### Added
+- **Tracker rejections handled**: a `failure reason` from the tracker is no longer counted as a successful announce. Permanent refusals (unregistered torrent, invalid passkey, banned client...) stop the torrent, keep it paused, show `⛔ Rejected by tracker: <reason>` in the torrent list and send one notification (`tracker_error`). Transient refusals (rate limit, maintenance) are retried with backoff. With several trackers, the next tracker is used. **Resume** the torrent (or **Reload**) to retry
+- Torrent list shows the last tracker error of unhealthy torrents (errors were never displayed)
+- **End-to-end CI job** (`backend/e2e/run_e2e.py`): real server + local fake tracker; required before the Docker build
+
+### Fixed
+- Global Stop/Start (and Reload) resumed torrents paused by the user
+- Uploading a torrent whose file name already exists overwrote the existing file (and its announcer then pointed at the wrong torrent): both files are now kept (`name (2).torrent`); re-uploading an already loaded torrent returns 409
+- A failed upload could delete an existing torrent file with the same name
+- Archiving a torrent whose name already exists in `archived/` failed (Windows) or overwrote the older archive (Linux)
+- Torrent list crashed on a malformed tracker URL
+
 ### Fixed — Critical
 - **Event loop frozen up to 1s per second**: the WebSocket log broadcaster drained the log queue with a blocking `queue.get(timeout=1)` on the asyncio loop. HTTP, WebSocket and announces were all stalled. Now non-blocking
 - **`/health` blocked ~1.5-2s** (`psutil.cpu_percent(interval=1)` + `time.sleep`), enough to fail the 3s Docker healthcheck. Now non-blocking (~1 ms)

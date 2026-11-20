@@ -56,6 +56,9 @@ class SeederService:
         # Manually paused torrents (not auto-resumed by seed limit)
         self._paused_torrents: set = set()
 
+        # Torrents refused by their tracker(s) already handled (notified)
+        self._rejected_handled: set = set()
+
         # File watcher for auto-reload
         self.file_watcher = None
 
@@ -339,6 +342,11 @@ class SeederService:
         if not self.is_running:
             raise ValueError("Seeding service is not running")
         self._paused_torrents.discard(info_hash)
+        # An explicit resume retries trackers that rejected the torrent
+        # (e.g. the passkey or the torrent was fixed on the tracker side)
+        if getattr(announcer, "rejected_reason", None):
+            announcer.clear_rejection()
+        self._rejected_handled.discard(info_hash)
         await announcer.start()
         logger.info(f"▶️ Torrent resumed: {announcer.torrent.name}")
         await websocket_manager.broadcast(
@@ -369,7 +377,12 @@ class SeederService:
         )
 
         simultaneous_seed = self._config.get("simultaneousSeed", settings.SIMULTANEOUS_SEED)
-        announcers_to_start = list(self.announcers.values())[:simultaneous_seed]
+        # Respect torrents paused by the user (or refused by their tracker):
+        # a global Stop/Start used to silently resume them.
+        paused = getattr(self, "_paused_torrents", set())
+        announcers_to_start = [
+            ann for ih, ann in self.announcers.items() if ih not in paused
+        ][:simultaneous_seed]
 
         logger.info(f"   Starting {len(announcers_to_start)}/{len(self.announcers)} torrent(s)")
         logger.info(f"   Simultaneous seed limit: {simultaneous_seed}")
@@ -590,6 +603,48 @@ class SeederService:
                 except Exception as e:
                     logger.error(f"   ❌ Failed to start {announcer.torrent.name[:40]}: {e}")
 
+    def retry_rejected_torrents(self):
+        """Give torrents refused by their tracker another chance (used by Reload)."""
+        for info_hash in list(self._rejected_handled):
+            self._paused_torrents.discard(info_hash)
+            announcer = self.announcers.get(info_hash)
+            if announcer is not None and getattr(announcer, "rejected_reason", None):
+                announcer.clear_rejection()
+        self._rejected_handled.clear()
+
+    async def _handle_rejected_torrents(self):
+        """Keep torrents refused by their tracker paused and tell the user once."""
+        for info_hash, announcer in list(self.announcers.items()):
+            reason = getattr(announcer, "rejected_reason", None)
+            if not reason or info_hash in self._rejected_handled:
+                continue
+            self._rejected_handled.add(info_hash)
+            self._paused_torrents.add(info_hash)  # not restarted by the seed limit
+            name = announcer.torrent.name
+            try:
+                stats = announcer.get_stats()
+                persistence_service.update(
+                    info_hash,
+                    uploaded=int(stats["uploaded"]),
+                    seeding_time=stats["seedingTime"],
+                    added_at=announcer.torrent.added_at.isoformat(),
+                    torrent_name=name,
+                )
+            except Exception as e:
+                logger.debug(f"Could not persist rejected torrent stats: {e}")
+            await websocket_manager.broadcast({
+                "type": "toast",
+                "data": {"message": f"⛔ {name[:60]}: rejected by tracker ({reason[:80]})", "type": "error"},
+            })
+            try:
+                await notification_service.notify_error(
+                    "tracker",
+                    f"Torrent rejected by tracker and paused: {name}\nReason: {reason}",
+                    {"torrent": name, "reason": reason},
+                )
+            except Exception as e:
+                logger.debug(f"Rejection notification failed: {e}")
+
     async def _monitor_loop(self):
         """Monitor torrents and send updates - real-time"""
         logger.info("Monitor loop started!")
@@ -608,6 +663,8 @@ class SeederService:
                                 announcer._update_stats_for_display()
                             except Exception as e:
                                 logger.error(f"Error updating stats for {announcer.torrent.name}: {e}")
+
+                    await self._handle_rejected_torrents()
 
                     stats = self.get_stats()
                     torrents = self.get_torrents()

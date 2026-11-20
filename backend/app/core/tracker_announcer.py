@@ -25,6 +25,41 @@ from app.services.stealth_service import stealth_service
 logger = logging.getLogger(__name__)
 
 
+# 'failure reason' texts meaning the tracker will never accept this torrent
+# (with this passkey / client): retrying only hammers the tracker.
+_PERMANENT_FAILURE_PATTERNS = (
+    "unregistered", "not registered", "torrent not found", "unknown torrent",
+    "torrent does not exist", "info_hash not found", "infohash not found",
+    "invalid info_hash", "invalid infohash", "not authorized", "unauthorized",
+    "passkey", "banned", "client not allowed", "client is not allowed",
+    "not whitelisted", "blacklisted", "account disabled", "account has been disabled",
+    "torrent deleted", "has been deleted", "trumped",
+)
+
+
+def is_permanent_failure(reason: str) -> bool:
+    """Classify a tracker 'failure reason' as permanent (vs transient)."""
+    text = (reason or "").lower()
+    return any(p in text for p in _PERMANENT_FAILURE_PATTERNS)
+
+
+class TrackerFailureError(Exception):
+    """The tracker answered with a 'failure reason' (HTTP) or an error (UDP)."""
+
+    def __init__(self, reason: str):
+        super().__init__(f"Tracker failure: {reason}")
+        self.reason = reason
+        self.permanent = is_permanent_failure(reason)
+
+
+class TorrentRejectedError(Exception):
+    """Every tracker permanently refused the torrent: stop announcing it."""
+
+    def __init__(self, reason: str):
+        super().__init__(f"Rejected by tracker: {reason}")
+        self.reason = reason
+
+
 class TrackerAnnouncer:
     """Handles tracker announces for a torrent.
     
@@ -36,6 +71,8 @@ class TrackerAnnouncer:
     _session_uploaded_base: int = 0
     _session_downloaded_base: int = 0
     _tracker_min_interval: int = 0
+    # Set when every tracker permanently refused the torrent (see _reject)
+    rejected_reason: Optional[str] = None
 
     def __init__(self, torrent: Torrent, client: BitTorrentClient, discretion_config: Optional[Dict] = None):
         """Initialize announcer with optional discretion settings."""
@@ -301,6 +338,21 @@ class TrackerAnnouncer:
                     break
                 except asyncio.CancelledError:
                     raise
+                except TorrentRejectedError as e:
+                    self._reject(e.reason)
+                    return
+                except TrackerFailureError as e:
+                    if e.permanent:
+                        continue  # this tracker refused us: try the next one now
+                    self.consecutive_failures += 1
+                    delay = self._calculate_backoff_delay()
+                    self._record_error_silent(f"'started' announce failed: {e}")
+                    logger.warning(
+                        f"🛡️ 'started' refused by tracker for {self.torrent.name[:40]}, "
+                        f"retrying in {delay}s: {e.reason}"
+                    )
+                    self.next_announce = datetime.now(timezone.utc) + timedelta(seconds=delay)
+                    await asyncio.sleep(delay)
                 except Exception as e:
                     self.consecutive_failures += 1
                     delay = self._calculate_backoff_delay()
@@ -338,6 +390,9 @@ class TrackerAnnouncer:
                     await self._send_announce_with_retry(event)
                 except asyncio.CancelledError:
                     raise
+                except TorrentRejectedError as e:
+                    self._reject(e.reason)
+                    return
                 except Exception as e:
                     logger.error(f"❌ Announce iteration error for {self.torrent.name}: {e}", exc_info=True)
                     self._record_error(f"Announce loop error: {str(e)}")
@@ -472,6 +527,20 @@ class TrackerAnnouncer:
                 self.consecutive_failures = 0
                 self._in_backoff = False
                 return
+            except TorrentRejectedError:
+                raise  # nothing left to retry: the announce loop stops the torrent
+            except TrackerFailureError as e:
+                if e.permanent:
+                    continue  # another tracker is still available: use it right away
+                self.consecutive_failures += 1
+                if attempt == max_attempts - 1:
+                    self._record_error_silent(f"Final retry failed: {e}")
+                    break
+                backoff_delay = self._calculate_backoff_delay()
+                self._in_backoff = True
+                self.last_retry_attempt = datetime.now(timezone.utc)
+                logger.debug(f"🛡️ Tracker refused announce, retrying in {backoff_delay}s: {e.reason}")
+                await asyncio.sleep(backoff_delay)
             except Exception as e:
                 self.consecutive_failures += 1
                 error_msg = str(e)
@@ -494,11 +563,17 @@ class TrackerAnnouncer:
         if not tracker_url:
             raise Exception("No tracker available")
         
-        if is_udp_tracker(tracker_url):
-            await self._send_announce_udp(tracker_url, event)
-            return
-        
-        await self._send_announce_http(tracker_url, event)
+        try:
+            if is_udp_tracker(tracker_url):
+                await self._send_announce_udp(tracker_url, event)
+            else:
+                await self._send_announce_http(tracker_url, event)
+        except TrackerFailureError as e:
+            if e.permanent:
+                self.tracker_mgr.mark_tracker_rejected(tracker_url)
+                if self.tracker_mgr.all_trackers_rejected():
+                    raise TorrentRejectedError(e.reason) from e
+            raise
     
     async def _send_announce_http(self, tracker_url: str, event: Optional[str] = None):
         """Send HTTP announce using client's JOAL-compatible format."""
@@ -554,7 +629,11 @@ class TrackerAnnouncer:
                 self._mark_tracker_failure(tracker_url)
                 raise Exception(f"HTTP {response.status_code}: {response.text[:200]}")
             
-            self._parse_announce_response(response.content)
+            try:
+                self._parse_announce_response(response.content)
+            except TrackerFailureError:
+                self._mark_tracker_failure(tracker_url)
+                raise
             self._mark_tracker_success(tracker_url)
             
             self.last_announce = datetime.now(timezone.utc)
@@ -632,6 +711,11 @@ class TrackerAnnouncer:
         except UDPTrackerError as e:
             self._mark_tracker_failure(tracker_url)
             logger.warning(f"❌ UDP Announce failed: {e}")
+            message = str(e)
+            if message.startswith("Tracker error:"):
+                reason = message[len("Tracker error:"):].strip()
+                self._record_error(f"Tracker failure: {reason}")
+                raise TrackerFailureError(reason) from e
             raise Exception(f"UDP error: {e}")
         except Exception as e:
             self._mark_tracker_failure(tracker_url)
@@ -663,7 +747,8 @@ class TrackerAnnouncer:
                     reason = reason.decode('utf-8', errors='ignore')
                 logger.warning(f"⚠️ Tracker returned failure: {reason}")
                 self._record_error(f"Tracker failure: {reason}")
-                return
+                # The announce was NOT accepted: never count it as a success
+                raise TrackerFailureError(str(reason))
             
             if b'warning message' in response:
                 warning = response[b'warning message']
@@ -731,6 +816,8 @@ class TrackerAnnouncer:
             if b'tracker id' in response:
                 self._tracker_id = response[b'tracker id']
                 
+        except TrackerFailureError:
+            raise
         except Exception as e:
             logger.error(f"⚠️  Failed to parse announce response: {e}", exc_info=True)
     
@@ -738,6 +825,32 @@ class TrackerAnnouncer:
     # Error handling / retry
     # ================================================================
     
+    def _reject(self, reason: str):
+        """Every tracker permanently refused the torrent: stop announcing.
+
+        SeederService picks this up (monitor loop): keeps the torrent paused,
+        notifies the user.  Resuming the torrent clears the rejection.
+        """
+        self.rejected_reason = reason
+        self._record_error(f"Rejected by tracker: {reason}")
+        if self._seeding_started_at:
+            elapsed = (datetime.now(timezone.utc) - self._seeding_started_at).total_seconds()
+            self.seeding_time += int(elapsed)
+            self._seeding_started_at = None
+        self.is_running = False
+        self.upload_speed = 0
+        logger.warning(f"⛔ {self.torrent.name[:50]}: rejected by tracker ({reason}) - announcing stopped")
+        history_service.add_entry(
+            EventType.ANNOUNCE_FAILED,
+            f"⛔ Torrent rejected by tracker: {self.torrent.name}",
+            {"reason": reason, "tracker": self.torrent.primary_tracker, "action": "paused"},
+        )
+
+    def clear_rejection(self):
+        """Forget a previous rejection (user resumed the torrent)."""
+        self.rejected_reason = None
+        self.tracker_mgr.reset_rejections()
+
     def _record_error(self, error_message: str):
         """Record error for display in UI."""
         self.last_error = error_message
@@ -788,6 +901,7 @@ class TrackerAnnouncer:
             "lastError": self.last_error,
             "errorCount": self.error_count,
             "lastErrorTime": self.last_error_time,
+            "rejectedReason": self.rejected_reason,
             "isHealthy": self.last_error is None or (
                 self.last_announce is not None and 
                 self.last_error_time is not None and 

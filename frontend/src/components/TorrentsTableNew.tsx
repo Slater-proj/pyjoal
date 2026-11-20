@@ -26,6 +26,16 @@ const MIN_COLUMN_WIDTHS = {
   actions: 60
 }
 
+// new URL() throws on a malformed tracker URL, which used to crash the whole table
+function trackerHost(tracker: string | null | undefined): string {
+  if (!tracker) return 'Unknown'
+  try {
+    return new URL(tracker).hostname || tracker
+  } catch {
+    return tracker
+  }
+}
+
 export default function TorrentsTable() {
   const { torrents, stats, removeTorrent, pauseTorrent, resumeTorrent, config, startAutoRefresh, stopAutoRefresh, reloadTorrents } = useStore()
   const isRunning = stats?.isRunning || false
@@ -420,12 +430,24 @@ export default function TorrentsTable() {
                             <span title={`Created by: ${torrent.createdBy}`}>🏷️ {torrent.createdBy}</span>
                           )}
                           {torrent.createdBy && <span className="text-slate-600">·</span>}
-                          <span>📡 {torrent.tracker ? new URL(torrent.tracker).hostname : 'Unknown'}</span>
+                          <span>📡 {trackerHost(torrent.tracker)}</span>
                           <span className="text-slate-600">·</span>
                           <span className="text-slate-500" title={torrent.addedAt ? new Date(torrent.addedAt).toLocaleString() : ''}>
                             📅 {torrent.addedAt ? formatRelativeDate(torrent.addedAt) : '-'}
                           </span>
                         </div>
+                        {torrent.rejectedReason ? (
+                          <div
+                            className="text-xs text-red-400 mt-0.5 truncate"
+                            title={`Rejected by tracker: ${torrent.rejectedReason} — resume the torrent to retry`}
+                          >
+                            ⛔ Rejected by tracker: {torrent.rejectedReason}
+                          </div>
+                        ) : torrent.lastError && torrent.isHealthy === false ? (
+                          <div className="text-xs text-amber-400 mt-0.5 truncate" title={torrent.lastError}>
+                            ⚠️ {torrent.lastError}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </td>

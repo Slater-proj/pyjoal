@@ -82,7 +82,11 @@ class TestParseAnnounceResponse:
     def test_failure_reason(self):
         ann = _make_announcer()
         data = self._bencode_dict({b"failure reason": b"Unregistered torrent"})
-        ann._parse_announce_response(data)
+        from app.core.tracker_announcer import TrackerFailureError
+        # A refusal must surface as an error (it used to be counted as a success)
+        with pytest.raises(TrackerFailureError) as exc:
+            ann._parse_announce_response(data)
+        assert exc.value.permanent is True
         ann._record_error.assert_called_once()
 
     def test_warning_message(self):

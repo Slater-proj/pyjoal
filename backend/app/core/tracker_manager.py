@@ -44,6 +44,10 @@ class TrackerManager:
         self._udp_trackers: Dict[str, UDPTracker] = {}
         self._udp_proxy_warned: bool = False
 
+        # Trackers that permanently refused this torrent (unregistered, bad
+        # passkey...): never announced to again until reset_rejections()
+        self._rejected: set = set()
+
     @staticmethod
     def _proxy_configured() -> bool:
         return bool(settings.HTTP_PROXY_HOST and settings.HTTP_PROXY_PORT)
@@ -90,7 +94,8 @@ class TrackerManager:
         if self._proxy_configured():
             for tier in self._tracker_tiers:
                 for tracker in tier:
-                    if not is_udp_tracker(tracker) and self._tracker_failures.get(tracker, 0) < self.MAX_FAILURES:
+                    if (not is_udp_tracker(tracker) and tracker not in self._rejected
+                            and self._tracker_failures.get(tracker, 0) < self.MAX_FAILURES):
                         return tracker
             if not self._udp_proxy_warned:
                 logger.warning(
@@ -101,15 +106,35 @@ class TrackerManager:
 
         for tier in self._tracker_tiers:
             for tracker in tier:
-                if self._tracker_failures.get(tracker, 0) < self.MAX_FAILURES:
+                if tracker not in self._rejected and self._tracker_failures.get(tracker, 0) < self.MAX_FAILURES:
                     return tracker
 
         # Every tracker failed repeatedly: forget failures and start over
+        # (permanently rejecting trackers stay excluded)
         logger.debug(f"All trackers failed for {self.torrent.name[:30]}, resetting failure counters")
         self._tracker_failures.clear()
-        if self._tracker_tiers[0]:
-            return self._tracker_tiers[0][0]
+        for tier in self._tracker_tiers:
+            for tracker in tier:
+                if tracker not in self._rejected:
+                    return tracker
         return self.torrent.primary_tracker
+
+    def mark_tracker_rejected(self, tracker_url: str):
+        """The tracker permanently refused this torrent (BEP 3 'failure reason')."""
+        self._rejected.add(tracker_url)
+        logger.debug(f"Tracker permanently rejected torrent: {tracker_url}")
+
+    def all_trackers_rejected(self) -> bool:
+        """True when every known tracker permanently refused the torrent."""
+        known = {t for tier in self._tracker_tiers for t in tier}
+        if not known and self.torrent.primary_tracker:
+            known = {self.torrent.primary_tracker}
+        return bool(known) and known <= self._rejected
+
+    def reset_rejections(self):
+        """Forget permanent rejections (user explicitly resumed the torrent)."""
+        self._rejected.clear()
+        self._tracker_failures.clear()
 
     def mark_tracker_success(self, tracker_url: str):
         """Mark tracker as successful (reset failure count, move to front of tier)."""

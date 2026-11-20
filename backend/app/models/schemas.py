@@ -159,6 +159,7 @@ class TorrentInfo(BaseModel):
     errorCount: Optional[int] = Field(default=0, description="Error count")
     lastErrorTime: Optional[datetime] = Field(default=None, description="Last error time")
     isHealthy: Optional[bool] = Field(default=True, description="Is torrent healthy")
+    rejectedReason: Optional[str] = Field(default=None, description="Why every tracker refused the torrent")
     status: Optional[TorrentStatusInfo] = Field(default=None, description="Detailed status info")
     simpleStatus: Optional[str] = Field(default=None, description="Simple status string")
     isRunning: Optional[bool] = Field(default=False, description="Is announcer running")

@@ -27,6 +27,8 @@
 
 - **Upload ratio** - Configurable target with automatic archiving
 - **Time limit** - Maximum seed duration per torrent
+- **Zero-peer cleanup** - With `keepTorrentWithZeroLeechers: false`, torrents with **no peers at all** (0 seeders and 0 leechers) for 5 min after an announce are archived
+- **Tracker rejections** - Torrents refused by their tracker (unregistered, invalid passkey...) are paused and flagged; resume to retry
 - **Proxy support** - Built-in HTTP proxy
 - **Advanced stealth** - Jitter, intervals, configurable variations
 - **📨 Notifications** - Gotify + webhook with per-event filtering

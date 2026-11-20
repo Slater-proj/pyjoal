@@ -22,6 +22,21 @@ from app.services.stealth_service import stealth_service
 logger = logging.getLogger(__name__)
 
 
+def _unique_archive_path(path):
+    """Never overwrite a file already in archived/ (same name archived twice).
+
+    On Windows ``rename`` failed outright; on Linux the older archive was
+    silently overwritten.
+    """
+    if not path.exists():
+        return path
+    for i in range(2, 1000):
+        candidate = path.with_name(f"{path.stem} ({i}){path.suffix}")
+        if not candidate.exists():
+            return candidate
+    return path.with_name(f"{path.stem} ({int(time.time())}){path.suffix}")
+
+
 class TorrentManager:
     """Manages torrent lifecycle: load, add, remove, archive"""
 
@@ -85,8 +100,8 @@ class TorrentManager:
                 try:
                     archived_dir = settings.TORRENTS_DIR / "archived"
                     archived_dir.mkdir(exist_ok=True)
-                    archived_path = archived_dir / torrent_file.name
-                    torrent_file.rename(archived_path)
+                    archived_path = _unique_archive_path(archived_dir / torrent_file.name)
+                    torrent_file.replace(archived_path)
                     logger.info(f"📦 Invalid torrent auto-archived: {torrent_file.name} -> archived/")
                 except Exception as archive_error:
                     logger.error(f"❌ Failed to archive invalid torrent {torrent_file.name}: {archive_error}")
@@ -253,8 +268,8 @@ class TorrentManager:
         archived_dir.mkdir(exist_ok=True)
         torrent_path = announcer.torrent.path
         if torrent_path and torrent_path.exists():
-            archived_path = archived_dir / torrent_path.name
-            torrent_path.rename(archived_path)
+            archived_path = _unique_archive_path(archived_dir / torrent_path.name)
+            torrent_path.replace(archived_path)
             logger.debug(f"   Torrent file archived to: {archived_path}")
 
         await websocket_manager.broadcast({"type": "torrent_removed", "data": {"info_hash": info_hash}})
@@ -298,8 +313,8 @@ class TorrentManager:
         archived_dir.mkdir(exist_ok=True)
 
         if torrent.path.exists():
-            archived_path = archived_dir / torrent.path.name
-            torrent.path.rename(archived_path)
+            archived_path = _unique_archive_path(archived_dir / torrent.path.name)
+            torrent.path.replace(archived_path)
             logger.info(f"✅ Torrent archived: {torrent.name}")
         else:
             logger.warning(f"   Torrent file not found: {torrent.path}")
@@ -462,7 +477,9 @@ class TorrentManager:
         stats = announcer.get_stats()
         torrent = announcer.torrent
 
-        if not announcer.is_running:
+        if stats.get("rejectedReason"):
+            status = "REJECTED"
+        elif not announcer.is_running:
             status = "STOPPED"
         elif stats.get("lastError"):
             status = "ERROR"
@@ -493,6 +510,7 @@ class TorrentManager:
             "errorCount": stats.get("errorCount", 0),
             "lastErrorTime": stats["lastErrorTime"].isoformat() if stats.get("lastErrorTime") else None,
             "isHealthy": stats.get("isHealthy", True),
+            "rejectedReason": stats.get("rejectedReason"),
             "status": detailed_status,
             "simpleStatus": status,
             "isRunning": announcer.is_running,

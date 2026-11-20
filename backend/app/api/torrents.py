@@ -16,6 +16,17 @@ from app.core.auth import verify_token
 router = APIRouter(dependencies=[Depends(verify_token)])
 
 
+def _unique_path(path: Path) -> Path:
+    """Return ``path`` or ``name (2).torrent``, ``name (3).torrent``... if taken."""
+    if not path.exists():
+        return path
+    for i in range(2, 1000):
+        candidate = path.with_name(f"{path.stem} ({i}){path.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise HTTPException(status_code=409, detail="Too many files with the same name")
+
+
 @router.get("/torrents", response_model=List[TorrentInfo])
 async def get_torrents():
     """Get all torrents"""
@@ -35,7 +46,7 @@ async def add_torrent(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Invalid filename")
     
     torrent_path = settings.TORRENTS_DIR / safe_filename
-    
+
     try:
         # Read file content in memory first
         content = await file.read()
@@ -62,10 +73,22 @@ async def add_torrent(file: UploadFile = File(...)):
             # This should rarely happen after validation, but just in case
             temp_path.unlink(missing_ok=True)
             raise HTTPException(
-                status_code=500, 
+                status_code=500,
                 detail=f"Parsing failed after validation: {str(parse_error)}"
             )
-        
+
+        # Same torrent already loaded: nothing to do (don't touch its file)
+        if torrent.info_hash in seeder_service.announcers:
+            temp_path.unlink(missing_ok=True)
+            raise HTTPException(
+                status_code=409,
+                detail=f"Torrent already added: {seeder_service.announcers[torrent.info_hash].torrent.name}",
+            )
+
+        # A DIFFERENT torrent with the same file name exists: never overwrite
+        # it silently (its announcer would point at the wrong file) - keep both
+        torrent_path = _unique_path(torrent_path)
+
         # Parsing succeeded, move to final location
         temp_path.replace(torrent_path)
         # Point the torrent at its final file (it referenced the temp path,
@@ -84,8 +107,10 @@ async def add_torrent(file: UploadFile = File(...)):
         # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
-        # Clean up file if it exists
-        torrent_path.unlink(missing_ok=True)
+        # Clean up OUR temp file only - never delete an existing torrent file
+        # (the old code unlinked torrent_path, i.e. possibly a file that was
+        # already there under the same name)
+        (settings.TORRENTS_DIR / f"temp_{safe_filename}.part").unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -169,7 +194,9 @@ async def reload_torrents():
         if was_running:
             await seeder_service.stop()
         
-        # Clear existing torrents to detect removed files
+        # Clear existing torrents to detect removed files.  Torrents that were
+        # refused by their tracker get a fresh try (manual pauses are kept).
+        seeder_service.retry_rejected_torrents()
         seeder_service.announcers.clear()
         
         # Reload torrents from disk
